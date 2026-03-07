@@ -13,12 +13,8 @@ Output is written to `site/`.
 
 ## Base URL and Path Configuration
 
-`zensical.toml` must set `site_url` to the final GitHub Pages URL:
-
-- User/organization site repo: `https://<org-or-user>.github.io/`
-- Project site repo: `https://<org-or-user>.github.io/<repo>/`
-
-For this repository, use the project-site form and include the trailing slash.
+- CI derives `site_url` as a project-site URL (`https://<owner>.github.io/<repo>/`) from the active repository and rewrites `zensical.toml` during the workflow run.
+- For local builds, set `site_url` in `zensical.toml` to your target URL and keep the trailing slash.
 
 ## CI + Deployment
 
