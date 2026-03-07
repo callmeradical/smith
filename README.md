@@ -35,6 +35,7 @@ Smith is split into control-plane and data-plane components.
 - Dockerfiles: `docker/`
 - Core implementation: `internal/source/`
 - Supporting docs: `docs/`
+- Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
 
 ## Key API Endpoints
 

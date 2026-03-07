@@ -44,3 +44,33 @@ func TestNormalizeLoopEnvironmentRejectsInvalidDockerfile(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestNormalizeLoopEnvironmentWithPolicyDefaultPreset(t *testing.T) {
+	policy := EnvironmentPolicy{
+		DefaultPreset: "team-default",
+		AllowedPresets: map[string]struct{}{
+			"team-default": {},
+			"standard":     {},
+		},
+	}
+	env, err := NormalizeLoopEnvironmentWithPolicy(nil, policy)
+	if err != nil {
+		t.Fatalf("normalize with policy: %v", err)
+	}
+	if env.Preset != "team-default" {
+		t.Fatalf("expected default preset team-default, got %s", env.Preset)
+	}
+}
+
+func TestNormalizeLoopEnvironmentWithPolicyRejectsUnknownPreset(t *testing.T) {
+	policy := EnvironmentPolicy{
+		DefaultPreset: "team-default",
+		AllowedPresets: map[string]struct{}{
+			"team-default": {},
+		},
+	}
+	_, err := NormalizeLoopEnvironmentWithPolicy(&LoopEnvironment{Preset: "standard"}, policy)
+	if err == nil {
+		t.Fatal("expected unknown preset error")
+	}
+}

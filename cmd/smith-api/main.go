@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,12 +34,14 @@ type config struct {
 	etcdDialTimeout time.Duration
 	operatorToken   string
 	authStorePath   string
+	defaultPreset   string
 }
 
 type server struct {
-	cfg   config
-	store *store.Store
-	auth  *provider.AuthManager
+	cfg     config
+	store   *store.Store
+	auth    *provider.AuthManager
+	presets *presetCatalog
 }
 
 type overrideRequest struct {
@@ -117,6 +121,16 @@ type ingressResult struct {
 	Message   string `json:"message,omitempty"`
 }
 
+type presetCatalog struct {
+	mu            sync.RWMutex
+	defaultPreset string
+	presets       map[string]struct{}
+}
+
+type presetCreateRequest struct {
+	Name string `json:"name"`
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -139,12 +153,14 @@ func main() {
 		&auditBridge{store: es},
 	)
 
-	s := &server{cfg: cfg, store: es, auth: authManager}
+	s := &server{cfg: cfg, store: es, auth: authManager, presets: newPresetCatalog(cfg.defaultPreset)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/readyz", s.handleReady)
 	mux.HandleFunc("/v1/loops", s.handleLoops)
 	mux.HandleFunc("/v1/loops/", s.handleLoopByID)
+	mux.HandleFunc("/v1/environment/presets", s.handleEnvironmentPresets)
+	mux.HandleFunc("/v1/environment/presets/", s.handleEnvironmentPresetByName)
 	mux.HandleFunc("/v1/ingress/github/issues", s.handleIngressGitHubIssues)
 	mux.HandleFunc("/v1/ingress/prd", s.handleIngressPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
@@ -370,7 +386,7 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
-	environment, err := model.NormalizeLoopEnvironment(req.Environment)
+	environment, err := model.NormalizeLoopEnvironmentWithPolicy(req.Environment, s.presets.Policy())
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
@@ -455,6 +471,53 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		Environment: environment,
 		Skills:      skills,
 		HTTPCode:    http.StatusCreated,
+	}
+}
+
+func (s *server) handleEnvironmentPresets(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{
+			"default_preset": s.presets.Default(),
+			"presets":        s.presets.List(),
+		})
+	case http.MethodPost:
+		var req presetCreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		if err := s.presets.Upsert(req.Name); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"name": strings.ToLower(strings.TrimSpace(req.Name))})
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *server) handleEnvironmentPresetByName(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/environment/presets/"))
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "preset name is required")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		if !s.presets.Has(name) {
+			writeErr(w, http.StatusNotFound, "preset not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"name": strings.ToLower(name)})
+	case http.MethodPut:
+		if err := s.presets.Upsert(name); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"name": strings.ToLower(name)})
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
@@ -745,6 +808,7 @@ func loadConfig() (config, error) {
 		etcdDialTimeout: envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
 		operatorToken:   strings.TrimSpace(os.Getenv("SMITH_OPERATOR_TOKEN")),
 		authStorePath:   envString("SMITH_AUTH_STORE_PATH", "/tmp/smith-auth/tokens.json"),
+		defaultPreset:   strings.TrimSpace(os.Getenv("SMITH_DEFAULT_ENV_PRESET")),
 	}, nil
 }
 
@@ -800,6 +864,74 @@ func withIdempotency(metadata map[string]string, key string) map[string]string {
 		out["idempotency_key"] = strings.TrimSpace(key)
 	}
 	return out
+}
+
+func newPresetCatalog(defaultPreset string) *presetCatalog {
+	policy := model.DefaultEnvironmentPolicy()
+	presets := map[string]struct{}{}
+	for name := range policy.AllowedPresets {
+		presets[name] = struct{}{}
+	}
+	resolvedDefault := strings.ToLower(strings.TrimSpace(defaultPreset))
+	if resolvedDefault == "" {
+		resolvedDefault = policy.DefaultPreset
+	}
+	if _, ok := presets[resolvedDefault]; !ok {
+		presets[resolvedDefault] = struct{}{}
+	}
+	return &presetCatalog{
+		defaultPreset: resolvedDefault,
+		presets:       presets,
+	}
+}
+
+func (c *presetCatalog) Upsert(name string) error {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if normalized == "" {
+		return errors.New("preset name is required")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.presets[normalized] = struct{}{}
+	return nil
+}
+
+func (c *presetCatalog) Has(name string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	_, ok := c.presets[normalized]
+	return ok
+}
+
+func (c *presetCatalog) List() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := make([]string, 0, len(c.presets))
+	for name := range c.presets {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (c *presetCatalog) Default() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.defaultPreset
+}
+
+func (c *presetCatalog) Policy() model.EnvironmentPolicy {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	allowed := map[string]struct{}{}
+	for name := range c.presets {
+		allowed[name] = struct{}{}
+	}
+	return model.EnvironmentPolicy{
+		DefaultPreset:  c.defaultPreset,
+		AllowedPresets: allowed,
+	}
 }
 
 func copyStringMap(in map[string]string) map[string]string {

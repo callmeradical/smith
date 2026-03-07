@@ -46,6 +46,51 @@ func main() {
 		log.Printf("handoff not found at %s; continuing", handoffPath)
 	}
 
+	workspace := strings.TrimSpace(os.Getenv("SMITH_WORKSPACE"))
+	if workspace == "" {
+		workspace = "/workspace"
+	}
+	anomaly, anomalyFound, anomalyErr := storeClient.GetAnomaly(ctx, loopID)
+	if anomalyErr != nil {
+		log.Fatalf("failed to read anomaly: %v", anomalyErr)
+	}
+	if anomalyFound {
+		envMeta, setupErr := setupLoopEnvironment(ctx, anomaly.Environment, workspace, commandRunner{})
+		if setupErr != nil {
+			_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+				LoopID:        loopID,
+				Phase:         "environment",
+				Level:         "error",
+				ActorType:     "replica",
+				ActorID:       hostnameOr("smith-replica"),
+				Message:       "loop environment setup failed",
+				CorrelationID: correlationID,
+				Metadata: map[string]string{
+					"error": setupErr.Error(),
+				},
+			})
+			_, _ = storeClient.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
+				if current.State == model.LoopStateSynced || current.State == model.LoopStateFlatline || current.State == model.LoopStateCancelled {
+					return current, nil
+				}
+				current.State = model.LoopStateFlatline
+				current.Reason = "environment-setup-failed"
+				return current, nil
+			})
+			log.Fatalf("environment setup failed: %v", setupErr)
+		}
+		_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        loopID,
+			Phase:         "environment",
+			Level:         "info",
+			ActorType:     "replica",
+			ActorID:       hostnameOr("smith-replica"),
+			Message:       "loop environment resolved",
+			CorrelationID: correlationID,
+			Metadata:      envMeta,
+		})
+	}
+
 	_ = storeClient.AppendJournal(ctx, model.JournalEntry{
 		LoopID:        loopID,
 		Phase:         "replica",

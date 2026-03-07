@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"smith/internal/source/locking"
 	"smith/internal/source/model"
 )
@@ -101,15 +103,9 @@ func TestConcurrentLoopsIsolation(t *testing.T) {
 
 	for _, loopID := range loops {
 		holder := acquiredBy[loopID]
-		if holder == "" {
-			t.Fatalf("expected one holder for loop %s", loopID)
-		}
-		if err := mgr.Release(context.Background(), loopID, holder); err != nil {
-			t.Fatalf("release lock for %s: %v", loopID, err)
-		}
+		require.NotEmpty(t, holder, "expected one holder for loop %s", loopID)
+		require.NoError(t, mgr.Release(context.Background(), loopID, holder), "release lock for %s", loopID)
 		_, err := mgr.Acquire(context.Background(), loopID, holder+"-next", 999)
-		if err != nil {
-			t.Fatalf("expected second acquire after release for %s: %v", loopID, err)
-		}
+		require.NoError(t, err, "expected second acquire after release for %s", loopID)
 	}
 }

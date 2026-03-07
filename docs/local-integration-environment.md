@@ -2,6 +2,34 @@
 
 This environment provides a reproducible local target for Smith integration/e2e tests.
 
+## Make-First Workflow (Standard)
+
+Use `make` as the primary local workflow entrypoint:
+
+```bash
+make help
+```
+
+Target matrix:
+
+| Target | Contract | Prerequisites |
+| --- | --- | --- |
+| `make doctor` | Fails fast when required local tools are missing. | `go`, `kubectl`, `helm`, `docker`, `k3d`, `vcluster` in `PATH` |
+| `make bootstrap` | Installs missing `k3d`/`vcluster` via script helpers. | `brew` or `curl` available |
+| `make cluster-up` (`make cluster`) | Provisions local `k3d + vcluster + etcd`. | Doctor checks pass |
+| `make deploy` | Installs/upgrades Helm release into namespace (`SMITH_NAMESPACE`, `SMITH_RELEASE`, `SMITH_VALUES`). | Reachable Kubernetes cluster + Helm |
+| `make test` (`make test-matrix`) | Runs local non-cluster matrix (fixtures, verification, e2e scripts). | Go toolchain + local repo dependencies |
+| `make test-integration` | Runs vCluster-backed integration workflow. | `cluster-up` completed |
+| `make teardown` | Removes Helm release and tears down local cluster stack. | None; best-effort cleanup |
+
+Default configurable vars:
+
+- `SMITH_NAMESPACE` (default `smith-system`)
+- `SMITH_RELEASE` (default `smith`)
+- `SMITH_VALUES` (default `helm/smith/values/local.yaml`)
+- `SMITH_TEST_ARTIFACTS_DIR` (default `/tmp/smith-test-artifacts`)
+- `SMITH_FIXTURE_DIR` (default `/tmp/smith-test-repo`)
+
 ## Prerequisites
 
 Required CLI tools:
