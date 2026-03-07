@@ -297,6 +297,20 @@ else
   warn "Console image validation skipped (command 'docker' not installed)"
 fi
 
+section "td-ffc123 | CI image build and publish pipeline"
+expect_file ".github/workflows/images-build-publish.yml" "Image publish workflow exists"
+expect_rg "image: core" ".github/workflows/images-build-publish.yml" "Workflow includes core image"
+expect_rg "image: replica" ".github/workflows/images-build-publish.yml" "Workflow includes replica image"
+expect_rg "image: console" ".github/workflows/images-build-publish.yml" "Workflow includes console image"
+expect_rg "docker/core.Dockerfile" ".github/workflows/images-build-publish.yml" "Workflow references core Dockerfile"
+expect_rg "docker/replica.Dockerfile" ".github/workflows/images-build-publish.yml" "Workflow references replica Dockerfile"
+expect_rg "docker/console.Dockerfile" ".github/workflows/images-build-publish.yml" "Workflow references console Dockerfile"
+expect_rg "docker/build-push-action" ".github/workflows/images-build-publish.yml" "Workflow uses docker build/push action"
+expect_rg "aquasecurity/trivy-action" ".github/workflows/images-build-publish.yml" "Workflow includes vulnerability scanning gate"
+expect_rg "anchore/sbom-action" ".github/workflows/images-build-publish.yml" "Workflow includes SBOM generation"
+expect_rg "exit-code: '1'" ".github/workflows/images-build-publish.yml" "Scan failures are configured to fail CI"
+expect_rg "type=sha" ".github/workflows/images-build-publish.yml" "Workflow publishes immutable SHA tags"
+
 printf '\nSummary: %d failure(s), %d warning(s).\n' "$failed" "$warned"
 if (( failed > 0 )); then
   exit 1

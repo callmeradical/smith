@@ -40,7 +40,9 @@
   - optional `branch-<branch>`
 - Release workflow publishes:
   - semver tags (`v*`)
-- Signed provenance and digest pinning should be added when CI pipeline task (`td-ffc123`) is implemented.
+- Pipeline file: `.github/workflows/images-build-publish.yml`
+- Published repositories: `ghcr.io/<org>/smith-core`, `ghcr.io/<org>/smith-replica`, `ghcr.io/<org>/smith-console`
+- Trivy vulnerability scanning runs before publish and blocks on high/critical findings.
 
 ## Build Targets
 
