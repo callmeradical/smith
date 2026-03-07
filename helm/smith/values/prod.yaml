@@ -1,0 +1,6 @@
+core:
+  replicaCount: 3
+api:
+  replicaCount: 3
+console:
+  replicaCount: 2
