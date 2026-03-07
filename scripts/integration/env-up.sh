@@ -66,8 +66,7 @@ fi
 
 if [[ "$VCLUSTER_CONNECT" == "true" ]]; then
 	info "connecting kubectl context to vcluster"
-	vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=false --background-proxy=true
-	kubectl config use-context "vcluster_${VCLUSTER_NAME}_${VCLUSTER_NAMESPACE}_k3d-${K3D_CLUSTER_NAME}" >/dev/null
+	vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=true --background-proxy=true
 fi
 
 helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true

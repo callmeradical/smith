@@ -13,8 +13,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=false --background-proxy=false
-kubectl config use-context "vcluster_${VCLUSTER_NAME}_${VCLUSTER_NAMESPACE}_k3d-${SMITH_K3D_CLUSTER_NAME:-smith-int}" >/dev/null
+vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=true --background-proxy=true
 
 kubectl -n "$ETCD_NAMESPACE" get svc "$ETCD_RELEASE_NAME" >/dev/null
 kubectl -n "$ETCD_NAMESPACE" port-forward svc/"$ETCD_RELEASE_NAME" 2379:2379 >/tmp/smith-it-port-forward.log 2>&1 &

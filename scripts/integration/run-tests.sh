@@ -14,7 +14,6 @@ if ! kubectl -n "$VCLUSTER_NAMESPACE" get statefulset "$VCLUSTER_NAME" >/dev/nul
   exit 1
 fi
 
-vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=false --background-proxy=false
-kubectl config use-context "vcluster_${VCLUSTER_NAME}_${VCLUSTER_NAMESPACE}_k3d-${SMITH_K3D_CLUSTER_NAME:-smith-int}" >/dev/null
+vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=true --background-proxy=true
 
 SMITH_ENABLE_CLUSTER_TESTS=true ./scripts/test/run-matrix.sh
