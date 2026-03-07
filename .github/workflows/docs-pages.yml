@@ -28,6 +28,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -35,6 +39,26 @@ jobs:
 
       - name: Install Zensical
         run: pip install zensical
+
+      - name: Set site_url for this repository
+        run: |
+          BASE_PATH="${{ steps.pages.outputs.base_path }}"
+          SITE_URL="https://${{ github.repository_owner }}.github.io"
+          if [ "$BASE_PATH" != "/" ]; then
+            SITE_URL="${SITE_URL}${BASE_PATH}"
+          fi
+          SITE_URL="${SITE_URL}/"
+
+          tmpfile="$(mktemp)"
+          awk -v url="$SITE_URL" '
+            /^site_url = / {
+              print "site_url = \"" url "\""
+              next
+            }
+            { print }
+          ' zensical.toml > "$tmpfile"
+          mv "$tmpfile" zensical.toml
+          echo "Resolved site_url=$SITE_URL"
 
       - name: Build docs
         run: zensical build
