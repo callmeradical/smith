@@ -19,6 +19,38 @@ type GitContext struct {
 	CommitSHA  string
 }
 
+type GitAuthProvider string
+
+const (
+	GitAuthProviderPAT       GitAuthProvider = "pat"
+	GitAuthProviderGitHubApp GitAuthProvider = "github_app"
+	GitAuthProviderSSH       GitAuthProvider = "ssh"
+)
+
+type GitHubAppAuth struct {
+	AppID                string
+	InstallationID       string
+	PrivateKeySecretName string
+	PrivateKeySecretKey  string
+}
+
+type GitAuthConfig struct {
+	Provider            GitAuthProvider
+	PATSecretName       string
+	PATSecretKey        string
+	GitHubApp           *GitHubAppAuth
+	SSH                 *SSHAuth
+	EnableGitHubAppAuth bool
+	EnableSSHAuth       bool
+}
+
+type SSHAuth struct {
+	PrivateKeySecretName string
+	PrivateKeySecretKey  string
+	KnownHostsSecretName string
+	KnownHostsSecretKey  string
+}
+
 type JobRequest struct {
 	Namespace               string
 	LoopID                  string
@@ -27,6 +59,7 @@ type JobRequest struct {
 	Image                   string
 	ImagePullPolicy         string
 	Git                     GitContext
+	GitAuth                 *GitAuthConfig
 	HandoffConfigMapName    string
 	RuntimeSecretName       string
 	RuntimeCredentialsKey   string
@@ -145,6 +178,50 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 			},
 		})
 	}
+	if req.GitAuth != nil {
+		env = append(env, EnvVar{Name: "SMITH_GIT_AUTH_PROVIDER", Value: string(req.GitAuth.Provider)})
+		switch req.GitAuth.Provider {
+		case GitAuthProviderPAT:
+			env = append(env, EnvVar{
+				Name: "SMITH_GIT_PAT",
+				SecretKeyRef: &SecretKeyRef{
+					Name: req.GitAuth.PATSecretName,
+					Key:  req.GitAuth.PATSecretKey,
+				},
+			})
+		case GitAuthProviderGitHubApp:
+			env = append(env,
+				EnvVar{Name: "SMITH_GITHUB_APP_ID", Value: req.GitAuth.GitHubApp.AppID},
+				EnvVar{Name: "SMITH_GITHUB_APP_INSTALLATION_ID", Value: req.GitAuth.GitHubApp.InstallationID},
+				EnvVar{
+					Name: "SMITH_GITHUB_APP_PRIVATE_KEY",
+					SecretKeyRef: &SecretKeyRef{
+						Name: req.GitAuth.GitHubApp.PrivateKeySecretName,
+						Key:  req.GitAuth.GitHubApp.PrivateKeySecretKey,
+					},
+				},
+			)
+		case GitAuthProviderSSH:
+			env = append(env,
+				EnvVar{
+					Name: "SMITH_GIT_SSH_PRIVATE_KEY",
+					SecretKeyRef: &SecretKeyRef{
+						Name: req.GitAuth.SSH.PrivateKeySecretName,
+						Key:  req.GitAuth.SSH.PrivateKeySecretKey,
+					},
+				},
+			)
+			if strings.TrimSpace(req.GitAuth.SSH.KnownHostsSecretName) != "" && strings.TrimSpace(req.GitAuth.SSH.KnownHostsSecretKey) != "" {
+				env = append(env, EnvVar{
+					Name: "SMITH_GIT_SSH_KNOWN_HOSTS",
+					SecretKeyRef: &SecretKeyRef{
+						Name: req.GitAuth.SSH.KnownHostsSecretName,
+						Key:  req.GitAuth.SSH.KnownHostsSecretKey,
+					},
+				})
+			}
+		}
+	}
 
 	volumes := []Volume{
 		{
@@ -245,6 +322,40 @@ func validateRequest(req JobRequest) error {
 	}
 	if req.RuntimeSecretName != "" && strings.TrimSpace(req.RuntimeCredentialsKey) == "" {
 		return fmt.Errorf("%w: runtime credentials key is required when runtime secret is set", ErrInvalidJobRequest)
+	}
+	if req.GitAuth == nil {
+		return nil
+	}
+	switch req.GitAuth.Provider {
+	case GitAuthProviderPAT:
+		if strings.TrimSpace(req.GitAuth.PATSecretName) == "" || strings.TrimSpace(req.GitAuth.PATSecretKey) == "" {
+			return fmt.Errorf("%w: git auth provider pat requires pat secret name and key", ErrInvalidJobRequest)
+		}
+	case GitAuthProviderGitHubApp:
+		if !req.GitAuth.EnableGitHubAppAuth {
+			return fmt.Errorf("%w: github_app auth provider is feature-flagged; set EnableGitHubAppAuth to true", ErrInvalidJobRequest)
+		}
+		if req.GitAuth.GitHubApp == nil {
+			return fmt.Errorf("%w: github_app auth provider requires github app config", ErrInvalidJobRequest)
+		}
+		if strings.TrimSpace(req.GitAuth.GitHubApp.AppID) == "" || strings.TrimSpace(req.GitAuth.GitHubApp.InstallationID) == "" {
+			return fmt.Errorf("%w: github_app auth requires app id and installation id", ErrInvalidJobRequest)
+		}
+		if strings.TrimSpace(req.GitAuth.GitHubApp.PrivateKeySecretName) == "" || strings.TrimSpace(req.GitAuth.GitHubApp.PrivateKeySecretKey) == "" {
+			return fmt.Errorf("%w: github_app auth requires private key secret name and key", ErrInvalidJobRequest)
+		}
+	case GitAuthProviderSSH:
+		if !req.GitAuth.EnableSSHAuth {
+			return fmt.Errorf("%w: ssh auth provider is feature-flagged; set EnableSSHAuth to true", ErrInvalidJobRequest)
+		}
+		if req.GitAuth.SSH == nil {
+			return fmt.Errorf("%w: ssh auth provider requires ssh config", ErrInvalidJobRequest)
+		}
+		if strings.TrimSpace(req.GitAuth.SSH.PrivateKeySecretName) == "" || strings.TrimSpace(req.GitAuth.SSH.PrivateKeySecretKey) == "" {
+			return fmt.Errorf("%w: ssh auth requires private key secret name and key", ErrInvalidJobRequest)
+		}
+	default:
+		return fmt.Errorf("%w: unsupported git auth provider %q", ErrInvalidJobRequest, req.GitAuth.Provider)
 	}
 	return nil
 }

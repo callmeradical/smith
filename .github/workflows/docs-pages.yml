@@ -56,7 +56,7 @@ jobs:
           echo "Resolved site_url=$SITE_URL"
 
       - name: Build docs
-        run: zensical build
+        run: ./scripts/docs/quality-check.sh
 
       - name: Upload artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

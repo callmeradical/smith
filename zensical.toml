@@ -1,9 +1,56 @@
 [project]
 site_name = "Smith Docs"
-site_description = "Smith MVP documentation"
+site_description = "Smith distributed autonomous orchestration documentation"
 site_url = "https://<org-or-user>.github.io/<repo>/"
 docs_dir = "docs"
 site_dir = "site"
+repo_url = "https://github.com/<org-or-user>/<repo>"
+repo_name = "GitHub"
+extra_css = ["stylesheets/sidecar-smith.css"]
+extra_javascript = ["javascripts/sidecar-smith.js"]
+
+nav = [
+  { "Getting Started" = "index.md" },
+  { "Architecture" = "distributed-autonomous-orchestration-mvp.md" },
+  { "Requirements (FR/NFR)" = "requirements-fr-nfr.md" },
+  { "Traceability Matrix" = "requirements-traceability.md" },
+  { "Deployment (Helm)" = "deployment-recommendations.md" },
+  { "Agent Providers & Authentication" = "agent-provider-auth.md" },
+  { "Operations" = "loop-ingress-and-cli.md" }
+]
 
 [project.theme]
 variant = "modern"
+language = "en"
+features = [
+  "content.code.copy",
+  "content.code.select",
+  "navigation.footer",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight"
+]
+
+[project.theme.font]
+text = "Manrope"
+code = "JetBrains Mono"
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "slate"
+accent = "teal"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+primary = "slate"
+accent = "teal"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"

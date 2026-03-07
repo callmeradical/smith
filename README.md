@@ -19,8 +19,9 @@ Smith is split into control-plane and data-plane components.
 
 ### Control Plane
 
-- `smith-api` (`cmd/smith-api`): HTTP API for loop create/list/get, operator override actions, provider auth lifecycle, and cost reporting.
+- `smith-api` (`cmd/smith-api`): HTTP API for loop create/list/get, GitHub + PRD ingress, operator override actions, provider auth lifecycle, and cost reporting.
 - `smith-core` (`cmd/smith-core`): watches unresolved loop state in etcd, acquires per-loop locks, transitions loop state, and schedules replica Jobs in Kubernetes.
+- `smithctl` (`cmd/smithctl`): kubectl-style operator CLI for `loop` and `prd` resources with context/config support and scriptable JSON output.
 - `smith-console` (`console/` + Helm deployment): operator UI/runtime assets.
 - etcd: authoritative source of truth for anomalies, loop lifecycle state, locks, journal events, handoffs, overrides, and audit records.
 
@@ -34,3 +35,12 @@ Smith is split into control-plane and data-plane components.
 - Dockerfiles: `docker/`
 - Core implementation: `internal/source/`
 - Supporting docs: `docs/`
+
+## Key API Endpoints
+
+- `POST /v1/loops` single/batch direct loop creation.
+- `POST /v1/loops` supports environment profiles (`preset`, `mise`, `container_image`, `dockerfile`) with server-side validation/defaulting.
+- `POST /v1/ingress/github/issues` ingest one or more GitHub issues into loop specs.
+- `POST /v1/ingress/prd` ingest markdown/json PRD inputs into loop specs.
+- `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
+- `POST /v1/control/override` for operator state overrides with reason/audit trail.
