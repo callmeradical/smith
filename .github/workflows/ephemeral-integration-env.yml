@@ -30,6 +30,7 @@ jobs:
         run: ./scripts/integration/prereqs.sh
 
       - name: Provision ephemeral k3d + vCluster + etcd
+        timeout-minutes: 15
         env:
           SMITH_K3D_CLUSTER_NAME: smith-ci
           SMITH_VCLUSTER_NAME: smith-ci-vc
@@ -40,6 +41,7 @@ jobs:
         run: ./scripts/integration/env-up.sh
 
       - name: Run vCluster watch/reconcile integration tests
+        timeout-minutes: 10
         env:
           SMITH_K3D_CLUSTER_NAME: smith-ci
           SMITH_VCLUSTER_NAME: smith-ci-vc
@@ -49,6 +51,7 @@ jobs:
         run: ./scripts/integration/test-watch-reconcile.sh
 
       - name: Run cluster-enabled test matrix
+        timeout-minutes: 10
         env:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts
           SMITH_FIXTURE_DIR: /tmp/smith-test-repo
@@ -74,6 +77,7 @@ jobs:
 
       - name: Tear down ephemeral environment
         if: always()
+        timeout-minutes: 10
         env:
           SMITH_K3D_CLUSTER_NAME: smith-ci
           SMITH_VCLUSTER_NAME: smith-ci-vc
