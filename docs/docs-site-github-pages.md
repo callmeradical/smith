@@ -13,7 +13,7 @@ Output is written to `site/`.
 
 ## Base URL and Path Configuration
 
-- CI derives `site_url` from the active repository via `actions/configure-pages` and rewrites `zensical.toml` during the workflow run.
+- CI derives `site_url` as a project-site URL (`https://<owner>.github.io/<repo>/`) from the active repository and rewrites `zensical.toml` during the workflow run.
 - For local builds, set `site_url` in `zensical.toml` to your target URL and keep the trailing slash.
 
 ## CI + Deployment
