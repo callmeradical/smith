@@ -1,0 +1,165 @@
+package replica
+
+import (
+	"context"
+	"errors"
+	"testing"
+)
+
+func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
+	req := validRequest()
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	if job.Kind != "Job" {
+		t.Fatalf("expected Job kind, got %q", job.Kind)
+	}
+	if job.Metadata.Namespace != "smith-system" {
+		t.Fatalf("expected namespace smith-system, got %q", job.Metadata.Namespace)
+	}
+	if job.Spec.Template.Spec.ServiceAccountName != "smith-replica" {
+		t.Fatalf("unexpected service account: %q", job.Spec.Template.Spec.ServiceAccountName)
+	}
+	if len(job.Spec.Template.Spec.Volumes) == 0 || job.Spec.Template.Spec.Volumes[0].ConfigMapName != "handoff-loop-123" {
+		t.Fatalf("expected handoff volume wired from configmap, got %+v", job.Spec.Template.Spec.Volumes)
+	}
+
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+
+	required := []string{
+		"STORY_ID",
+		"SMITH_LOOP_ID",
+		"SMITH_CORRELATION_ID",
+		"SMITH_GIT_REPOSITORY",
+		"SMITH_GIT_BRANCH",
+		"SMITH_GIT_COMMIT_SHA",
+		"SMITH_HANDOFF_PATH",
+	}
+	for _, key := range required {
+		if _, ok := env[key]; !ok {
+			t.Fatalf("missing required env %s", key)
+		}
+	}
+	if env["STORY_ID"].Value != "loop-123" {
+		t.Fatalf("expected STORY_ID=loop-123, got %q", env["STORY_ID"].Value)
+	}
+	secretEnv, ok := env["SMITH_RUNTIME_CREDENTIALS"]
+	if !ok || secretEnv.SecretKeyRef == nil {
+		t.Fatalf("expected SMITH_RUNTIME_CREDENTIALS secret key ref, got %+v", secretEnv)
+	}
+	if secretEnv.SecretKeyRef.Name != "smith-runtime" || secretEnv.SecretKeyRef.Key != "runtime_credentials" {
+		t.Fatalf("unexpected secret ref %+v", secretEnv.SecretKeyRef)
+	}
+}
+
+func TestBuildReplicaJobValidation(t *testing.T) {
+	req := validRequest()
+	req.Git.Repository = ""
+
+	_, err := BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
+	}
+}
+
+func TestSubmitSurfacesClientFailure(t *testing.T) {
+	client := &fakeJobsAPI{
+		createErr: errors.New("k8s unavailable"),
+	}
+	generator := NewJobGenerator(client)
+
+	_, err := generator.Submit(context.Background(), validRequest())
+	if err == nil {
+		t.Fatal("expected submit failure")
+	}
+	if !errors.Is(err, ErrSubmitFailed) {
+		t.Fatalf("expected ErrSubmitFailed, got %v", err)
+	}
+}
+
+func TestDeleteSurfacesClientFailure(t *testing.T) {
+	client := &fakeJobsAPI{
+		deleteErr: errors.New("delete denied"),
+	}
+	generator := NewJobGenerator(client)
+
+	err := generator.Delete(context.Background(), "smith-system", "smith-replica-loop-123")
+	if err == nil {
+		t.Fatal("expected delete failure")
+	}
+	if !errors.Is(err, ErrDeleteFailed) {
+		t.Fatalf("expected ErrDeleteFailed, got %v", err)
+	}
+}
+
+func TestSubmitAndDeleteSuccess(t *testing.T) {
+	client := &fakeJobsAPI{}
+	generator := NewJobGenerator(client)
+
+	job, err := generator.Submit(context.Background(), validRequest())
+	if err != nil {
+		t.Fatalf("unexpected submit error: %v", err)
+	}
+	if client.created.Metadata.Name != job.Metadata.Name {
+		t.Fatalf("expected created job %q, got %q", job.Metadata.Name, client.created.Metadata.Name)
+	}
+
+	if err := generator.Delete(context.Background(), "smith-system", job.Metadata.Name); err != nil {
+		t.Fatalf("unexpected delete error: %v", err)
+	}
+	if client.deletedNamespace != "smith-system" || client.deletedName != job.Metadata.Name {
+		t.Fatalf("unexpected delete target %s/%s", client.deletedNamespace, client.deletedName)
+	}
+}
+
+func validRequest() JobRequest {
+	return JobRequest{
+		Namespace:               "smith-system",
+		LoopID:                  "loop-123",
+		CorrelationID:           "corr-123",
+		ServiceAccountName:      "smith-replica",
+		Image:                   "ghcr.io/smith/replica:latest",
+		ImagePullPolicy:         "IfNotPresent",
+		Git:                     GitContext{Repository: "https://github.com/acme/repo.git", Branch: "main", CommitSHA: "abc1234"},
+		HandoffConfigMapName:    "handoff-loop-123",
+		RuntimeSecretName:       "smith-runtime",
+		RuntimeCredentialsKey:   "runtime_credentials",
+		BackoffLimit:            2,
+		ActiveDeadlineSeconds:   1800,
+		TTLSecondsAfterFinished: 3600,
+	}
+}
+
+type fakeJobsAPI struct {
+	created          JobManifest
+	deletedNamespace string
+	deletedName      string
+	createErr        error
+	deleteErr        error
+}
+
+func (f *fakeJobsAPI) CreateJob(_ context.Context, job JobManifest) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
+	f.created = job
+	return nil
+}
+
+func (f *fakeJobsAPI) DeleteJob(_ context.Context, namespace, name string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deletedNamespace = namespace
+	f.deletedName = name
+	return nil
+}

@@ -31,3 +31,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default "default" (index (index $root.Values $component).serviceAccount "name") -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "smith.runtimeSecretName" -}}
+{{- if .Values.secrets.existingSecret -}}
+{{- .Values.secrets.existingSecret -}}
+{{- else if .Values.secrets.create -}}
+{{- printf "%s-runtime" (include "smith.fullname" .) -}}
+{{- end -}}
+{{- end -}}

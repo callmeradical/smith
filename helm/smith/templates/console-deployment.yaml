@@ -17,6 +17,11 @@ spec:
         {{- include "smith.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: console
     spec:
+      {{- $runtimeSecretName := include "smith.runtimeSecretName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "smith.serviceAccountName" (dict "component" "console" "root" .) }}
       containers:
         - name: console
@@ -25,6 +30,13 @@ spec:
           env:
             - name: SMITH_API_BASE_URL
               value: {{ printf "http://%s-api:%v" (include "smith.fullname" .) .Values.api.service.port | quote }}
+            {{- if $runtimeSecretName }}
+            - name: SMITH_RUNTIME_CREDENTIALS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $runtimeSecretName }}
+                  key: {{ .Values.secrets.keys.runtimeCredentials }}
+            {{- end }}
             {{- with .Values.console.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

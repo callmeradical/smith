@@ -1,5 +1,18 @@
+global:
+  environment: prod
+  featureFlags:
+    interactiveAttach: false
+
+secrets:
+  existingSecret: smith-prod-runtime
+
 core:
   replicaCount: 3
+  loopPolicy:
+    maxAttempts: 5
+    backoffInitial: 10s
+    backoffMax: 2m
+    timeout: 45m
 api:
   replicaCount: 3
 console:

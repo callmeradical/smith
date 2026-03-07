@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-const SchemaVersion = "v1"
+const SchemaVersion = SchemaVersionV1
 
 type LoopState string
 

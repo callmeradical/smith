@@ -1,5 +1,21 @@
+global:
+  environment: local
+  featureFlags:
+    interactiveAttach: true
+
+secrets:
+  create: true
+  managed:
+    gitPat: local-dev-token
+    runtimeCredentials: local-runtime-token
+
 core:
   replicaCount: 1
+  loopPolicy:
+    maxAttempts: 2
+    backoffInitial: 2s
+    backoffMax: 30s
+    timeout: 20m
 api:
   replicaCount: 1
 console:

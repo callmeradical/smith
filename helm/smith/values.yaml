@@ -1,5 +1,11 @@
 global:
+  environment: local
   imagePullSecrets: []
+  featureFlags:
+    loopPolicyConfig: true
+    operatorOverrides: true
+    auditStream: true
+    interactiveAttach: false
 
 etcd:
   endpoints:
@@ -9,23 +15,41 @@ etcd:
     caSecretName: ""
     certSecretName: ""
 
+secrets:
+  existingSecret: ""
+  create: false
+  managed:
+    gitPat: ""
+    runtimeCredentials: ""
+  keys:
+    gitPat: git_pat
+    runtimeCredentials: runtime_credentials
+
 core:
   replicaCount: 1
+  enabled: true
   image:
     repository: ghcr.io/smith/core
-    tag: latest
+    tag: v0.1.0
     pullPolicy: IfNotPresent
   serviceAccount:
     create: true
     name: ""
+  loopPolicy:
+    maxAttempts: 3
+    backoffInitial: 5s
+    backoffMax: 2m
+    timeout: 30m
+    terminateOnError: false
   resources: {}
   env: []
 
 api:
   replicaCount: 1
+  enabled: true
   image:
     repository: ghcr.io/smith/api
-    tag: latest
+    tag: v0.1.0
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -38,9 +62,10 @@ api:
 
 console:
   replicaCount: 1
+  enabled: true
   image:
     repository: ghcr.io/smith/console
-    tag: latest
+    tag: v0.1.0
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
