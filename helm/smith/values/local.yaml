@@ -16,6 +16,11 @@ core:
     backoffInitial: 2s
     backoffMax: 30s
     timeout: 20m
+  replicaTemplate:
+    serviceAccountName: smith-local-replica
+    env:
+      - name: SMITH_REPLICA_LOG_LEVEL
+        value: debug
 api:
   replicaCount: 1
 console:

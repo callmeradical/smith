@@ -13,6 +13,25 @@ core:
     backoffInitial: 10s
     backoffMax: 2m
     timeout: 45m
+  replicaTemplate:
+    serviceAccountName: smith-prod-replica
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+    nodeSelector:
+      workload-tier: replica
+    tolerations:
+      - key: workload-tier
+        operator: Equal
+        value: replica
+        effect: NoSchedule
+    env:
+      - name: SMITH_REPLICA_LOG_LEVEL
+        value: info
 api:
   replicaCount: 3
 console:

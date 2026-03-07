@@ -41,6 +41,12 @@ core:
     backoffMax: 2m
     timeout: 30m
     terminateOnError: false
+  replicaTemplate:
+    serviceAccountName: ""
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    env: []
   resources: {}
   env: []
 

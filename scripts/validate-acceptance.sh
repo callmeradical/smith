@@ -243,6 +243,27 @@ else
   warn "Docker image build validation skipped (command 'docker' not installed)"
 fi
 
+section "td-d1201a | Replica job template Helm integration"
+expect_rg "replicaTemplate:" "helm/smith/values.yaml" "Replica template values block exists"
+expect_rg "SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica service account template"
+expect_rg "SMITH_REPLICA_TEMPLATE_RESOURCES" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica resource template"
+expect_rg "SMITH_REPLICA_TEMPLATE_NODE_SELECTOR" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica nodeSelector template"
+expect_rg "SMITH_REPLICA_TEMPLATE_TOLERATIONS" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica tolerations template"
+expect_rg "SMITH_REPLICA_TEMPLATE_ENV" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica env template"
+expect_rg "\"replicaTemplate\"" "helm/smith/values.schema.json" "Values schema includes replicaTemplate contract"
+
+rendered_replica_template="$(mktemp)"
+if check_command helm "Helm is available for replica template render validation"; then
+  if helm template smith helm/smith -f helm/smith/values/prod.yaml >"$rendered_replica_template"; then
+    pass "Chart renders with prod overlay for replica template wiring"
+    run_check "Rendered core deployment includes replica template env wiring" rg -q "SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT" "$rendered_replica_template"
+    run_check "Rendered core deployment carries prod replica node selector" rg -q "workload-tier.*replica" "$rendered_replica_template"
+  else
+    fail "Chart renders with prod overlay for replica template wiring"
+  fi
+fi
+rm -f "$rendered_replica_template"
+
 printf '\nSummary: %d failure(s), %d warning(s).\n' "$failed" "$warned"
 if (( failed > 0 )); then
   exit 1
