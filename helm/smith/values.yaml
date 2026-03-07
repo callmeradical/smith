@@ -1,0 +1,58 @@
+global:
+  imagePullSecrets: []
+
+etcd:
+  endpoints:
+    - http://etcd:2379
+  tls:
+    enabled: false
+    caSecretName: ""
+    certSecretName: ""
+
+core:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/smith/core
+    tag: latest
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+  resources: {}
+  env: []
+
+api:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/smith/api
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  serviceAccount:
+    create: true
+    name: ""
+  resources: {}
+  env: []
+
+console:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/smith/console
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  serviceAccount:
+    create: true
+    name: ""
+  resources: {}
+  env: []
+
+rbac:
+  create: true
+
+nameOverride: ""
+fullnameOverride: ""
