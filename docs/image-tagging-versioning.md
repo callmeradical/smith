@@ -41,3 +41,9 @@
 - Release workflow publishes:
   - semver tags (`v*`)
 - Signed provenance and digest pinning should be added when CI pipeline task (`td-ffc123`) is implemented.
+
+## Build Targets
+
+- Core image Dockerfile: `docker/core.Dockerfile` (builds `./cmd/smith-core` and exposes `/healthz` + `/readyz` on `:8081`).
+- Replica image Dockerfile: `docker/replica.Dockerfile` (builds `./cmd/smith-replica` for Job startup).
+- Runtime base for both images: `gcr.io/distroless/static-debian12:nonroot` (UID `65532`).

@@ -219,6 +219,30 @@ else
   fail "Unit test files exist for model package"
 fi
 
+section "td-366583 | Core and replica Dockerfiles"
+expect_file "docker/core.Dockerfile" "Core Dockerfile exists"
+expect_file "docker/replica.Dockerfile" "Replica Dockerfile exists"
+expect_file "cmd/smith-core/main.go" "Core entrypoint exists"
+expect_file "cmd/smith-replica/main.go" "Replica entrypoint exists"
+
+expect_rg "distroless/static-debian12:nonroot" "docker/core.Dockerfile" "Core runtime image runs as non-root"
+expect_rg "distroless/static-debian12:nonroot" "docker/replica.Dockerfile" "Replica runtime image runs as non-root"
+expect_rg "go build .*./cmd/smith-core" "docker/core.Dockerfile" "Core Dockerfile builds the smith-core binary"
+expect_rg "go build .*./cmd/smith-replica" "docker/replica.Dockerfile" "Replica Dockerfile builds the smith-replica binary"
+
+if check_command go "Go toolchain is available for binary build validation"; then
+  run_check "smith-core binary builds" go build -o /tmp/smith-core-bin ./cmd/smith-core
+  run_check "smith-replica binary builds" go build -o /tmp/smith-replica-bin ./cmd/smith-replica
+fi
+
+if command -v docker >/dev/null 2>&1; then
+  pass "Docker is available for image build validation"
+  run_check "Core image build succeeds" docker build -f docker/core.Dockerfile -t smith-core:test .
+  run_check "Replica image build succeeds" docker build -f docker/replica.Dockerfile -t smith-replica:test .
+else
+  warn "Docker image build validation skipped (command 'docker' not installed)"
+fi
+
 printf '\nSummary: %d failure(s), %d warning(s).\n' "$failed" "$warned"
 if (( failed > 0 )); then
   exit 1
