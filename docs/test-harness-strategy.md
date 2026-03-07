@@ -1,5 +1,9 @@
 # Go-Native Acceptance Test Harness Strategy
 
+## Problem
+
+Bash-heavy acceptance orchestration is hard to maintain, hard to compose, and weak on typed assertions and reusable helpers.
+
 ## Objective
 
 Replace bash-centric acceptance orchestration with a Go-native testing stack that is deterministic, composable, and CI-friendly while preserving current Smith MVP coverage.
@@ -9,8 +13,9 @@ Replace bash-centric acceptance orchestration with a Go-native testing stack tha
 - Prefer `go test` as the primary entrypoint for all layers.
 - Keep behavior checks close to production packages for unit/integration fidelity.
 - Isolate external dependencies behind fixture/runtime adapters.
-- Emit machine-readable artifacts (JSON) for CI triage.
+- Emit machine-readable artifacts (JSON/JUnit) for CI triage.
 - Preserve ability to run fast local subsets.
+- Keep BDD scenarios focused on operator-visible behavior, not implementation details.
 
 ## Standard Test Stack
 
@@ -25,7 +30,7 @@ Supporting runtime utilities:
 - `httptest`: API integration tests.
 - `testcontainers-go`: ephemeral etcd and optional helper services.
 - `client-go` fake clients for unit-level Kubernetes behavior.
-- optional real-cluster gate via existing k3d/vCluster workflow for high-fidelity system runs.
+- Optional real-cluster gate via existing k3d/vCluster workflow for high-fidelity system runs.
 
 ## Package Layout
 
@@ -63,7 +68,7 @@ Integration tests own:
 
 Acceptance tests own:
 
-- operator-visible workflows (ingress, lifecycle, override, environment profile selection).
+- operator-visible workflows (single-loop completion, concurrent loop safety, ingress modes, environment profile selection, skill mount behavior, lifecycle overrides).
 - deterministic end-state assertions and traceability chains.
 
 System tests own:

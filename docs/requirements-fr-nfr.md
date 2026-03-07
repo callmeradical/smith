@@ -101,6 +101,20 @@ Source PRD: `docs/prd1.md`
   - Ingestion from GitHub issues and PRDs creates traceable loop specs.
   - `smithctl` supports loop create/get/logs/attach/cancel and PRD create/submit flows.
 
+### FR-016: Configurable loop execution environments
+- Description: Smith allows per-loop execution environment selection using `mise`, container image references, Dockerfile build specs, or named presets.
+- Acceptance:
+  - Environment schema supports precedence rules and validation for conflicting inputs.
+  - Loops can run with deterministic tool/runtime resolution using selected environment mode.
+  - Resolved environment metadata (image/tool versions) is recorded for traceability.
+
+### FR-017: Skill volume mounts in loop runtime (Codex-first)
+- Description: Smith supports loop-defined skill mounts as runtime volumes, with Codex default mountpoint behavior in MVP.
+- Acceptance:
+  - Loop schema supports skill source/version/mount path/read-only settings.
+  - Replica job generation injects resolved skill mounts and fails fast on invalid/missing skills.
+  - Resolved skill mount metadata is recorded in journal/handoff for traceability.
+
 ## Non-Functional Requirements (NFR)
 
 ### NFR-001: Consistency and correctness
@@ -166,6 +180,18 @@ Source PRD: `docs/prd1.md`
 - Metric:
   - `smithctl` commands provide machine-parseable output for CI/automation workflows.
   - Core loop lifecycle actions are executable without UI dependency.
+
+### NFR-012: Environment reproducibility and supply-chain safety
+- Requirement: Loop environments must be reproducible and constrained by policy.
+- Metric:
+  - Environment resolution is deterministic across reruns for the same loop spec.
+  - Registry/build-context validation prevents disallowed image sources and unsafe build paths.
+
+### NFR-013: Safe and auditable skill mount execution
+- Requirement: Skill mounts must be policy-constrained, read-only by default, and fully auditable.
+- Metric:
+  - Invalid mount sources/paths are rejected by validation policy.
+  - Skill mount selection and resolved versions are consistently logged for every loop execution.
 
 ## Open Clarifications
 - Define concrete throughput targets (e.g., max concurrent anomalies per cluster size).
