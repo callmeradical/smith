@@ -13,8 +13,9 @@ ARG TARGETARCH=amd64
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith-replica ./cmd/smith-replica
+    go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith-api ./cmd/smith-api
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=builder /out/smith-replica /bin/smith-replica
-ENTRYPOINT ["/bin/smith-replica"]
+COPY --from=builder /out/smith-api /bin/smith-api
+EXPOSE 8080
+ENTRYPOINT ["/bin/smith-api"]

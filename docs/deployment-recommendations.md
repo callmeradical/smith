@@ -22,10 +22,30 @@ Preferred baseline:
 - Set min/max node boundaries aligned with expected loop concurrency.
 - Reserve headroom for system components to avoid scheduler starvation.
 
+Recommended node group bounds:
+- `local`: min 1, max 3 nodes.
+- `stage`: min 3, max 12 nodes.
+- `prod`: min 6, max 60 nodes.
+
+Node pool split for production:
+- Control plane pool (`smith-core`, `smith-api`, `smith-console`): min 3, max 15.
+- Replica pool (`smith-replica` Jobs): min 3, max 45.
+
 ### HPA
 - Configure HPA for Agent Core and API/WebSocket services.
 - Start with CPU and memory targets; add custom metrics over time (queue depth, active anomalies).
 - Define scale-up/down stabilization windows to avoid oscillation.
+
+Recommended production targets:
+- `core`: min 3 / max 30, CPU 60%, memory 70%, scale-down stabilization 600s.
+- `api`: min 3 / max 40, CPU 55%, memory 65%, scale-down stabilization 300s.
+- `console`: min 2 / max 10, CPU 65%, memory 75%, scale-down stabilization 300s.
+
+Rollout policy:
+- Deploy HPA with conservative max bounds first.
+- Observe saturation and queue depth for 3 business days.
+- Increase `maxReplicas` in +25% steps when p95 queue delay exceeds SLO.
+- Do not change node autoscaler and HPA bounds in the same rollout window.
 
 ### Capacity Planning
 - Define resource classes for replicas (small/medium/large loops).

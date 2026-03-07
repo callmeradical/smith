@@ -24,9 +24,10 @@ Required value groups:
 - `etcd.endpoints`, `etcd.tls.*`
 - `secrets.*` (existing secret reference or optional chart-managed secret path)
 - `core.*` (image/serviceAccount/resources/env + `loopPolicy.*`)
+- `core.autoscaling.*` (HPA settings and stabilization policy)
 - `core.replicaTemplate.*` (replica Job defaults forwarded to Agent Core: serviceAccount/resources/nodeSelector/tolerations/env)
-- `api.*` (image/service/serviceAccount/resources/env)
-- `console.*` (image/service/serviceAccount/resources/env)
+- `api.*` (image/service/serviceAccount/resources/env + `autoscaling.*`)
+- `console.*` (image/service/serviceAccount/resources/env + `autoscaling.*`)
 - `rbac.create`
 
 Loop policy defaults:
@@ -47,7 +48,12 @@ Image tag defaults:
 Environment examples:
 - `values/local.yaml`: single-replica local baseline, faster retry cadence.
 - `values/stage.yaml`: pre-prod sizing with moderate retry bounds.
-- `values/prod.yaml`: production sizing with stricter retry/timeout defaults.
+- `values/prod.yaml`: production sizing with stricter retry/timeout defaults and HPA enabled.
+
+Autoscaling behavior:
+- HPAs are emitted from `templates/hpa.yaml` when `<component>.autoscaling.enabled=true`.
+- CPU and memory utilization targets are set per component in values.
+- Stabilization windows are configurable through `scaleUpStabilizationWindowSeconds` and `scaleDownStabilizationWindowSeconds`.
 
 ## Secrets Strategy
 

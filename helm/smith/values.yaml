@@ -28,6 +28,14 @@ secrets:
 core:
   replicaCount: 1
   enabled: true
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
   image:
     repository: ghcr.io/smith/core
     tag: v0.1.0
@@ -53,6 +61,14 @@ core:
 api:
   replicaCount: 1
   enabled: true
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
   image:
     repository: ghcr.io/smith/api
     tag: v0.1.0
@@ -69,6 +85,14 @@ api:
 console:
   replicaCount: 1
   enabled: true
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
   image:
     repository: ghcr.io/smith/console
     tag: v0.1.0

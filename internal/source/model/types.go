@@ -38,7 +38,7 @@ type LoopPolicy struct {
 	TerminateOnError bool          `json:"terminate_on_error"`
 }
 
-type StateRecord struct {
+type State struct {
 	LoopID           string     `json:"loop_id"`
 	State            LoopState  `json:"state"`
 	Attempt          int        `json:"attempt"`
@@ -51,6 +51,8 @@ type StateRecord struct {
 	CorrelationID    string     `json:"correlation_id"`
 	SchemaVersion    string     `json:"schema_version"`
 }
+
+type StateRecord = State
 
 type JournalEntry struct {
 	LoopID        string            `json:"loop_id"`

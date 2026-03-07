@@ -10,9 +10,14 @@ import (
 
 type codexAdapter struct {
 	sessionCounter uint64
+	auth           *AuthManager
 }
 
 func NewCodexRegistration() Registration {
+	return NewCodexRegistrationWithAuth(nil)
+}
+
+func NewCodexRegistrationWithAuth(auth *AuthManager) Registration {
 	return Registration{
 		ProviderID:   ProviderCodex,
 		DefaultModel: DefaultCodexModel,
@@ -20,11 +25,16 @@ func NewCodexRegistration() Registration {
 			DefaultCodexModel,
 			CodexMiniModel,
 		},
-		Adapter: &codexAdapter{},
+		Adapter: &codexAdapter{auth: auth},
 	}
 }
 
-func (a *codexAdapter) CreateSession(_ context.Context, request SessionRequest) (Session, error) {
+func (a *codexAdapter) CreateSession(ctx context.Context, request SessionRequest) (Session, error) {
+	if a.auth != nil {
+		if _, err := a.auth.EnsureValidToken(ctx, "runtime"); err != nil {
+			return Session{}, err
+		}
+	}
 	model := normalize(request.Model)
 	if model == "" {
 		model = DefaultCodexModel
@@ -42,7 +52,12 @@ func (a *codexAdapter) CreateSession(_ context.Context, request SessionRequest) 
 	}, nil
 }
 
-func (a *codexAdapter) SendTurn(_ context.Context, session Session, input TurnInput) (TurnResult, error) {
+func (a *codexAdapter) SendTurn(ctx context.Context, session Session, input TurnInput) (TurnResult, error) {
+	if a.auth != nil {
+		if _, err := a.auth.EnsureValidToken(ctx, "runtime"); err != nil {
+			return TurnResult{}, err
+		}
+	}
 	if err := a.ValidateConfig(Config{Model: session.Model}); err != nil {
 		return TurnResult{}, err
 	}
