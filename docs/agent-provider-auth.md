@@ -95,3 +95,31 @@ Audit entries include actor, timestamp, provider, scope, and correlation ID.
 - Bring-your-own OAuth provider framework.
 - Fine-grained per-turn model arbitration across providers.
 
+
+## Implemented Surface (Current)
+
+### Provider Auth Lifecycle Components
+
+- `internal/source/provider/AuthManager`
+- `internal/source/provider/TokenStore` interface
+- `internal/source/provider/FileTokenStore` (0600 permissions)
+- `internal/source/provider/MockDeviceAuthClient` (device-style flow harness)
+
+Lifecycle behavior:
+- Connect start -> device code session issued.
+- Connect complete -> token stored in secure backend.
+- Runtime token check -> refresh before expiry.
+- Refresh/auth failures -> actionable errors (`ErrAuthRequired`, `ErrTokenExpired`, `ErrTokenRefresh`).
+
+### API Endpoints (smith-api)
+
+- `POST /v1/auth/codex/connect/start`
+- `POST /v1/auth/codex/connect/complete`
+- `GET /v1/auth/codex/status`
+- `POST /v1/auth/codex/disconnect`
+
+Environment variables:
+- `SMITH_AUTH_STORE_PATH` for auth token storage path.
+- `SMITH_OPERATOR_TOKEN` for operator auth gating.
+
+Auth lifecycle actions emit audit records through Smith audit append path.

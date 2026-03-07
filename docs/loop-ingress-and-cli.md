@@ -64,3 +64,60 @@ Example command surface:
 - Free-form plugin ingress from arbitrary third-party trackers.
 - Full bidirectional sync engines for every external system.
 
+
+## Implemented API Surface (Current)
+
+### Single Loop Create
+
+`POST /v1/loops`
+
+Payload (single):
+
+```json
+{
+  "idempotency_key": "issue-123",
+  "title": "Fix flaky lock renewal",
+  "description": "Investigate and patch lock renewal race",
+  "source_type": "github_issue",
+  "source_ref": "org/repo#123",
+  "provider_id": "codex",
+  "model": "gpt-5-codex",
+  "metadata": {
+    "priority": "p0"
+  }
+}
+```
+
+### Batch Loop Create
+
+`POST /v1/loops`
+
+Payload (batch):
+
+```json
+{
+  "loops": [
+    {
+      "idempotency_key": "issue-124",
+      "title": "Task A",
+      "description": "...",
+      "source_type": "github_issue",
+      "source_ref": "org/repo#124"
+    },
+    {
+      "idempotency_key": "issue-125",
+      "title": "Task B",
+      "description": "...",
+      "source_type": "github_issue",
+      "source_ref": "org/repo#125"
+    }
+  ]
+}
+```
+
+### Idempotency and Response Semantics
+
+- `idempotency_key` is persisted in anomaly metadata.
+- Loop ID is derived deterministically from idempotency key/source when `loop_id` is not supplied.
+- Repeated submissions return existing loop with `created=false`.
+- Batch responses return per-item status in `results[]`.

@@ -8,6 +8,14 @@ secrets:
 
 core:
   replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 30
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 600
   loopPolicy:
     maxAttempts: 5
     backoffInitial: 10s
@@ -34,5 +42,21 @@ core:
         value: info
 api:
   replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 40
+    targetCPUUtilizationPercentage: 55
+    targetMemoryUtilizationPercentage: 65
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
 console:
   replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300

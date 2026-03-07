@@ -1,0 +1,9 @@
+[project]
+site_name = "Smith Docs"
+site_description = "Smith MVP documentation"
+site_url = "https://<org-or-user>.github.io/<repo>/"
+docs_dir = "docs"
+site_dir = "site"
+
+[project.theme]
+variant = "modern"
