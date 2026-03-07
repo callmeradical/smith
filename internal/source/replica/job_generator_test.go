@@ -58,6 +58,110 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	}
 }
 
+func TestBuildReplicaJobWithGitHubAppAuth(t *testing.T) {
+	req := validRequest()
+	req.GitAuth = &GitAuthConfig{
+		Provider:            GitAuthProviderGitHubApp,
+		EnableGitHubAppAuth: true,
+		GitHubApp: &GitHubAppAuth{
+			AppID:                "12345",
+			InstallationID:       "67890",
+			PrivateKeySecretName: "smith-github-app",
+			PrivateKeySecretKey:  "private_key",
+		},
+	}
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	if env["SMITH_GIT_AUTH_PROVIDER"].Value != string(GitAuthProviderGitHubApp) {
+		t.Fatalf("unexpected auth provider env: %+v", env["SMITH_GIT_AUTH_PROVIDER"])
+	}
+	if env["SMITH_GITHUB_APP_ID"].Value != "12345" {
+		t.Fatalf("unexpected app id env: %+v", env["SMITH_GITHUB_APP_ID"])
+	}
+	if env["SMITH_GITHUB_APP_PRIVATE_KEY"].SecretKeyRef == nil {
+		t.Fatalf("expected github app private key secret ref")
+	}
+}
+
+func TestBuildReplicaJobRejectsGitHubAppWhenFeatureDisabled(t *testing.T) {
+	req := validRequest()
+	req.GitAuth = &GitAuthConfig{
+		Provider: GitAuthProviderGitHubApp,
+		GitHubApp: &GitHubAppAuth{
+			AppID:                "12345",
+			InstallationID:       "67890",
+			PrivateKeySecretName: "smith-github-app",
+			PrivateKeySecretKey:  "private_key",
+		},
+	}
+	_, err := BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
+	}
+}
+
+func TestBuildReplicaJobWithSSHAuth(t *testing.T) {
+	req := validRequest()
+	req.GitAuth = &GitAuthConfig{
+		Provider:      GitAuthProviderSSH,
+		EnableSSHAuth: true,
+		SSH: &SSHAuth{
+			PrivateKeySecretName: "smith-git-ssh",
+			PrivateKeySecretKey:  "id_ed25519",
+			KnownHostsSecretName: "smith-git-ssh",
+			KnownHostsSecretKey:  "known_hosts",
+		},
+	}
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	if env["SMITH_GIT_AUTH_PROVIDER"].Value != string(GitAuthProviderSSH) {
+		t.Fatalf("unexpected auth provider env: %+v", env["SMITH_GIT_AUTH_PROVIDER"])
+	}
+	if env["SMITH_GIT_SSH_PRIVATE_KEY"].SecretKeyRef == nil {
+		t.Fatalf("expected SMITH_GIT_SSH_PRIVATE_KEY secret ref")
+	}
+	if env["SMITH_GIT_SSH_KNOWN_HOSTS"].SecretKeyRef == nil {
+		t.Fatalf("expected SMITH_GIT_SSH_KNOWN_HOSTS secret ref")
+	}
+}
+
+func TestBuildReplicaJobRejectsSSHWhenFeatureDisabled(t *testing.T) {
+	req := validRequest()
+	req.GitAuth = &GitAuthConfig{
+		Provider: GitAuthProviderSSH,
+		SSH: &SSHAuth{
+			PrivateKeySecretName: "smith-git-ssh",
+			PrivateKeySecretKey:  "id_ed25519",
+		},
+	}
+	_, err := BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
+	}
+}
+
 func TestBuildReplicaJobValidation(t *testing.T) {
 	req := validRequest()
 	req.Git.Repository = ""
@@ -123,13 +227,18 @@ func TestSubmitAndDeleteSuccess(t *testing.T) {
 
 func validRequest() JobRequest {
 	return JobRequest{
-		Namespace:               "smith-system",
-		LoopID:                  "loop-123",
-		CorrelationID:           "corr-123",
-		ServiceAccountName:      "smith-replica",
-		Image:                   "ghcr.io/smith/replica:latest",
-		ImagePullPolicy:         "IfNotPresent",
-		Git:                     GitContext{Repository: "https://github.com/acme/repo.git", Branch: "main", CommitSHA: "abc1234"},
+		Namespace:          "smith-system",
+		LoopID:             "loop-123",
+		CorrelationID:      "corr-123",
+		ServiceAccountName: "smith-replica",
+		Image:              "ghcr.io/smith/replica:latest",
+		ImagePullPolicy:    "IfNotPresent",
+		Git:                GitContext{Repository: "https://github.com/acme/repo.git", Branch: "main", CommitSHA: "abc1234"},
+		GitAuth: &GitAuthConfig{
+			Provider:      GitAuthProviderPAT,
+			PATSecretName: "smith-git-pat",
+			PATSecretKey:  "token",
+		},
 		HandoffConfigMapName:    "handoff-loop-123",
 		RuntimeSecretName:       "smith-runtime",
 		RuntimeCredentialsKey:   "runtime_credentials",

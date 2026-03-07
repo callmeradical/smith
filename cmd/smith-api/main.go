@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"smith/internal/source/ingress"
 	"smith/internal/source/model"
 	"smith/internal/source/provider"
 	"smith/internal/source/store"
@@ -66,16 +67,17 @@ type authCompleteRequest struct {
 }
 
 type loopCreateRequest struct {
-	LoopID         string            `json:"loop_id,omitempty"`
-	IdempotencyKey string            `json:"idempotency_key,omitempty"`
-	Title          string            `json:"title"`
-	Description    string            `json:"description"`
-	SourceType     string            `json:"source_type"`
-	SourceRef      string            `json:"source_ref"`
-	ProviderID     string            `json:"provider_id,omitempty"`
-	Model          string            `json:"model,omitempty"`
-	CorrelationID  string            `json:"correlation_id,omitempty"`
-	Metadata       map[string]string `json:"metadata,omitempty"`
+	LoopID         string                 `json:"loop_id,omitempty"`
+	IdempotencyKey string                 `json:"idempotency_key,omitempty"`
+	Title          string                 `json:"title"`
+	Description    string                 `json:"description"`
+	SourceType     string                 `json:"source_type"`
+	SourceRef      string                 `json:"source_ref"`
+	ProviderID     string                 `json:"provider_id,omitempty"`
+	Model          string                 `json:"model,omitempty"`
+	CorrelationID  string                 `json:"correlation_id,omitempty"`
+	Metadata       map[string]string      `json:"metadata,omitempty"`
+	Environment    *model.LoopEnvironment `json:"environment,omitempty"`
 }
 
 type loopBatchRequest struct {
@@ -83,11 +85,34 @@ type loopBatchRequest struct {
 }
 
 type loopCreateResult struct {
-	LoopID   string `json:"loop_id"`
-	Status   string `json:"status"`
-	Created  bool   `json:"created"`
-	Message  string `json:"message,omitempty"`
-	HTTPCode int    `json:"http_code,omitempty"`
+	LoopID      string                `json:"loop_id"`
+	Status      string                `json:"status"`
+	Created     bool                  `json:"created"`
+	Message     string                `json:"message,omitempty"`
+	Environment model.LoopEnvironment `json:"environment"`
+	HTTPCode    int                   `json:"http_code,omitempty"`
+}
+
+type githubIngressRequest struct {
+	Issues   []ingress.GitHubIssue `json:"issues"`
+	Metadata map[string]string     `json:"metadata,omitempty"`
+}
+
+type prdIngressRequest struct {
+	Format    string            `json:"format,omitempty"`
+	SourceRef string            `json:"source_ref,omitempty"`
+	Markdown  string            `json:"markdown,omitempty"`
+	Tasks     []ingress.PRDTask `json:"tasks,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+}
+
+type ingressResult struct {
+	ItemIndex int    `json:"item_index"`
+	LoopID    string `json:"loop_id,omitempty"`
+	SourceRef string `json:"source_ref,omitempty"`
+	Status    string `json:"status"`
+	Created   bool   `json:"created"`
+	Message   string `json:"message,omitempty"`
 }
 
 func main() {
@@ -118,6 +143,8 @@ func main() {
 	mux.HandleFunc("/readyz", s.handleReady)
 	mux.HandleFunc("/v1/loops", s.handleLoops)
 	mux.HandleFunc("/v1/loops/", s.handleLoopByID)
+	mux.HandleFunc("/v1/ingress/github/issues", s.handleIngressGitHubIssues)
+	mux.HandleFunc("/v1/ingress/prd", s.handleIngressPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
 	mux.HandleFunc("/v1/auth/codex/connect/start", s.handleCodexAuthStart)
@@ -210,6 +237,119 @@ func (s *server) handleLoopCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, code, result)
 }
 
+func (s *server) handleIngressGitHubIssues(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req githubIngressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	if len(req.Issues) == 0 {
+		writeErr(w, http.StatusBadRequest, "at least one issue is required")
+		return
+	}
+	results := make([]ingressResult, 0, len(req.Issues))
+	for i, issue := range req.Issues {
+		draft, err := ingress.GitHubIssueToDraft(issue)
+		if err != nil {
+			results = append(results, ingressResult{
+				ItemIndex: i,
+				Status:    "error",
+				Message:   err.Error(),
+			})
+			continue
+		}
+		metadata := copyStringMap(req.Metadata)
+		for k, v := range draft.Metadata {
+			metadata[k] = v
+		}
+		res := s.createOneLoop(r.Context(), loopCreateRequest{
+			IdempotencyKey: draft.IdempotencyKey,
+			Title:          draft.Title,
+			Description:    draft.Description,
+			SourceType:     draft.SourceType,
+			SourceRef:      draft.SourceRef,
+			Metadata:       metadata,
+		})
+		results = append(results, ingressResult{
+			ItemIndex: i,
+			LoopID:    res.LoopID,
+			SourceRef: draft.SourceRef,
+			Status:    res.Status,
+			Created:   res.Created,
+			Message:   res.Message,
+		})
+	}
+	writeJSON(w, http.StatusOK, ingressSummary(results))
+}
+
+func (s *server) handleIngressPRD(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req prdIngressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(req.Format))
+	if format == "" {
+		if strings.TrimSpace(req.Markdown) != "" {
+			format = "markdown"
+		} else {
+			format = "json"
+		}
+	}
+	baseMetadata := copyStringMap(req.Metadata)
+
+	var (
+		drafts []ingress.LoopDraft
+		errs   []ingress.ParseError
+	)
+	switch format {
+	case "markdown", "md":
+		drafts, errs = ingress.ParsePRDMarkdown(req.Markdown, req.SourceRef, baseMetadata)
+	case "json", "structured":
+		drafts, errs = ingress.PRDTasksToDrafts(req.Tasks, req.SourceRef, baseMetadata)
+	default:
+		writeErr(w, http.StatusBadRequest, "format must be markdown or json")
+		return
+	}
+
+	results := make([]ingressResult, 0, len(drafts)+len(errs))
+	for _, parseErr := range errs {
+		results = append(results, ingressResult{
+			ItemIndex: parseErr.ItemIndex,
+			SourceRef: parseErr.SourceRef,
+			Status:    "error",
+			Message:   parseErr.Message,
+		})
+	}
+	for i, draft := range drafts {
+		res := s.createOneLoop(r.Context(), loopCreateRequest{
+			IdempotencyKey: draft.IdempotencyKey,
+			Title:          draft.Title,
+			Description:    draft.Description,
+			SourceType:     draft.SourceType,
+			SourceRef:      draft.SourceRef,
+			Metadata:       draft.Metadata,
+		})
+		results = append(results, ingressResult{
+			ItemIndex: i,
+			LoopID:    res.LoopID,
+			SourceRef: draft.SourceRef,
+			Status:    res.Status,
+			Created:   res.Created,
+			Message:   res.Message,
+		})
+	}
+	writeJSON(w, http.StatusOK, ingressSummary(results))
+}
+
 func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopCreateResult {
 	req.Title = strings.TrimSpace(req.Title)
 	req.Description = strings.TrimSpace(req.Description)
@@ -228,18 +368,27 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
+	environment, err := model.NormalizeLoopEnvironment(req.Environment)
+	if err != nil {
+		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
+	}
 
 	loopID := strings.TrimSpace(req.LoopID)
 	if loopID == "" {
 		loopID = deriveLoopID(req.IdempotencyKey, req.SourceType, req.SourceRef)
 	}
 	if existing, found, err := s.store.GetState(ctx, loopID); err == nil && found {
+		stored, storedFound, _ := s.store.GetAnomaly(ctx, loopID)
+		if !storedFound {
+			stored.Environment = environment
+		}
 		return loopCreateResult{
-			LoopID:   loopID,
-			Status:   string(existing.Record.State),
-			Created:  false,
-			Message:  "existing loop returned via idempotency or explicit loop_id",
-			HTTPCode: http.StatusOK,
+			LoopID:      loopID,
+			Status:      string(existing.Record.State),
+			Created:     false,
+			Message:     "existing loop returned via idempotency or explicit loop_id",
+			Environment: stored.Environment,
+			HTTPCode:    http.StatusOK,
 		}
 	}
 
@@ -251,6 +400,7 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		SourceRef:     req.SourceRef,
 		ProviderID:    selection.ProviderID,
 		Model:         selection.Model,
+		Environment:   environment,
 		Metadata:      withIdempotency(req.Metadata, req.IdempotencyKey),
 		CorrelationID: req.CorrelationID,
 		Policy: model.LoopPolicy{
@@ -283,12 +433,19 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		Message:       "loop created from ingress",
 		CorrelationID: req.CorrelationID,
 		Metadata: map[string]string{
-			"source_type": req.SourceType,
-			"source_ref":  req.SourceRef,
+			"source_type":      req.SourceType,
+			"source_ref":       req.SourceRef,
+			"environment_mode": environment.ResolvedMode,
 		},
 	})
 
-	return loopCreateResult{LoopID: loopID, Status: string(model.LoopStateUnresolved), Created: true, HTTPCode: http.StatusCreated}
+	return loopCreateResult{
+		LoopID:      loopID,
+		Status:      string(model.LoopStateUnresolved),
+		Created:     true,
+		Environment: environment,
+		HTTPCode:    http.StatusCreated,
+	}
 }
 
 func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +470,20 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "loop not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, state)
+		anomaly, anomalyFound, err := s.store.GetAnomaly(r.Context(), loopID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !anomalyFound {
+			writeJSON(w, http.StatusOK, map[string]any{"state": state})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"state":       state,
+			"anomaly":     anomaly,
+			"environment": anomaly.Environment,
+		})
 		return
 	}
 
@@ -586,6 +756,31 @@ func deriveLoopID(idempotencyKey, sourceType, sourceRef string) string {
 	return "loop-" + key
 }
 
+func ingressSummary(results []ingressResult) map[string]any {
+	created := 0
+	existing := 0
+	errorsCount := 0
+	for _, res := range results {
+		switch {
+		case res.Status == "error":
+			errorsCount++
+		case res.Created:
+			created++
+		default:
+			existing++
+		}
+	}
+	return map[string]any{
+		"results": results,
+		"summary": map[string]int{
+			"requested": len(results),
+			"created":   created,
+			"existing":  existing,
+			"errors":    errorsCount,
+		},
+	}
+}
+
 func withIdempotency(metadata map[string]string, key string) map[string]string {
 	out := map[string]string{}
 	for k, v := range metadata {
@@ -593,6 +788,14 @@ func withIdempotency(metadata map[string]string, key string) map[string]string {
 	}
 	if strings.TrimSpace(key) != "" {
 		out["idempotency_key"] = strings.TrimSpace(key)
+	}
+	return out
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }

@@ -6,10 +6,12 @@ Install Zensical and build the docs site:
 
 ```bash
 pip install zensical
-zensical build
+./scripts/docs/quality-check.sh
 ```
 
 Output is written to `site/`.
+
+The quality-check script validates local markdown links first, then runs `zensical build`.
 
 ## Base URL and Path Configuration
 
