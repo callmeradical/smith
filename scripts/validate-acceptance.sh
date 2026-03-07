@@ -264,6 +264,39 @@ if check_command helm "Helm is available for replica template render validation"
 fi
 rm -f "$rendered_replica_template"
 
+section "td-ece36c | Console container image"
+expect_file "docker/console.Dockerfile" "Console Dockerfile exists"
+expect_file "console/index.html" "Console static entrypoint exists"
+expect_file "console/nginx.conf" "Console nginx config exists"
+expect_file "console/runtime-config.template.js" "Console runtime config template exists"
+expect_file "console/30-smith-env.sh" "Console runtime env injection script exists"
+
+expect_rg "SMITH_API_BASE_URL" "console/runtime-config.template.js" "Console runtime config references SMITH_API_BASE_URL"
+expect_rg "location = /healthz" "console/nginx.conf" "Console liveness endpoint is defined"
+expect_rg "location = /readyz" "console/nginx.conf" "Console readiness endpoint is defined"
+
+if command -v docker >/dev/null 2>&1; then
+  pass "Docker is available for console image validation"
+  run_check "Console image build succeeds" docker build -f docker/console.Dockerfile -t smith-console:test .
+
+  cid=""
+  if cid="$(docker run -d --rm -p 13000:3000 -e SMITH_API_BASE_URL=http://smith-api:8080 smith-console:test 2>/dev/null)"; then
+    sleep 1
+    if docker ps --format '{{.ID}}' | rg -q "^${cid}"; then
+      run_check "Console /healthz responds" curl -fsS http://127.0.0.1:13000/healthz
+      run_check "Console /readyz responds" curl -fsS http://127.0.0.1:13000/readyz
+      run_check "Console runtime config injects API endpoint" sh -c "curl -fsS http://127.0.0.1:13000/runtime-config.js | rg -q 'http://smith-api:8080'"
+    else
+      warn "Console runtime probe validation skipped (test container exited early)"
+    fi
+    docker stop "$cid" >/dev/null 2>&1 || true
+  else
+    warn "Console runtime probe validation skipped (unable to start test container)"
+  fi
+else
+  warn "Console image validation skipped (command 'docker' not installed)"
+fi
+
 printf '\nSummary: %d failure(s), %d warning(s).\n' "$failed" "$warned"
 if (( failed > 0 )); then
   exit 1

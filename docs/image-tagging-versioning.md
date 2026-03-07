@@ -46,4 +46,6 @@
 
 - Core image Dockerfile: `docker/core.Dockerfile` (builds `./cmd/smith-core` and exposes `/healthz` + `/readyz` on `:8081`).
 - Replica image Dockerfile: `docker/replica.Dockerfile` (builds `./cmd/smith-replica` for Job startup).
-- Runtime base for both images: `gcr.io/distroless/static-debian12:nonroot` (UID `65532`).
+- Console image Dockerfile: `docker/console.Dockerfile` (serves web UI on `:3000` and injects runtime API endpoint config).
+- Runtime base for core/replica: `gcr.io/distroless/static-debian12:nonroot` (UID `65532`).
+- Runtime base for console: `nginxinc/nginx-unprivileged:1.27-alpine`.
