@@ -11,6 +11,15 @@ core:
     backoffInitial: 5s
     backoffMax: 90s
     timeout: 30m
+  replicaTemplate:
+    serviceAccountName: smith-stage-replica
+    nodeSelector:
+      workload-tier: batch
+    tolerations:
+      - key: workload-tier
+        operator: Equal
+        value: batch
+        effect: NoSchedule
 api:
   replicaCount: 2
 console:

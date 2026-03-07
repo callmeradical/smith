@@ -195,6 +195,27 @@
       },
       "required": ["maxAttempts", "backoffInitial", "backoffMax", "timeout", "terminateOnError"]
     },
+    "replicaTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "serviceAccountName": { "type": "string" },
+        "resources": { "$ref": "#/definitions/resourceRequirements" },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "tolerations": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "env": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/envVar" }
+        }
+      },
+      "required": ["serviceAccountName", "resources", "nodeSelector", "tolerations", "env"]
+    },
     "componentConfigWithLoopPolicy": {
       "type": "object",
       "additionalProperties": false,
@@ -207,13 +228,14 @@
         "image": { "$ref": "#/definitions/componentImage" },
         "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
         "loopPolicy": { "$ref": "#/definitions/loopPolicy" },
+        "replicaTemplate": { "$ref": "#/definitions/replicaTemplate" },
         "resources": { "$ref": "#/definitions/resourceRequirements" },
         "env": {
           "type": "array",
           "items": { "$ref": "#/definitions/envVar" }
         }
       },
-      "required": ["enabled", "replicaCount", "image", "serviceAccount", "loopPolicy", "resources", "env"]
+      "required": ["enabled", "replicaCount", "image", "serviceAccount", "loopPolicy", "replicaTemplate", "resources", "env"]
     },
     "componentConfigWithService": {
       "type": "object",

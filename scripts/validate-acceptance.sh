@@ -219,6 +219,98 @@ else
   fail "Unit test files exist for model package"
 fi
 
+section "td-366583 | Core and replica Dockerfiles"
+expect_file "docker/core.Dockerfile" "Core Dockerfile exists"
+expect_file "docker/replica.Dockerfile" "Replica Dockerfile exists"
+expect_file "cmd/smith-core/main.go" "Core entrypoint exists"
+expect_file "cmd/smith-replica/main.go" "Replica entrypoint exists"
+
+expect_rg "distroless/static-debian12:nonroot" "docker/core.Dockerfile" "Core runtime image runs as non-root"
+expect_rg "distroless/static-debian12:nonroot" "docker/replica.Dockerfile" "Replica runtime image runs as non-root"
+expect_rg "go build .*./cmd/smith-core" "docker/core.Dockerfile" "Core Dockerfile builds the smith-core binary"
+expect_rg "go build .*./cmd/smith-replica" "docker/replica.Dockerfile" "Replica Dockerfile builds the smith-replica binary"
+
+if check_command go "Go toolchain is available for binary build validation"; then
+  run_check "smith-core binary builds" go build -o /tmp/smith-core-bin ./cmd/smith-core
+  run_check "smith-replica binary builds" go build -o /tmp/smith-replica-bin ./cmd/smith-replica
+fi
+
+if command -v docker >/dev/null 2>&1; then
+  pass "Docker is available for image build validation"
+  run_check "Core image build succeeds" docker build -f docker/core.Dockerfile -t smith-core:test .
+  run_check "Replica image build succeeds" docker build -f docker/replica.Dockerfile -t smith-replica:test .
+else
+  warn "Docker image build validation skipped (command 'docker' not installed)"
+fi
+
+section "td-d1201a | Replica job template Helm integration"
+expect_rg "replicaTemplate:" "helm/smith/values.yaml" "Replica template values block exists"
+expect_rg "SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica service account template"
+expect_rg "SMITH_REPLICA_TEMPLATE_RESOURCES" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica resource template"
+expect_rg "SMITH_REPLICA_TEMPLATE_NODE_SELECTOR" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica nodeSelector template"
+expect_rg "SMITH_REPLICA_TEMPLATE_TOLERATIONS" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica tolerations template"
+expect_rg "SMITH_REPLICA_TEMPLATE_ENV" "helm/smith/templates/core-deployment.yaml" "Core deployment receives replica env template"
+expect_rg "\"replicaTemplate\"" "helm/smith/values.schema.json" "Values schema includes replicaTemplate contract"
+
+rendered_replica_template="$(mktemp)"
+if check_command helm "Helm is available for replica template render validation"; then
+  if helm template smith helm/smith -f helm/smith/values/prod.yaml >"$rendered_replica_template"; then
+    pass "Chart renders with prod overlay for replica template wiring"
+    run_check "Rendered core deployment includes replica template env wiring" rg -q "SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT" "$rendered_replica_template"
+    run_check "Rendered core deployment carries prod replica node selector" rg -q "workload-tier.*replica" "$rendered_replica_template"
+  else
+    fail "Chart renders with prod overlay for replica template wiring"
+  fi
+fi
+rm -f "$rendered_replica_template"
+
+section "td-ece36c | Console container image"
+expect_file "docker/console.Dockerfile" "Console Dockerfile exists"
+expect_file "console/index.html" "Console static entrypoint exists"
+expect_file "console/nginx.conf" "Console nginx config exists"
+expect_file "console/runtime-config.template.js" "Console runtime config template exists"
+expect_file "console/30-smith-env.sh" "Console runtime env injection script exists"
+
+expect_rg "SMITH_API_BASE_URL" "console/runtime-config.template.js" "Console runtime config references SMITH_API_BASE_URL"
+expect_rg "location = /healthz" "console/nginx.conf" "Console liveness endpoint is defined"
+expect_rg "location = /readyz" "console/nginx.conf" "Console readiness endpoint is defined"
+
+if command -v docker >/dev/null 2>&1; then
+  pass "Docker is available for console image validation"
+  run_check "Console image build succeeds" docker build -f docker/console.Dockerfile -t smith-console:test .
+
+  cid=""
+  if cid="$(docker run -d --rm -p 13000:3000 -e SMITH_API_BASE_URL=http://smith-api:8080 smith-console:test 2>/dev/null)"; then
+    sleep 1
+    if docker ps --format '{{.ID}}' | rg -q "^${cid}"; then
+      run_check "Console /healthz responds" curl -fsS http://127.0.0.1:13000/healthz
+      run_check "Console /readyz responds" curl -fsS http://127.0.0.1:13000/readyz
+      run_check "Console runtime config injects API endpoint" sh -c "curl -fsS http://127.0.0.1:13000/runtime-config.js | rg -q 'http://smith-api:8080'"
+    else
+      warn "Console runtime probe validation skipped (test container exited early)"
+    fi
+    docker stop "$cid" >/dev/null 2>&1 || true
+  else
+    warn "Console runtime probe validation skipped (unable to start test container)"
+  fi
+else
+  warn "Console image validation skipped (command 'docker' not installed)"
+fi
+
+section "td-ffc123 | CI image build and publish pipeline"
+expect_file ".github/workflows/images-build-publish.yml" "Image publish workflow exists"
+expect_rg "image: core" ".github/workflows/images-build-publish.yml" "Workflow includes core image"
+expect_rg "image: replica" ".github/workflows/images-build-publish.yml" "Workflow includes replica image"
+expect_rg "image: console" ".github/workflows/images-build-publish.yml" "Workflow includes console image"
+expect_rg "docker/core.Dockerfile" ".github/workflows/images-build-publish.yml" "Workflow references core Dockerfile"
+expect_rg "docker/replica.Dockerfile" ".github/workflows/images-build-publish.yml" "Workflow references replica Dockerfile"
+expect_rg "docker/console.Dockerfile" ".github/workflows/images-build-publish.yml" "Workflow references console Dockerfile"
+expect_rg "docker/build-push-action" ".github/workflows/images-build-publish.yml" "Workflow uses docker build/push action"
+expect_rg "aquasecurity/trivy-action" ".github/workflows/images-build-publish.yml" "Workflow includes vulnerability scanning gate"
+expect_rg "anchore/sbom-action" ".github/workflows/images-build-publish.yml" "Workflow includes SBOM generation"
+expect_rg "exit-code: '1'" ".github/workflows/images-build-publish.yml" "Scan failures are configured to fail CI"
+expect_rg "type=sha" ".github/workflows/images-build-publish.yml" "Workflow publishes immutable SHA tags"
+
 printf '\nSummary: %d failure(s), %d warning(s).\n' "$failed" "$warned"
 if (( failed > 0 )); then
   exit 1

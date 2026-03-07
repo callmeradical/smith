@@ -24,6 +24,7 @@ Required value groups:
 - `etcd.endpoints`, `etcd.tls.*`
 - `secrets.*` (existing secret reference or optional chart-managed secret path)
 - `core.*` (image/serviceAccount/resources/env + `loopPolicy.*`)
+- `core.replicaTemplate.*` (replica Job defaults forwarded to Agent Core: serviceAccount/resources/nodeSelector/tolerations/env)
 - `api.*` (image/service/serviceAccount/resources/env)
 - `console.*` (image/service/serviceAccount/resources/env)
 - `rbac.create`
@@ -34,6 +35,7 @@ Loop policy defaults:
 - `core.loopPolicy.backoffMax: 2m`
 - `core.loopPolicy.timeout: 30m`
 - `core.loopPolicy.terminateOnError: false`
+- `core.replicaTemplate.serviceAccountName: ""` (defaults to `<release>-smith-replica` when empty)
 
 Image tag defaults:
 - `core.image.tag: v0.1.0`

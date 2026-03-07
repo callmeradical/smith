@@ -40,4 +40,14 @@
   - optional `branch-<branch>`
 - Release workflow publishes:
   - semver tags (`v*`)
-- Signed provenance and digest pinning should be added when CI pipeline task (`td-ffc123`) is implemented.
+- Pipeline file: `.github/workflows/images-build-publish.yml`
+- Published repositories: `ghcr.io/<org>/smith-core`, `ghcr.io/<org>/smith-replica`, `ghcr.io/<org>/smith-console`
+- Trivy vulnerability scanning runs before publish and blocks on high/critical findings.
+
+## Build Targets
+
+- Core image Dockerfile: `docker/core.Dockerfile` (builds `./cmd/smith-core` and exposes `/healthz` + `/readyz` on `:8081`).
+- Replica image Dockerfile: `docker/replica.Dockerfile` (builds `./cmd/smith-replica` for Job startup).
+- Console image Dockerfile: `docker/console.Dockerfile` (serves web UI on `:3000` and injects runtime API endpoint config).
+- Runtime base for core/replica: `gcr.io/distroless/static-debian12:nonroot` (UID `65532`).
+- Runtime base for console: `nginxinc/nginx-unprivileged:1.27-alpine`.
