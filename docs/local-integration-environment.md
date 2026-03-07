@@ -84,3 +84,5 @@ Scripts accept environment variable overrides:
 - `SMITH_ETCD_VERSION` (optional chart pin; defaults to latest from repo index)
 - `SMITH_ETCD_PERSISTENCE_ENABLED` (default `false` for ephemeral environments)
 - `SMITH_ETCD_WAIT_TIMEOUT` (default `8m`)
+- `SMITH_ETCD_MODE` (`simple` default, `helm` optional)
+- `SMITH_ETCD_IMAGE` (used when `SMITH_ETCD_MODE=simple`)

@@ -37,6 +37,7 @@ jobs:
           SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
           SMITH_ETCD_NAMESPACE: smith-ci-system
           SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+          SMITH_ETCD_MODE: simple
           SMITH_VCLUSTER_CONNECT: "true"
         run: ./scripts/integration/env-up.sh
 
