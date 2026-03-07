@@ -1,5 +1,16 @@
+global:
+  environment: stage
+
+secrets:
+  existingSecret: smith-stage-runtime
+
 core:
   replicaCount: 2
+  loopPolicy:
+    maxAttempts: 3
+    backoffInitial: 5s
+    backoffMax: 90s
+    timeout: 30m
 api:
   replicaCount: 2
 console:
