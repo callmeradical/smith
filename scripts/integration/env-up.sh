@@ -18,6 +18,8 @@ ETCD_RELEASE_NAME="${SMITH_ETCD_RELEASE_NAME:-smith-etcd}"
 ETCD_CHART="${SMITH_ETCD_CHART:-bitnami/etcd}"
 ETCD_VERSION="${SMITH_ETCD_VERSION:-}"
 ETCD_STORAGE_CLASS="${SMITH_ETCD_STORAGE_CLASS:-local-path}"
+ETCD_PERSISTENCE_ENABLED="${SMITH_ETCD_PERSISTENCE_ENABLED:-false}"
+ETCD_WAIT_TIMEOUT="${SMITH_ETCD_WAIT_TIMEOUT:-8m}"
 
 info() { echo "[env-up] $*"; }
 fail() { echo "[env-up] ERROR: $*" >&2; exit 1; }
@@ -79,21 +81,30 @@ version_args=()
 if [[ -n "$ETCD_VERSION" ]]; then
   version_args+=(--version "$ETCD_VERSION")
 fi
+persistence_args=(--set persistence.enabled="$ETCD_PERSISTENCE_ENABLED")
+if [[ "$ETCD_PERSISTENCE_ENABLED" == "true" ]]; then
+  persistence_args+=(--set persistence.storageClass="$ETCD_STORAGE_CLASS" --set persistence.size=2Gi)
+fi
 
 helm upgrade --install "$ETCD_RELEASE_NAME" "$ETCD_CHART" \
   --namespace "$ETCD_NAMESPACE" \
   "${version_args[@]}" \
+  "${persistence_args[@]}" \
   --set auth.rbac.create=false \
   --set auth.token.enabled=false \
   --set replicaCount=1 \
-  --set persistence.enabled=true \
-  --set persistence.storageClass="$ETCD_STORAGE_CLASS" \
-  --set persistence.size=2Gi \
   --set service.ports.client=2379 \
   --wait \
-  --timeout 5m >/dev/null
+  --timeout "$ETCD_WAIT_TIMEOUT" >/dev/null
 
-kubectl -n "$ETCD_NAMESPACE" rollout status statefulset/${ETCD_RELEASE_NAME} --timeout=180s >/dev/null
+kubectl -n "$ETCD_NAMESPACE" rollout status statefulset/${ETCD_RELEASE_NAME} --timeout=300s >/dev/null || {
+  echo "[env-up] etcd failed to become ready; diagnostics:" >&2
+  kubectl -n "$ETCD_NAMESPACE" get pods -o wide >&2 || true
+  kubectl -n "$ETCD_NAMESPACE" describe statefulset "$ETCD_RELEASE_NAME" >&2 || true
+  kubectl -n "$ETCD_NAMESPACE" describe pods >&2 || true
+  kubectl -n "$ETCD_NAMESPACE" logs statefulset/"$ETCD_RELEASE_NAME" --all-containers --tail=200 >&2 || true
+  exit 1
+}
 
 info "environment ready"
 info "k3d cluster: ${K3D_CLUSTER_NAME}"
