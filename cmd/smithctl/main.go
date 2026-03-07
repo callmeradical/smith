@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -9,8 +10,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -183,6 +187,12 @@ func runLoop(client *apiClient, output string, args []string, stdout, stderr io.
 		return cmdLoopGet(client, output, args[1:], stdout, stderr)
 	case "create":
 		return cmdLoopCreate(client, output, args[1:], stdout, stderr)
+	case "logs":
+		return cmdLoopLogs(client, output, args[1:], stdout, stderr)
+	case "attach":
+		return cmdLoopAttach(client, output, args[1:], stdout, stderr)
+	case "cancel":
+		return cmdLoopCancel(client, output, args[1:], stdout, stderr)
 	case "ingest-github":
 		return cmdLoopIngestGitHub(client, output, args[1:], stdout, stderr)
 	default:
@@ -220,16 +230,51 @@ func cmdLoopList(client *apiClient, output string, stdout, stderr io.Writer) int
 }
 
 func cmdLoopGet(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
-	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: smithctl loop get <loop-id>")
+	fs := flag.NewFlagSet("loop get", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var filePath string
+	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
-	var out any
-	if err := client.doJSON(http.MethodGet, "/v1/loops/"+args[0], nil, &out); err != nil {
+	loopIDs, err := collectLoopIDs(filePath, fs.Args())
+	if err != nil {
 		fmt.Fprintf(stderr, "loop get failed: %v\n", err)
 		return 1
 	}
-	printOutput(stdout, output, out)
+	if len(loopIDs) == 0 {
+		fmt.Fprintln(stderr, "usage: smithctl loop get <loop-id> [<loop-id>...] [--file ids.json]")
+		return 2
+	}
+	results := make([]map[string]any, 0, len(loopIDs))
+	failed := false
+	for _, loopID := range loopIDs {
+		var out any
+		if err := client.doJSON(http.MethodGet, "/v1/loops/"+loopID, nil, &out); err != nil {
+			results = append(results, map[string]any{
+				"loop_id": loopID,
+				"status":  "error",
+				"error":   err.Error(),
+			})
+			failed = true
+			continue
+		}
+		results = append(results, map[string]any{
+			"loop_id": loopID,
+			"status":  "ok",
+			"result":  out,
+		})
+	}
+	if len(loopIDs) == 1 && !failed {
+		printOutput(stdout, output, results[0]["result"])
+		return 0
+	}
+	printOutput(stdout, output, map[string]any{"results": results})
+	if failed {
+		return 1
+	}
 	return 0
 }
 
@@ -243,6 +288,10 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 		sourceType     string
 		sourceRef      string
 		idempotencyKey string
+		batchFile      string
+		fromGitHub     string
+		fromPRD        string
+		format         string
 	)
 	fs.StringVar(&filePath, "file", "", "JSON payload file for /v1/loops")
 	fs.StringVar(&filePath, "f", "", "JSON payload file for /v1/loops")
@@ -251,21 +300,114 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	fs.StringVar(&sourceType, "source-type", "", "Loop source type")
 	fs.StringVar(&sourceRef, "source-ref", "", "Loop source reference")
 	fs.StringVar(&idempotencyKey, "idempotency-key", "", "Idempotency key")
+	fs.StringVar(&batchFile, "batch", "", "JSON array/object file for batch loop create")
+	fs.StringVar(&batchFile, "batch-file", "", "JSON array/object file for batch loop create")
+	fs.StringVar(&fromGitHub, "from-github", "", "JSON file for /v1/ingress/github/issues")
+	fs.StringVar(&fromPRD, "from-prd", "", "PRD file path (markdown or json)")
+	fs.StringVar(&format, "format", "", "PRD format override: markdown|json")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
-	payload := map[string]any{}
-	if strings.TrimSpace(filePath) != "" {
-		bytes, err := os.ReadFile(filePath)
+	selectedModes := 0
+	for _, value := range []string{filePath, batchFile, fromGitHub, fromPRD} {
+		if strings.TrimSpace(value) != "" {
+			selectedModes++
+		}
+	}
+	if selectedModes > 1 {
+		fmt.Fprintln(stderr, "loop create flags are mutually exclusive: --file, --batch, --from-github, --from-prd")
+		return 2
+	}
+	if strings.TrimSpace(fromGitHub) != "" {
+		payload, err := readJSONFileAny(fromGitHub)
+		if err != nil {
+			fmt.Fprintf(stderr, "read github payload failed: %v\n", err)
+			return 1
+		}
+		if _, ok := payload.([]any); ok {
+			payload = map[string]any{"issues": payload}
+		}
+		var out any
+		if err := client.doJSON(http.MethodPost, "/v1/ingress/github/issues", payload, &out); err != nil {
+			fmt.Fprintf(stderr, "loop create failed: %v\n", err)
+			return 1
+		}
+		printOutput(stdout, output, out)
+		return 0
+	}
+	if strings.TrimSpace(fromPRD) != "" {
+		content, err := os.ReadFile(fromPRD)
+		if err != nil {
+			fmt.Fprintf(stderr, "read prd file failed: %v\n", err)
+			return 1
+		}
+		prdFormat := strings.ToLower(strings.TrimSpace(format))
+		if prdFormat == "" {
+			if strings.HasSuffix(strings.ToLower(fromPRD), ".json") {
+				prdFormat = "json"
+			} else {
+				prdFormat = "markdown"
+			}
+		}
+		payload := map[string]any{
+			"format":     prdFormat,
+			"source_ref": sourceRef,
+		}
+		switch prdFormat {
+		case "markdown", "md":
+			payload["format"] = "markdown"
+			payload["markdown"] = string(content)
+		case "json", "structured":
+			payload["format"] = "json"
+			var parsed any
+			if err := json.Unmarshal(content, &parsed); err != nil {
+				fmt.Fprintf(stderr, "invalid json prd payload: %v\n", err)
+				return 1
+			}
+			if asMap, ok := parsed.(map[string]any); ok {
+				if tasks, hasTasks := asMap["tasks"]; hasTasks {
+					payload["tasks"] = tasks
+				} else {
+					payload["tasks"] = []any{}
+				}
+			} else if asSlice, ok := parsed.([]any); ok {
+				payload["tasks"] = asSlice
+			} else {
+				fmt.Fprintln(stderr, "json prd payload must be an object or array")
+				return 1
+			}
+		default:
+			fmt.Fprintln(stderr, "--format must be markdown or json")
+			return 2
+		}
+		var out any
+		if err := client.doJSON(http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
+			fmt.Fprintf(stderr, "loop create failed: %v\n", err)
+			return 1
+		}
+		printOutput(stdout, output, out)
+		return 0
+	}
+	var payload any
+	if strings.TrimSpace(batchFile) != "" {
+		rawPayload, err := readJSONFileAny(batchFile)
+		if err != nil {
+			fmt.Fprintf(stderr, "read batch file failed: %v\n", err)
+			return 1
+		}
+		if _, ok := rawPayload.([]any); ok {
+			payload = map[string]any{"loops": rawPayload}
+		} else {
+			payload = rawPayload
+		}
+	} else if strings.TrimSpace(filePath) != "" {
+		rawPayload, err := readJSONFileAny(filePath)
 		if err != nil {
 			fmt.Fprintf(stderr, "read file failed: %v\n", err)
 			return 1
 		}
-		if err := json.Unmarshal(bytes, &payload); err != nil {
-			fmt.Fprintf(stderr, "invalid json file: %v\n", err)
-			return 1
-		}
+		payload = rawPayload
 	} else {
 		payload = map[string]any{
 			"title":           title,
@@ -281,6 +423,206 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 		return 1
 	}
 	printOutput(stdout, output, out)
+	return 0
+}
+
+func cmdLoopLogs(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("loop logs", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		filePath string
+		follow   bool
+		limit    int
+		interval time.Duration
+	)
+	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
+	fs.BoolVar(&follow, "follow", false, "Follow loop journal entries")
+	fs.BoolVar(&follow, "F", false, "Follow loop journal entries")
+	fs.IntVar(&limit, "limit", 500, "Maximum journal entries to fetch")
+	fs.DurationVar(&interval, "interval", 2*time.Second, "Poll interval when --follow is set")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	loopIDs, err := collectLoopIDs(filePath, fs.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "loop logs failed: %v\n", err)
+		return 1
+	}
+	if len(loopIDs) == 0 {
+		fmt.Fprintln(stderr, "usage: smithctl loop logs <loop-id> [<loop-id>...] [--follow] [--file ids.json]")
+		return 2
+	}
+	if follow {
+		return followLoopLogs(client, output, loopIDs, int64(limit), interval, stdout, stderr)
+	}
+	results := make([]map[string]any, 0, len(loopIDs))
+	failed := false
+	for _, loopID := range loopIDs {
+		var journal any
+		path := "/v1/loops/" + loopID + "/journal?limit=" + strconv.Itoa(limit)
+		if err := client.doJSON(http.MethodGet, path, nil, &journal); err != nil {
+			results = append(results, map[string]any{
+				"loop_id": loopID,
+				"status":  "error",
+				"error":   err.Error(),
+			})
+			failed = true
+			continue
+		}
+		results = append(results, map[string]any{
+			"loop_id": loopID,
+			"status":  "ok",
+			"journal": journal,
+		})
+	}
+	if len(loopIDs) == 1 && !failed {
+		printOutput(stdout, output, results[0]["journal"])
+		return 0
+	}
+	printOutput(stdout, output, map[string]any{"results": results})
+	if failed {
+		return 1
+	}
+	return 0
+}
+
+func cmdLoopAttach(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("loop attach", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		filePath string
+		actor    string
+		follow   bool
+		limit    int
+		interval time.Duration
+	)
+	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&actor, "actor", "operator", "Attach actor identifier")
+	fs.BoolVar(&follow, "follow", true, "Follow logs after attach")
+	fs.IntVar(&limit, "limit", 500, "Maximum journal entries to fetch")
+	fs.DurationVar(&interval, "interval", 2*time.Second, "Poll interval when following")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	loopIDs, err := collectLoopIDs(filePath, fs.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "loop attach failed: %v\n", err)
+		return 1
+	}
+	if len(loopIDs) == 0 {
+		fmt.Fprintln(stderr, "usage: smithctl loop attach <loop-id> [<loop-id>...] [--file ids.json]")
+		return 2
+	}
+
+	attachResults := make([]map[string]any, 0, len(loopIDs))
+	hardFailure := false
+	softFailure := false
+	for _, loopID := range loopIDs {
+		payload := map[string]any{
+			"actor":    actor,
+			"terminal": "smithctl",
+		}
+		var out any
+		err := client.doJSON(http.MethodPost, "/v1/loops/"+loopID+"/control/attach", payload, &out)
+		if err == nil {
+			attachResults = append(attachResults, map[string]any{
+				"loop_id": loopID,
+				"status":  "attached",
+				"result":  out,
+			})
+			continue
+		}
+		if strings.Contains(err.Error(), "returned 404") {
+			attachResults = append(attachResults, map[string]any{
+				"loop_id": loopID,
+				"status":  "not_supported",
+				"error":   err.Error(),
+			})
+			softFailure = true
+			continue
+		}
+		attachResults = append(attachResults, map[string]any{
+			"loop_id": loopID,
+			"status":  "error",
+			"error":   err.Error(),
+		})
+		hardFailure = true
+	}
+	printOutput(stdout, output, map[string]any{"results": attachResults})
+	if hardFailure {
+		return 1
+	}
+	if follow {
+		if softFailure {
+			fmt.Fprintln(stderr, "attach endpoint unavailable for one or more loops; following journal instead")
+		}
+		return followLoopLogs(client, output, loopIDs, int64(limit), interval, stdout, stderr)
+	}
+	return 0
+}
+
+func cmdLoopCancel(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("loop cancel", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		filePath string
+		reason   string
+		actor    string
+	)
+	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&reason, "reason", "cancelled via smithctl", "Cancellation reason")
+	fs.StringVar(&actor, "actor", "operator", "Actor performing cancellation")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	loopIDs, err := collectLoopIDs(filePath, fs.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "loop cancel failed: %v\n", err)
+		return 1
+	}
+	if len(loopIDs) == 0 {
+		fmt.Fprintln(stderr, "usage: smithctl loop cancel <loop-id> [<loop-id>...] [--reason text] [--file ids.json]")
+		return 2
+	}
+	results := make([]map[string]any, 0, len(loopIDs))
+	failed := false
+	for _, loopID := range loopIDs {
+		payload := map[string]any{
+			"loop_id":      loopID,
+			"target_state": "cancelled",
+			"reason":       reason,
+			"actor":        actor,
+		}
+		var out any
+		if err := client.doJSON(http.MethodPost, "/v1/control/override", payload, &out); err != nil {
+			results = append(results, map[string]any{
+				"loop_id": loopID,
+				"status":  "error",
+				"error":   err.Error(),
+			})
+			failed = true
+			continue
+		}
+		results = append(results, map[string]any{
+			"loop_id": loopID,
+			"status":  "ok",
+			"result":  out,
+		})
+	}
+	if len(loopIDs) == 1 && !failed {
+		printOutput(stdout, output, results[0]["result"])
+		return 0
+	}
+	printOutput(stdout, output, map[string]any{"results": results})
+	if failed {
+		return 1
+	}
 	return 0
 }
 
@@ -371,26 +713,122 @@ func cmdPRDSubmit(client *apiClient, output string, args []string, stdout, stder
 		fmt.Fprintf(stderr, "prd submit failed: %v\n", err)
 		return 1
 	}
-	printOutput(stdout, output, out)
+	printOutput(stdout, output, normalizePRDSubmitOutput(out))
 	return 0
 }
 
 func cmdPRDCreate(output string, args []string, stdout, stderr io.Writer) int {
-	if len(args) > 1 {
-		fmt.Fprintln(stderr, "usage: smithctl prd create [name]")
+	nameArg := ""
+	parseArgs := args
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		nameArg = strings.TrimSpace(args[0])
+		parseArgs = args[1:]
+	}
+
+	fs := flag.NewFlagSet("prd create", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		templateName string
+		outputPath   string
+	)
+	fs.StringVar(&templateName, "template", "default", "Template: default|feature|bugfix")
+	fs.StringVar(&outputPath, "out", "", "Write scaffolded PRD to file")
+	fs.StringVar(&outputPath, "output-file", "", "Write scaffolded PRD to file")
+	if err := fs.Parse(parseArgs); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if len(fs.Args()) > 0 {
+		fmt.Fprintln(stderr, "usage: smithctl prd create [name] [--template default|feature|bugfix] [--out path]")
 		return 2
 	}
 	name := "Smith PRD"
-	if len(args) == 1 && strings.TrimSpace(args[0]) != "" {
-		name = strings.TrimSpace(args[0])
+	if strings.TrimSpace(nameArg) != "" {
+		name = strings.TrimSpace(nameArg)
 	}
-	template := fmt.Sprintf("# %s\n\n## Tasks\n- [ ] Describe first deliverable\n- [ ] Describe second deliverable\n", name)
+
+	template, err := renderPRDTemplate(strings.ToLower(strings.TrimSpace(templateName)), name)
+	if err != nil {
+		fmt.Fprintf(stderr, "prd create failed: %v\n", err)
+		return 2
+	}
+	if strings.TrimSpace(outputPath) != "" {
+		if err := os.WriteFile(outputPath, []byte(template), 0o644); err != nil {
+			fmt.Fprintf(stderr, "write prd file failed: %v\n", err)
+			return 1
+		}
+		meta := map[string]any{
+			"template":    strings.ToLower(strings.TrimSpace(templateName)),
+			"output_file": outputPath,
+			"bytes":       len(template),
+		}
+		if output == "json" {
+			meta["markdown"] = template
+			printOutput(stdout, output, meta)
+		} else {
+			fmt.Fprintf(stdout, "wrote PRD template %q to %s\n", meta["template"], outputPath)
+		}
+		return 0
+	}
 	if output == "json" {
-		printOutput(stdout, output, map[string]string{"markdown": template})
+		printOutput(stdout, output, map[string]any{
+			"template": strings.ToLower(strings.TrimSpace(templateName)),
+			"markdown": template,
+		})
 		return 0
 	}
 	fmt.Fprint(stdout, template)
 	return 0
+}
+
+func renderPRDTemplate(templateName, name string) (string, error) {
+	switch templateName {
+	case "", "default":
+		return fmt.Sprintf("# %s\n\n## Context\nDescribe problem context.\n\n## Tasks\n- [ ] Describe first deliverable\n- [ ] Describe second deliverable\n", name), nil
+	case "feature":
+		return fmt.Sprintf("# %s\n\n## Goal\nDescribe user-facing outcome.\n\n## Scope\n- In scope:\n- Out of scope:\n\n## Tasks\n- [ ] API changes\n- [ ] Runtime changes\n- [ ] Validation and tests\n", name), nil
+	case "bugfix":
+		return fmt.Sprintf("# %s\n\n## Bug Summary\nDescribe failing behavior and impact.\n\n## Reproduction\n- [ ] Repro steps documented\n\n## Tasks\n- [ ] Root-cause analysis\n- [ ] Fix implementation\n- [ ] Regression test coverage\n", name), nil
+	default:
+		return "", fmt.Errorf("unknown template %q (expected default, feature, or bugfix)", templateName)
+	}
+}
+
+func normalizePRDSubmitOutput(out any) any {
+	asMap, ok := out.(map[string]any)
+	if !ok {
+		return out
+	}
+	results, ok := asMap["results"].([]any)
+	if !ok {
+		return out
+	}
+	loopIDs := make([]string, 0)
+	validationErrors := make([]map[string]any, 0)
+	for _, raw := range results {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if loopID, ok := item["loop_id"].(string); ok && strings.TrimSpace(loopID) != "" {
+			loopIDs = append(loopIDs, strings.TrimSpace(loopID))
+		}
+		if status, _ := item["status"].(string); status == "error" {
+			entry := map[string]any{
+				"message": item["message"],
+			}
+			if sourceRef, ok := item["source_ref"]; ok {
+				entry["source_ref"] = sourceRef
+			}
+			if idx, ok := item["item_index"]; ok {
+				entry["item_index"] = idx
+			}
+			validationErrors = append(validationErrors, entry)
+		}
+	}
+	asMap["loop_ids"] = loopIDs
+	asMap["validation_errors"] = validationErrors
+	return asMap
 }
 
 func (c *apiClient) doJSON(method, path string, body any, out any) error {
@@ -439,6 +877,161 @@ func readJSONFile(path string) (map[string]any, error) {
 	return payload, nil
 }
 
+func readJSONFileAny(path string) (any, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var payload any
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func collectLoopIDs(filePath string, args []string) ([]string, error) {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(args))
+	add := func(raw string) {
+		id := strings.TrimSpace(raw)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	for _, arg := range args {
+		add(arg)
+	}
+	if strings.TrimSpace(filePath) == "" {
+		return out, nil
+	}
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	var raw any
+	if err := json.Unmarshal(content, &raw); err == nil {
+		switch typed := raw.(type) {
+		case []any:
+			for _, item := range typed {
+				if value, ok := item.(string); ok {
+					add(value)
+				}
+			}
+		case map[string]any:
+			if ids, ok := typed["ids"].([]any); ok {
+				for _, item := range ids {
+					if value, ok := item.(string); ok {
+						add(value)
+					}
+				}
+			}
+		}
+		return out, nil
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		add(line)
+	}
+	return out, nil
+}
+
+func followLoopLogs(client *apiClient, output string, loopIDs []string, limit int64, interval time.Duration, stdout, stderr io.Writer) int {
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	lastSeq := map[string]int64{}
+	for _, loopID := range loopIDs {
+		lastSeq[loopID] = -1
+	}
+
+	for {
+		allTerminal := true
+		hadError := false
+
+		for _, loopID := range loopIDs {
+			var journal []map[string]any
+			path := "/v1/loops/" + loopID + "/journal?limit=" + strconv.FormatInt(limit, 10)
+			if err := client.doJSON(http.MethodGet, path, nil, &journal); err != nil {
+				fmt.Fprintf(stderr, "loop logs follow failed (%s): %v\n", loopID, err)
+				hadError = true
+				allTerminal = false
+				continue
+			}
+			for _, entry := range journal {
+				seq := parseEntrySequence(entry, lastSeq[loopID]+1)
+				if seq <= lastSeq[loopID] {
+					continue
+				}
+				lastSeq[loopID] = seq
+				printOutput(stdout, output, map[string]any{
+					"loop_id": loopID,
+					"entry":   entry,
+				})
+			}
+			var loopOut map[string]any
+			if err := client.doJSON(http.MethodGet, "/v1/loops/"+loopID, nil, &loopOut); err != nil {
+				allTerminal = false
+				continue
+			}
+			if !isLoopTerminal(loopOut) {
+				allTerminal = false
+			}
+		}
+
+		if allTerminal {
+			return 0
+		}
+		if hadError {
+			select {
+			case <-ctx.Done():
+				return 1
+			case <-time.After(interval):
+				continue
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return 0
+		case <-time.After(interval):
+		}
+	}
+}
+
+func parseEntrySequence(entry map[string]any, fallback int64) int64 {
+	raw, ok := entry["sequence"]
+	if !ok {
+		return fallback
+	}
+	switch typed := raw.(type) {
+	case float64:
+		return int64(typed)
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	default:
+		return fallback
+	}
+}
+
+func isLoopTerminal(loopOut map[string]any) bool {
+	stateBlock, ok := loopOut["state"].(map[string]any)
+	if !ok {
+		return false
+	}
+	stateValue, _ := stateBlock["state"].(string)
+	switch stateValue {
+	case "synced", "flatline", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
 func printOutput(w io.Writer, format string, value any) {
 	if format == "json" {
 		enc := json.NewEncoder(w)
@@ -463,17 +1056,27 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Examples:")
 	fmt.Fprintln(w, "  smithctl loop list")
 	fmt.Fprintln(w, "  smithctl loop get loop-abc123")
+	fmt.Fprintln(w, "  smithctl loop get loop-abc123 loop-def456")
 	fmt.Fprintln(w, "  smithctl loop create --title \"Fix drift\" --source-type github_issue --source-ref org/repo#1")
+	fmt.Fprintln(w, "  smithctl loop create --batch loops.json")
+	fmt.Fprintln(w, "  smithctl loop create --from-github issues.json")
+	fmt.Fprintln(w, "  smithctl loop create --from-prd docs/prd1.md --source-ref prd:docs/prd1.md")
+	fmt.Fprintln(w, "  smithctl loop logs loop-abc123 --follow")
+	fmt.Fprintln(w, "  smithctl loop attach loop-abc123")
+	fmt.Fprintln(w, "  smithctl loop cancel loop-abc123 --reason \"operator request\"")
 	fmt.Fprintln(w, "  smithctl loop ingest-github --file issues.json")
+	fmt.Fprintln(w, "  smithctl prd create \"Auth Flow\" --template feature --out docs/prd-auth.md")
 	fmt.Fprintln(w, "  smithctl prd submit --file docs/prd1.md")
 }
 
 func printLoopHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: smithctl loop <command>")
-	fmt.Fprintln(w, "Commands: list, get, create, ingest-github")
+	fmt.Fprintln(w, "Commands: list, get, create, logs, attach, cancel, ingest-github")
 }
 
 func printPRDHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: smithctl prd <command>")
 	fmt.Fprintln(w, "Commands: create, submit")
+	fmt.Fprintln(w, "  create [name] [--template default|feature|bugfix] [--out path]")
+	fmt.Fprintln(w, "  submit --file <path> [--format markdown|json] [--source-ref ref]")
 }

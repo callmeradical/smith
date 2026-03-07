@@ -35,6 +35,7 @@ Smith is split into control-plane and data-plane components.
 - Dockerfiles: `docker/`
 - Core implementation: `internal/source/`
 - Supporting docs: `docs/`
+- Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
 
 ## Key API Endpoints
 
@@ -44,3 +45,22 @@ Smith is split into control-plane and data-plane components.
 - `POST /v1/ingress/prd` ingest markdown/json PRD inputs into loop specs.
 - `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
 - `POST /v1/control/override` for operator state overrides with reason/audit trail.
+
+## Local Git Hooks
+
+Install repo-managed hooks:
+
+```bash
+make hooks-install
+```
+
+Hook behavior:
+- `pre-commit`: quick checks (`go test ./cmd/...`)
+- `pre-push`: full gate (`make build` + `make test`)
+
+Temporarily bypass hooks if needed:
+
+```bash
+SKIP_GIT_HOOKS=1 git commit -m "..."
+SKIP_GIT_HOOKS=1 git push
+```

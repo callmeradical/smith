@@ -22,6 +22,11 @@ var allowedEnvironmentPresets = map[string]struct{}{
 	"minimal":     {},
 }
 
+type EnvironmentPolicy struct {
+	DefaultPreset  string
+	AllowedPresets map[string]struct{}
+}
+
 type LoopEnvironment struct {
 	Preset         string                 `json:"preset,omitempty"`
 	Mise           *MiseEnvironment       `json:"mise,omitempty"`
@@ -49,8 +54,30 @@ type DockerfileProfile struct {
 }
 
 func NormalizeLoopEnvironment(in *LoopEnvironment) (LoopEnvironment, error) {
+	return NormalizeLoopEnvironmentWithPolicy(in, DefaultEnvironmentPolicy())
+}
+
+func DefaultEnvironmentPolicy() EnvironmentPolicy {
+	return EnvironmentPolicy{
+		DefaultPreset:  DefaultEnvironmentPreset,
+		AllowedPresets: clonePresetMap(allowedEnvironmentPresets),
+	}
+}
+
+func NormalizeLoopEnvironmentWithPolicy(in *LoopEnvironment, policy EnvironmentPolicy) (LoopEnvironment, error) {
+	defaultPreset := strings.ToLower(strings.TrimSpace(policy.DefaultPreset))
+	if defaultPreset == "" {
+		defaultPreset = DefaultEnvironmentPreset
+	}
+	allowedPresets := clonePresetMap(policy.AllowedPresets)
+	if len(allowedPresets) == 0 {
+		allowedPresets = clonePresetMap(allowedEnvironmentPresets)
+	}
+	if _, ok := allowedPresets[defaultPreset]; !ok {
+		return LoopEnvironment{}, fmt.Errorf("invalid environment default preset %q (allowed: %s)", defaultPreset, strings.Join(sortedKeys(allowedPresets), ", "))
+	}
 	if in == nil {
-		return LoopEnvironment{Preset: DefaultEnvironmentPreset, ResolvedMode: EnvironmentModePreset}, nil
+		return LoopEnvironment{Preset: defaultPreset, ResolvedMode: EnvironmentModePreset}, nil
 	}
 	env := LoopEnvironment{
 		Preset:         strings.ToLower(strings.TrimSpace(in.Preset)),
@@ -60,10 +87,10 @@ func NormalizeLoopEnvironment(in *LoopEnvironment) (LoopEnvironment, error) {
 		Env:            cloneMap(in.Env),
 	}
 	if env.Preset == "" {
-		env.Preset = DefaultEnvironmentPreset
+		env.Preset = defaultPreset
 	}
-	if _, ok := allowedEnvironmentPresets[env.Preset]; !ok {
-		return LoopEnvironment{}, fmt.Errorf("invalid environment preset %q (allowed: %s)", env.Preset, strings.Join(sortedKeys(allowedEnvironmentPresets), ", "))
+	if _, ok := allowedPresets[env.Preset]; !ok {
+		return LoopEnvironment{}, fmt.Errorf("invalid environment preset %q (allowed: %s)", env.Preset, strings.Join(sortedKeys(allowedPresets), ", "))
 	}
 	for key := range env.Env {
 		if strings.TrimSpace(key) == "" {
@@ -100,6 +127,14 @@ func NormalizeLoopEnvironment(in *LoopEnvironment) (LoopEnvironment, error) {
 	}
 	env.ResolvedMode = mode
 	return env, nil
+}
+
+func clonePresetMap(in map[string]struct{}) map[string]struct{} {
+	out := map[string]struct{}{}
+	for k := range in {
+		out[k] = struct{}{}
+	}
+	return out
 }
 
 func validateMise(mise MiseEnvironment) error {

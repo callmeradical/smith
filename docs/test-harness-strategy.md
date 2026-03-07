@@ -113,7 +113,14 @@ Target command model:
 
 - `go test ./internal/source/...`
 - `go test ./test/acceptance/... -run TestSmoke`
+- `go test ./test/acceptance -run TestFeatures -count=1`
 - `go test ./test/system/... -run TestCluster -count=1`
+
+Current BDD entrypoint:
+
+- `test/acceptance/loop_workflows.feature`
+- `test/acceptance/loop_workflows_steps_test.go`
+- `make test-bdd`
 
 Wrapper compatibility (temporary):
 

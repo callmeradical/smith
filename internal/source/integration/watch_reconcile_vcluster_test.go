@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -23,33 +24,33 @@ import (
 	"smith/internal/source/model"
 	"smith/internal/source/reconcile"
 	"smith/internal/source/store"
+	hassert "smith/internal/testharness/assertions"
+	hfixture "smith/internal/testharness/fixture"
+	hruntime "smith/internal/testharness/runtime"
 )
 
 func TestVClusterWatchReconcile(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("SMITH_IT_ENABLE")) != "true" {
-		t.Skip("set SMITH_IT_ENABLE=true to run integration tests")
-	}
+	hruntime.RequireEnabled(t, "SMITH_IT_ENABLE")
 
-	ctx := context.Background()
+	ctx := hruntime.ContextWithTimeout(t, 2*time.Minute)
 	etcdEndpoints := splitCSV(os.Getenv("SMITH_IT_ETCD_ENDPOINTS"))
 	if len(etcdEndpoints) == 0 {
 		t.Fatal("SMITH_IT_ETCD_ENDPOINTS is required")
 	}
 
 	es, err := store.New(ctx, etcdEndpoints, 5*time.Second)
-	if err != nil {
-		t.Fatalf("connect etcd: %v", err)
-	}
+	require.NoError(t, err, "connect etcd")
 	defer func() { _ = es.Close() }()
 
 	kube, err := kubeClient()
-	if err != nil {
-		t.Fatalf("kube client: %v", err)
-	}
+	require.NoError(t, err, "kube client")
 
 	namespace := envDefault("SMITH_IT_NAMESPACE", "smith-system")
-	loopID := fmt.Sprintf("it-loop-%d", time.Now().UTC().UnixNano())
-	correlationID := fmt.Sprintf("it-corr-%d", time.Now().UTC().UnixNano())
+	fixture := hfixture.NewLoopFixtureFromSeed("integration", time.Now().UTC().UnixNano())
+	loopID := fixture.LoopID
+	correlationID := fixture.CorrelationID
+	hassert.RequireNonEmpty(t, "loop_id", loopID)
+	hassert.RequireNonEmpty(t, "correlation_id", correlationID)
 
 	watchCtx, cancelWatch := context.WithCancel(ctx)
 	defer cancelWatch()
@@ -62,23 +63,15 @@ func TestVClusterWatchReconcile(t *testing.T) {
 		CorrelationID: correlationID,
 	}
 	rev, err := es.PutState(ctx, initial, 0)
-	if err != nil {
-		t.Fatalf("put initial state: %v", err)
-	}
+	require.NoError(t, err, "put initial state")
 
 	waitForStateEvent(t, events, loopID, model.LoopStateUnresolved)
 
 	q := &countingQueue{}
 	watcher := core.NewUnresolvedWatcher(q)
-	if err := watcher.Handle(ctx, core.UnresolvedEvent{LoopID: loopID, State: model.LoopStateUnresolved, Revision: rev}); err != nil {
-		t.Fatalf("handle unresolved event 1: %v", err)
-	}
-	if err := watcher.Handle(ctx, core.UnresolvedEvent{LoopID: loopID, State: model.LoopStateUnresolved, Revision: rev}); err != nil {
-		t.Fatalf("handle unresolved event duplicate: %v", err)
-	}
-	if q.count != 1 {
-		t.Fatalf("expected queue count 1 for duplicate event, got %d", q.count)
-	}
+	require.NoError(t, watcher.Handle(ctx, core.UnresolvedEvent{LoopID: loopID, State: model.LoopStateUnresolved, Revision: rev}), "handle unresolved event 1")
+	require.NoError(t, watcher.Handle(ctx, core.UnresolvedEvent{LoopID: loopID, State: model.LoopStateUnresolved, Revision: rev}), "handle unresolved event duplicate")
+	require.Equal(t, 1, q.count, "expected queue count 1 for duplicate event")
 
 	stateAfterOverwriting, err := es.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
 		if current.State != model.LoopStateUnresolved {
@@ -89,16 +82,14 @@ func TestVClusterWatchReconcile(t *testing.T) {
 		current.Attempt = 1
 		return current, nil
 	})
-	if err != nil {
-		t.Fatalf("transition to overwriting: %v", err)
-	}
+	require.NoError(t, err, "transition to overwriting")
+	hassert.RequireLoopState(t, stateAfterOverwriting.Record.State, model.LoopStateOverwriting)
 
 	next := stateAfterOverwriting.Record
 	next.State = model.LoopStateSynced
 	next.Reason = "integration-complete"
-	if _, err := es.PutState(ctx, next, stateAfterOverwriting.Revision); err != nil {
-		t.Fatalf("transition to synced: %v", err)
-	}
+	_, err = es.PutState(ctx, next, stateAfterOverwriting.Revision)
+	require.NoError(t, err, "transition to synced")
 
 	jobName := fmt.Sprintf("it-zombie-%d", time.Now().UTC().Unix()%100000)
 	ensureNamespace(t, ctx, kube, namespace)
@@ -117,9 +108,7 @@ func TestVClusterWatchReconcile(t *testing.T) {
 			},
 		},
 	}, metav1.CreateOptions{})
-	if err != nil {
-		t.Fatalf("create zombie job: %v", err)
-	}
+	require.NoError(t, err, "create zombie job")
 
 	rLoop := reconcile.NewLoop(
 		&etcdStateWriter{store: es},
@@ -130,17 +119,13 @@ func TestVClusterWatchReconcile(t *testing.T) {
 		reconcile.StateSnapshot{LoopID: loopID, State: model.LoopStateSynced, Attempt: 1, MaxAttempts: 3, IsStale: false},
 		reconcile.RuntimeSnapshot{JobName: jobName, Phase: reconcile.RuntimeRunning},
 	)
-	if err != nil {
-		t.Fatalf("reconcile zombie delete: %v", err)
-	}
-	if !res.Corrected || res.Action != "delete-zombie-job" {
-		t.Fatalf("unexpected reconcile result: %+v", res)
-	}
+	require.NoError(t, err, "reconcile zombie delete")
+	require.True(t, res.Corrected, "expected corrected reconcile result")
+	require.Equal(t, "delete-zombie-job", res.Action)
 
 	_, err = kube.BatchV1().Jobs(namespace).Get(ctx, jobName, metav1.GetOptions{})
-	if err == nil || !k8serrors.IsNotFound(err) {
-		t.Fatalf("expected job to be deleted, err=%v", err)
-	}
+	require.Error(t, err)
+	require.True(t, k8serrors.IsNotFound(err), "expected job to be deleted, err=%v", err)
 }
 
 func waitForStateEvent(t *testing.T, events <-chan store.Event, loopID string, expected model.LoopState) {

@@ -32,8 +32,9 @@ Stored anomaly records include normalized `environment` with `resolved_mode`.
 Top-level fields:
 
 - `preset` (string): environment baseline preset.
-  - Allowed: `standard`, `secure`, `performance`, `minimal`.
-  - Default: `standard`.
+  - Allowed: entries from the environment preset catalog API.
+  - Built-in presets: `standard`, `secure`, `performance`, `minimal`.
+  - Default: project default preset (`SMITH_DEFAULT_ENV_PRESET`, fallback `standard`).
 - `mise` (object): runtime/toolchain resolved from mise.
   - Requires `tool_versions_file` or non-empty `tools` map.
 - `container_image` (object): direct replica image override.
@@ -80,3 +81,13 @@ Invalid environment payloads are rejected with HTTP `400` and actionable error m
 - `environment.container_image.ref is required`
 - `environment.dockerfile.context_dir is required`
 - `environment source conflict: specify only one of mise, container_image, or dockerfile (precedence is dockerfile > container_image > mise > preset)`
+
+## Preset Catalog API
+
+- `GET /v1/environment/presets`: list available presets and `default_preset`
+- `POST /v1/environment/presets`: create preset (`{"name":"team-default"}`)
+- `GET /v1/environment/presets/{name}`: fetch preset existence/details
+- `PUT /v1/environment/presets/{name}`: create/update preset by name
+
+Loop creation validates `environment.preset` against this catalog, and applies
+the project default preset when `environment` is omitted.
