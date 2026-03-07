@@ -21,9 +21,9 @@ for branch in "${required_branches[@]}"; do
   echo "branch present: $branch"
 done
 
-git -C "$REPO_DIR" show scenario/single-loop-success:service/handler.txt | rg -q "handler=v2"
-git -C "$REPO_DIR" show scenario/concurrent-safe-a:service/feature-a.txt | rg -q "feature=a"
-git -C "$REPO_DIR" show scenario/concurrent-safe-b:service/feature-b.txt | rg -q "feature=b"
-git -C "$REPO_DIR" show scenario/merge-conflict:service/handler.txt | rg -q "handler=conflict-path"
+git -C "$REPO_DIR" show scenario/single-loop-success:service/handler.txt | grep -q "handler=v2"
+git -C "$REPO_DIR" show scenario/concurrent-safe-a:service/feature-a.txt | grep -q "feature=a"
+git -C "$REPO_DIR" show scenario/concurrent-safe-b:service/feature-b.txt | grep -q "feature=b"
+git -C "$REPO_DIR" show scenario/merge-conflict:service/handler.txt | grep -q "handler=conflict-path"
 
 echo "fixture verification passed"
