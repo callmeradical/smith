@@ -1,7 +1,0 @@
-Smith chart installed.
-
-API service:
-  {{ include "smith.fullname" . }}-api:{{ .Values.api.service.port }}
-
-Console service:
-  {{ include "smith.fullname" . }}-console:{{ .Values.console.service.port }}
