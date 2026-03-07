@@ -86,3 +86,4 @@ Scripts accept environment variable overrides:
 - `SMITH_ETCD_WAIT_TIMEOUT` (default `8m`)
 - `SMITH_ETCD_MODE` (`simple` default, `helm` optional)
 - `SMITH_ETCD_IMAGE` (used when `SMITH_ETCD_MODE=simple`)
+- `SMITH_VCLUSTER_KUBECONFIG` (path for kubeconfig emitted by `vcluster connect --print`)

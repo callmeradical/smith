@@ -57,6 +57,11 @@ jobs:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts
           SMITH_FIXTURE_DIR: /tmp/smith-test-repo
           SMITH_ENABLE_CLUSTER_TESTS: "true"
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
         run: ./scripts/test/run-matrix.sh
 
       - name: Collect diagnostics

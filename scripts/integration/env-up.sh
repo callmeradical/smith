@@ -69,8 +69,10 @@ else
 fi
 
 if [[ "$VCLUSTER_CONNECT" == "true" ]]; then
-	info "connecting kubectl context to vcluster"
-	vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=true --background-proxy=true
+  info "connecting kubectl context to vcluster"
+  export SMITH_VCLUSTER_KUBECONFIG="${SMITH_VCLUSTER_KUBECONFIG:-/tmp/${VCLUSTER_NAME}-kubeconfig.yaml}"
+  vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --print > "$SMITH_VCLUSTER_KUBECONFIG"
+  export KUBECONFIG="$SMITH_VCLUSTER_KUBECONFIG"
 fi
 
 kubectl create namespace "$ETCD_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null

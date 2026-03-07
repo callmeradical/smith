@@ -5,6 +5,7 @@ VCLUSTER_NAME="${SMITH_VCLUSTER_NAME:-smith-vc}"
 VCLUSTER_NAMESPACE="${SMITH_VCLUSTER_NAMESPACE:-smith-vcluster}"
 ETCD_NAMESPACE="${SMITH_ETCD_NAMESPACE:-smith-system}"
 ETCD_RELEASE_NAME="${SMITH_ETCD_RELEASE_NAME:-smith-etcd}"
+VCLUSTER_KUBECONFIG="${SMITH_VCLUSTER_KUBECONFIG:-/tmp/${VCLUSTER_NAME}-kubeconfig.yaml}"
 
 cleanup() {
   if [[ -n "${PF_PID:-}" ]]; then
@@ -13,7 +14,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=true --background-proxy=true
+vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --print > "$VCLUSTER_KUBECONFIG"
+export KUBECONFIG="$VCLUSTER_KUBECONFIG"
 
 kubectl -n "$ETCD_NAMESPACE" get svc "$ETCD_RELEASE_NAME" >/dev/null
 kubectl -n "$ETCD_NAMESPACE" port-forward svc/"$ETCD_RELEASE_NAME" 2379:2379 >/tmp/smith-it-port-forward.log 2>&1 &

@@ -3,6 +3,7 @@ set -euo pipefail
 
 VCLUSTER_NAME="${SMITH_VCLUSTER_NAME:-smith-vc}"
 VCLUSTER_NAMESPACE="${SMITH_VCLUSTER_NAMESPACE:-smith-vcluster}"
+VCLUSTER_KUBECONFIG="${SMITH_VCLUSTER_KUBECONFIG:-/tmp/${VCLUSTER_NAME}-kubeconfig.yaml}"
 
 if ! command -v vcluster >/dev/null 2>&1; then
   echo "missing required command: vcluster" >&2
@@ -14,6 +15,7 @@ if ! kubectl -n "$VCLUSTER_NAMESPACE" get statefulset "$VCLUSTER_NAME" >/dev/nul
   exit 1
 fi
 
-vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --update-current=true --background-proxy=true
+vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --print > "$VCLUSTER_KUBECONFIG"
+export KUBECONFIG="$VCLUSTER_KUBECONFIG"
 
 SMITH_ENABLE_CLUSTER_TESTS=true ./scripts/test/run-matrix.sh
