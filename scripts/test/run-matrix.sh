@@ -32,6 +32,7 @@ run "completion-verify-concurrent-b" ./scripts/test/verify-completion.sh "$FIXTU
 run "completion-verify-merge-conflict" ./scripts/test/verify-completion.sh "$FIXTURE_DIR" "merge-conflict"
 run "e2e-single-loop" ./scripts/test/e2e-single-loop.sh
 run "e2e-concurrent-loops" ./scripts/test/e2e-concurrent-loops.sh
+run "e2e-ingress-modes" ./scripts/test/e2e-ingress-modes.sh
 
 cp "$ROOT_DIR/test/fixtures/smith-repo/spec/expected-outcomes.json" "$ARTIFACTS_DIR/expected-outcomes.json"
 git -C "$FIXTURE_DIR" branch --list > "$ARTIFACTS_DIR/fixture-branches.txt"

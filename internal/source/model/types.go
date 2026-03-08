@@ -23,6 +23,7 @@ type Anomaly struct {
 	ProviderID    string            `json:"provider_id"`
 	Model         string            `json:"model"`
 	Environment   LoopEnvironment   `json:"environment"`
+	Skills        []LoopSkillMount  `json:"skills,omitempty"`
 	Policy        LoopPolicy        `json:"policy"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
 	CreatedAt     time.Time         `json:"created_at"`

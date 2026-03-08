@@ -78,6 +78,7 @@ type loopCreateRequest struct {
 	CorrelationID  string                 `json:"correlation_id,omitempty"`
 	Metadata       map[string]string      `json:"metadata,omitempty"`
 	Environment    *model.LoopEnvironment `json:"environment,omitempty"`
+	Skills         []model.LoopSkillMount `json:"skills,omitempty"`
 }
 
 type loopBatchRequest struct {
@@ -85,12 +86,13 @@ type loopBatchRequest struct {
 }
 
 type loopCreateResult struct {
-	LoopID      string                `json:"loop_id"`
-	Status      string                `json:"status"`
-	Created     bool                  `json:"created"`
-	Message     string                `json:"message,omitempty"`
-	Environment model.LoopEnvironment `json:"environment"`
-	HTTPCode    int                   `json:"http_code,omitempty"`
+	LoopID      string                 `json:"loop_id"`
+	Status      string                 `json:"status"`
+	Created     bool                   `json:"created"`
+	Message     string                 `json:"message,omitempty"`
+	Environment model.LoopEnvironment  `json:"environment"`
+	Skills      []model.LoopSkillMount `json:"skills,omitempty"`
+	HTTPCode    int                    `json:"http_code,omitempty"`
 }
 
 type githubIngressRequest struct {
@@ -372,6 +374,10 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
+	skills, err := model.NormalizeLoopSkills(req.Skills, selection.ProviderID)
+	if err != nil {
+		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
+	}
 
 	loopID := strings.TrimSpace(req.LoopID)
 	if loopID == "" {
@@ -388,6 +394,7 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 			Created:     false,
 			Message:     "existing loop returned via idempotency or explicit loop_id",
 			Environment: stored.Environment,
+			Skills:      stored.Skills,
 			HTTPCode:    http.StatusOK,
 		}
 	}
@@ -401,6 +408,7 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		ProviderID:    selection.ProviderID,
 		Model:         selection.Model,
 		Environment:   environment,
+		Skills:        skills,
 		Metadata:      withIdempotency(req.Metadata, req.IdempotencyKey),
 		CorrelationID: req.CorrelationID,
 		Policy: model.LoopPolicy{
@@ -433,9 +441,10 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		Message:       "loop created from ingress",
 		CorrelationID: req.CorrelationID,
 		Metadata: map[string]string{
-			"source_type":      req.SourceType,
-			"source_ref":       req.SourceRef,
-			"environment_mode": environment.ResolvedMode,
+			"source_type":       req.SourceType,
+			"source_ref":        req.SourceRef,
+			"environment_mode":  environment.ResolvedMode,
+			"skill_mount_count": strconv.Itoa(len(skills)),
 		},
 	})
 
@@ -444,6 +453,7 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		Status:      string(model.LoopStateUnresolved),
 		Created:     true,
 		Environment: environment,
+		Skills:      skills,
 		HTTPCode:    http.StatusCreated,
 	}
 }

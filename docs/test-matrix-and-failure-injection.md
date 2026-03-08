@@ -17,6 +17,7 @@ This matrix defines the minimum runnable suite for reliability gating across uni
 | M-006 | Integration (optional in CI) | etcd + core watch/reconcile loop in vCluster | `./scripts/integration/test-watch-reconcile.sh` | State watch semantics, duplicate-event handling, lifecycle transitions, and zombie-job drift correction validated against real etcd + Kubernetes APIs |
 | M-007 | E2E | Single loop unresolved -> synced | `./scripts/test/e2e-single-loop.sh` | Single-loop completion report includes commit/handoff integrity; optional cluster mode runs lifecycle integration path |
 | M-008 | E2E | Concurrent loop safety (no split-brain writer) | `./scripts/test/e2e-concurrent-loops.sh` | N concurrent loop workers preserve per-loop isolation and completion verification for concurrent fixture branches |
+| M-009 | E2E | Ingress mode coverage (GitHub, PRD, interactive) | `./scripts/test/e2e-ingress-modes.sh` | `smithctl` ingress commands create loops and each created loop resolves to synced state with source traceability (`source_type`, `source_ref`) |
 
 ## Failure-Injection Cases
 
@@ -41,6 +42,7 @@ Reconcile failure behavior (covered by `internal/source/reconcile/loop_test.go`)
 - `fixture-branches.txt`
 - `expected-outcomes.json`
 - `completion-report-*.json`
+- `e2e-ingress-summary.txt`
 
 These are intended for post-failure replay and debugging in CI.
 
