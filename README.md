@@ -6,10 +6,10 @@ Smith is an etcd-backed, Kubernetes-native autonomous orchestration platform.
 
 Smith coordinates autonomous execution loops as a state machine stored in etcd. It is designed to:
 
-- accept loop ingress requests from operator-facing APIs,
-- drive loop execution safely with lock-based concurrency,
-- run loop workers as Kubernetes Jobs,
-- maintain journal, handoff, and audit trails for every loop.
+- accept operator ingress requests (direct, GitHub issues, PRD tasks),
+- convert each request into a deterministic loop lifecycle (`unresolved -> overwriting -> synced|flatline|cancelled`),
+- enforce safe concurrency with per-loop locks and revision-checked state transitions,
+- run loop workers as Kubernetes Jobs and preserve execution evidence (journal, handoff, override, audit).
 
 In this repository, the focus is the MVP control plane, deployment assets, and verification/test harnesses.
 
@@ -21,7 +21,7 @@ Smith intentionally does not personify agents.
 - Anthropomorphizing agents is treated as an implementation constraint that reduces operational flexibility and performance.
 - The target model is uniform replication: many equivalent workers, same contract, same capabilities, horizontally scalable.
 - The system design favors role-neutral orchestration primitives (state, locks, jobs, handoffs) over persona-specific behavior.
-- The platform direction is informed by Ralph, `marcus/sidecar`, `marcus/td`, and related projects, but is engineered to scale beyond a single developer machine.
+- The platform direction is informed by [Ralph](https://github.com/snarktank/ralph), [marcus/sidecar](https://github.com/marcus/sidecar), [marcus/td](https://github.com/marcus/td), and related projects, but is engineered to scale beyond a single developer machine.
 
 Smith also moves beyond a single-machine file-system model by using etcd + Kubernetes as the control substrate, so execution can scale across distributed compute while preserving deterministic state and traceability.
 
@@ -51,13 +51,18 @@ Smith is split into control-plane and data-plane components.
 
 ## Key API Endpoints
 
+Implemented today:
 - `POST /v1/loops` single/batch direct loop creation.
 - `POST /v1/loops` supports environment profiles (`preset`, `mise`, `container_image`, `dockerfile`) with server-side validation/defaulting.
 - `POST /v1/ingress/github/issues` ingest one or more GitHub issues into loop specs.
 - `POST /v1/ingress/prd` ingest markdown/json PRD inputs into loop specs.
 - `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
-- `GET /v1/loops/{id}/handoffs`, `GET /v1/loops/{id}/overrides`, and `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
 - `POST /v1/control/override` for operator state overrides with reason/audit trail.
+- `POST /v1/auth/codex/connect/start|complete`, `GET /v1/auth/codex/status`, and `POST /v1/auth/codex/disconnect` for provider auth lifecycle.
+- `GET /v1/reporting/cost?loop_id={id}` for loop token/cost aggregation from journal metadata.
+
+Aspirational (planned, not implemented yet):
+- `GET /v1/loops/{id}/handoffs`, `GET /v1/loops/{id}/overrides`, and `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
 - `POST /v1/loops/{id}/control/attach`, `/detach`, and `/command` for authenticated operator interactive control actions.
 - `GET /v1/audit?loop_id={id}` for immutable operator/auth action audit records.
 
@@ -79,3 +84,11 @@ Temporarily bypass hooks if needed:
 SKIP_GIT_HOOKS=1 git commit -m "..."
 SKIP_GIT_HOOKS=1 git push
 ```
+
+## Technology Stack and Thanks
+
+See the dedicated documentation page for:
+- the current technology stack (Kubernetes, Helm, vCluster, etcd, Go, Docker, and related tooling),
+- acknowledgments and inspiration credits, including [marcus/td](https://github.com/marcus/td), [marcus/sidecar](https://github.com/marcus/sidecar), and [Ralph](https://github.com/snarktank/ralph).
+
+Reference: [docs/technology-stack-and-thanks.md](docs/technology-stack-and-thanks.md)
