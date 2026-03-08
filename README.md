@@ -46,6 +46,7 @@ Smith is split into control-plane and data-plane components.
 - `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
 - `GET /v1/loops/{id}/handoffs`, `GET /v1/loops/{id}/overrides`, and `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
 - `POST /v1/control/override` for operator state overrides with reason/audit trail.
+- `POST /v1/loops/{id}/control/attach`, `/detach`, and `/command` for authenticated operator interactive control actions.
 - `GET /v1/audit?loop_id={id}` for immutable operator/auth action audit records.
 
 ## Local Git Hooks

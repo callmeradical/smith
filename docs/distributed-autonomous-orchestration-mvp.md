@@ -103,3 +103,26 @@ Helm chart requirements:
 - Journal + handoff trace exists for every loop execution.
 - Operator actions are authenticated, authorized, and audited.
 - Reconciliation prevents persistent zombie/drift states.
+
+## Delivery Verification (2026-03-08)
+
+Task record:
+- `td-395d2a` - Smith MVP: distributed autonomous orchestration
+
+Validation gates executed:
+- `go test ./...` passed (API, Core, Replica, reconcile, e2e, acceptance packages).
+- `helm template smith ./helm/smith -f helm/smith/values/local.yaml` passed (322 rendered lines).
+- `./scripts/validate-acceptance.sh` passed (0 failures; 2 warnings for optional runtime checks skipped without active cluster/runtime session).
+
+Operator control surface verified:
+- `POST /v1/control/override` (state override with audit + journal event)
+- `POST /v1/loops/{id}/control/attach` (interactive attach with audit + journal event)
+- `POST /v1/loops/{id}/control/detach` (interactive detach with audit + journal event)
+- `POST /v1/loops/{id}/control/command` (interactive command intent with audit + journal event)
+
+Traceability evidence queries verified:
+- `GET /v1/loops/{id}/trace`
+- `GET /v1/loops/{id}/journal`
+- `GET /v1/loops/{id}/handoffs`
+- `GET /v1/loops/{id}/overrides`
+- `GET /v1/audit?loop_id={id}`
