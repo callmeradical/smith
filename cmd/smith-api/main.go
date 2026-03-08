@@ -1288,9 +1288,11 @@ func (s *server) handleCodexAuthComplete(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"connected":  true,
-		"expires_at": token.ExpiresAt.UTC().Format(time.RFC3339),
-		"account_id": token.AccountID,
+		"connected":       true,
+		"expires_at":      token.ExpiresAt.UTC().Format(time.RFC3339),
+		"account_id":      token.AccountID,
+		"connected_at":    formatRFC3339OrEmpty(token.ConnectedAt),
+		"last_refresh_at": formatRFC3339OrEmpty(token.LastRefreshAt),
 	})
 }
 
@@ -1303,16 +1305,22 @@ func (s *server) handleCodexAuthStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	connected, expiresAt, err := s.auth.Status(r.Context())
+	status, err := s.auth.Status(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"connected":  connected,
-		"expires_at": expiresAt.UTC().Format(time.RFC3339),
-		"provider":   provider.ProviderCodex,
-	})
+	out := map[string]any{
+		"connected": status.Connected,
+		"provider":  provider.ProviderCodex,
+	}
+	if status.Connected {
+		out["expires_at"] = status.ExpiresAt.UTC().Format(time.RFC3339)
+		out["account_id"] = status.AccountID
+		out["connected_at"] = formatRFC3339OrEmpty(status.ConnectedAt)
+		out["last_refresh_at"] = formatRFC3339OrEmpty(status.LastRefreshAt)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *server) handleCodexAuthDisconnect(w http.ResponseWriter, r *http.Request) {
@@ -1559,6 +1567,13 @@ func parseRFC3339(raw string) time.Time {
 		return time.Time{}
 	}
 	return t
+}
+
+func formatRFC3339OrEmpty(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 func envDuration(name string, fallback time.Duration) time.Duration {

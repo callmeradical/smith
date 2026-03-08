@@ -16,10 +16,20 @@ var (
 )
 
 type Token struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	AccountID    string    `json:"account_id"`
+	AccessToken   string    `json:"access_token"`
+	RefreshToken  string    `json:"refresh_token"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	AccountID     string    `json:"account_id"`
+	ConnectedAt   time.Time `json:"connected_at,omitempty"`
+	LastRefreshAt time.Time `json:"last_refresh_at,omitempty"`
+}
+
+type AuthStatus struct {
+	Connected     bool
+	ExpiresAt     time.Time
+	AccountID     string
+	ConnectedAt   time.Time
+	LastRefreshAt time.Time
 }
 
 type DeviceAuthSession struct {
@@ -95,6 +105,9 @@ func (m *AuthManager) CompleteConnect(ctx context.Context, actor string, deviceC
 	if err := validateToken(token); err != nil {
 		return Token{}, err
 	}
+	now := m.clock().UTC()
+	token.ConnectedAt = now
+	token.LastRefreshAt = now
 	if err := m.store.Put(ctx, m.providerID, token); err != nil {
 		return Token{}, err
 	}
@@ -102,15 +115,24 @@ func (m *AuthManager) CompleteConnect(ctx context.Context, actor string, deviceC
 	return token, nil
 }
 
-func (m *AuthManager) Status(ctx context.Context) (connected bool, expiresAt time.Time, err error) {
+func (m *AuthManager) Status(ctx context.Context) (AuthStatus, error) {
 	token, found, err := m.store.Get(ctx, m.providerID)
 	if err != nil {
-		return false, time.Time{}, err
+		return AuthStatus{}, err
 	}
 	if !found || strings.TrimSpace(token.AccessToken) == "" {
-		return false, time.Time{}, nil
+		return AuthStatus{}, nil
 	}
-	return true, token.ExpiresAt, nil
+	if token.LastRefreshAt.IsZero() {
+		token.LastRefreshAt = token.ConnectedAt
+	}
+	return AuthStatus{
+		Connected:     true,
+		ExpiresAt:     token.ExpiresAt,
+		AccountID:     token.AccountID,
+		ConnectedAt:   token.ConnectedAt,
+		LastRefreshAt: token.LastRefreshAt,
+	}, nil
 }
 
 func (m *AuthManager) Disconnect(ctx context.Context, actor string) error {
@@ -145,6 +167,11 @@ func (m *AuthManager) EnsureValidToken(ctx context.Context, actor string) (Token
 	}
 	if err := validateToken(refreshed); err != nil {
 		return Token{}, err
+	}
+	refreshed.ConnectedAt = token.ConnectedAt
+	refreshed.LastRefreshAt = m.clock().UTC()
+	if refreshed.ConnectedAt.IsZero() {
+		refreshed.ConnectedAt = refreshed.LastRefreshAt
 	}
 	if err := m.store.Put(ctx, m.providerID, refreshed); err != nil {
 		return Token{}, err

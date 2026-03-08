@@ -25,9 +25,12 @@ func TestAuthManagerConnectStatusRefreshDisconnect(t *testing.T) {
 	mgr.refreshSkew = 30 * time.Second
 
 	ctx := context.Background()
-	_, _, err := mgr.Status(ctx)
+	status, err := mgr.Status(ctx)
 	if err != nil {
 		t.Fatalf("status before connect: %v", err)
+	}
+	if status.Connected {
+		t.Fatal("expected disconnected status before connect")
 	}
 
 	session, err := mgr.StartConnect(ctx, "operator-a")
@@ -46,12 +49,18 @@ func TestAuthManagerConnectStatusRefreshDisconnect(t *testing.T) {
 		t.Fatal("expected access token")
 	}
 
-	connected, _, err := mgr.Status(ctx)
+	status, err = mgr.Status(ctx)
 	if err != nil {
 		t.Fatalf("status after connect: %v", err)
 	}
-	if !connected {
+	if !status.Connected {
 		t.Fatal("expected connected=true")
+	}
+	if status.AccountID == "" {
+		t.Fatal("expected account id in status")
+	}
+	if status.LastRefreshAt.IsZero() {
+		t.Fatal("expected last refresh metadata in status")
 	}
 
 	stored, found, err := store.Get(ctx, ProviderCodex)
@@ -74,11 +83,11 @@ func TestAuthManagerConnectStatusRefreshDisconnect(t *testing.T) {
 	if err := mgr.Disconnect(ctx, "operator-a"); err != nil {
 		t.Fatalf("disconnect: %v", err)
 	}
-	connected, _, err = mgr.Status(ctx)
+	status, err = mgr.Status(ctx)
 	if err != nil {
 		t.Fatalf("status after disconnect: %v", err)
 	}
-	if connected {
+	if status.Connected {
 		t.Fatal("expected connected=false after disconnect")
 	}
 

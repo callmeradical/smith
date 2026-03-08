@@ -137,6 +137,41 @@
       gap: 10px;
       min-height: 64vh;
     }
+    .auth-panel {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .auth-headline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.9rem;
+    }
+    .auth-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      font-size: 0.78rem;
+    }
+    .auth-metrics span {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 5px 7px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .auth-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr auto auto auto auto;
+      gap: 6px;
+    }
     .grid {
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -321,6 +356,12 @@
       .metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
+      .auth-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .auth-actions {
+        grid-template-columns: 1fr 1fr;
+      }
       .override-bar {
         grid-template-columns: 1fr 1fr;
       }
@@ -365,6 +406,30 @@
       <div class="stat"><small>Last Refresh</small><strong id="stat-refresh">-</strong></div>
     </section>
 
+    <section class="auth-panel">
+      <div class="auth-headline">
+        <strong>Provider Auth (Codex)</strong>
+        <span id="auth-status" class="muted">status idle</span>
+      </div>
+      <div class="auth-metrics">
+        <span><b>Connected</b><i id="auth-connected">--</i></span>
+        <span><b>Account</b><i id="auth-account">--</i></span>
+        <span><b>Expires</b><i id="auth-expires">--</i></span>
+        <span><b>Last Refresh</b><i id="auth-refresh">--</i></span>
+      </div>
+      <div class="auth-actions">
+        <input id="auth-actor" type="text" placeholder="actor (default: operator)">
+        <input id="auth-device-code" type="text" placeholder="device code">
+        <button id="auth-status-refresh">status</button>
+        <button id="auth-connect-start">connect</button>
+        <button id="auth-connect-complete">complete</button>
+        <button id="auth-reconnect">reconnect</button>
+        <button id="auth-disconnect">disconnect</button>
+        <button id="auth-open-verify">open verify URL</button>
+      </div>
+      <div class="muted" id="auth-flow-message"></div>
+    </section>
+
     <section class="main">
       <div id="grid" class="grid" role="list" aria-label="Anomaly grid"></div>
       <div class="journal">
@@ -403,7 +468,8 @@
       journalLastSeq: 0,
       latencySamplesMs: [],
       journalSource: null,
-      reconnectTimer: null
+      reconnectTimer: null,
+      authSession: null
     };
 
     const gridEl = document.getElementById("grid");
@@ -411,6 +477,12 @@
     const apiDotEl = document.getElementById("api-dot");
     const journalLatencyEl = document.getElementById("journal-latency");
     const journalStatusEl = document.getElementById("journal-status");
+    const authStatusEl = document.getElementById("auth-status");
+    const authConnectedEl = document.getElementById("auth-connected");
+    const authAccountEl = document.getElementById("auth-account");
+    const authExpiresEl = document.getElementById("auth-expires");
+    const authRefreshEl = document.getElementById("auth-refresh");
+    const authFlowMessageEl = document.getElementById("auth-flow-message");
     document.getElementById("api-url").textContent = apiBase || "(api unset)";
     document.getElementById("auth-token").value = config.operatorToken || "";
 
@@ -449,6 +521,112 @@
         throw err;
       }
       return body;
+    }
+
+    function authActor() {
+      return document.getElementById("auth-actor").value.trim() || "operator";
+    }
+
+    function shortTime(raw) {
+      const ms = Date.parse(raw || "");
+      if (!Number.isFinite(ms)) return "--";
+      return new Date(ms).toLocaleString();
+    }
+
+    function setAuthStatus(message, level) {
+      authStatusEl.textContent = message;
+      authStatusEl.style.color =
+        level === "ok" ? "var(--ok)" :
+        level === "err" ? "var(--err)" :
+        "var(--muted)";
+    }
+
+    function renderAuthStatus(payload) {
+      const connected = Boolean(payload && payload.connected);
+      authConnectedEl.textContent = connected ? "yes" : "no";
+      authAccountEl.textContent = connected ? String(payload.account_id || "--") : "--";
+      authExpiresEl.textContent = connected ? shortTime(payload.expires_at) : "--";
+      authRefreshEl.textContent = connected ? shortTime(payload.last_refresh_at) : "--";
+      setAuthStatus(connected ? "connected" : "disconnected", connected ? "ok" : "muted");
+    }
+
+    async function refreshAuthStatus() {
+      try {
+        const status = await fetchJSON("/v1/auth/codex/status");
+        renderAuthStatus(status);
+      } catch (err) {
+        if (err && err.message && err.message.includes("HTTP 401")) {
+          setAuthStatus("unauthorized", "err");
+        } else {
+          setAuthStatus("status error", "err");
+        }
+      }
+    }
+
+    async function startConnect() {
+      try {
+        const session = await postJSON("/v1/auth/codex/connect/start", { actor: authActor() });
+        state.authSession = session;
+        document.getElementById("auth-device-code").value = session.device_code || "";
+        authFlowMessageEl.textContent =
+          "Enter code " + (session.user_code || "--") +
+          " at " + (session.verification_uri || "--") +
+          " then click complete.";
+        setAuthStatus("connect started", "ok");
+      } catch (err) {
+        setAuthStatus("connect start failed", "err");
+        authFlowMessageEl.textContent = err.message || "connect start error";
+      }
+    }
+
+    async function completeConnect() {
+      const deviceCode = document.getElementById("auth-device-code").value.trim() || (state.authSession && state.authSession.device_code) || "";
+      if (!deviceCode) {
+        setAuthStatus("device code required", "err");
+        return;
+      }
+      try {
+        await postJSON("/v1/auth/codex/connect/complete", {
+          actor: authActor(),
+          device_code: deviceCode
+        });
+        authFlowMessageEl.textContent = "Provider connected.";
+        state.authSession = null;
+        await refreshAuthStatus();
+      } catch (err) {
+        setAuthStatus("connect complete failed", "err");
+        authFlowMessageEl.textContent = err.message || "connect complete error";
+      }
+    }
+
+    async function disconnectProvider() {
+      try {
+        await postJSON("/v1/auth/codex/disconnect", { actor: authActor() });
+        state.authSession = null;
+        authFlowMessageEl.textContent = "Provider disconnected.";
+        await refreshAuthStatus();
+        return true;
+      } catch (err) {
+        setAuthStatus("disconnect failed", "err");
+        authFlowMessageEl.textContent = err.message || "disconnect error";
+        return false;
+      }
+    }
+
+    async function reconnectProvider() {
+      const disconnected = await disconnectProvider();
+      if (disconnected) {
+        await startConnect();
+      }
+    }
+
+    function openVerifyURL() {
+      const uri = state.authSession && state.authSession.verification_uri;
+      if (!uri) {
+        authFlowMessageEl.textContent = "No active device flow. Click connect first.";
+        return;
+      }
+      window.open(uri, "_blank", "noopener,noreferrer");
     }
 
     function normalizeLoop(item) {
@@ -719,9 +897,17 @@
     document.getElementById("refresh").addEventListener("click", refreshLoops);
     document.getElementById("state-filter").addEventListener("change", renderGrid);
     document.getElementById("search").addEventListener("input", renderGrid);
+    document.getElementById("auth-token").addEventListener("change", refreshAuthStatus);
     document.getElementById("override-apply").addEventListener("click", applyOverride);
+    document.getElementById("auth-status-refresh").addEventListener("click", refreshAuthStatus);
+    document.getElementById("auth-connect-start").addEventListener("click", startConnect);
+    document.getElementById("auth-connect-complete").addEventListener("click", completeConnect);
+    document.getElementById("auth-disconnect").addEventListener("click", disconnectProvider);
+    document.getElementById("auth-reconnect").addEventListener("click", reconnectProvider);
+    document.getElementById("auth-open-verify").addEventListener("click", openVerifyURL);
 
     refreshLoops();
+    refreshAuthStatus();
     setInterval(() => {
       if (document.getElementById("auto-refresh").checked) refreshLoops();
     }, 2000);
