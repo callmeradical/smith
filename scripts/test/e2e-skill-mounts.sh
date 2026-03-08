@@ -11,11 +11,11 @@ mkdir -p "$ARTIFACTS_DIR"
 
 cd "$ROOT_DIR"
 
-go test ./internal/source/e2e -run TestIngressModesLoopCreationAndExecution -count=1
+go test ./internal/source/e2e -run TestLoopSkillMountBehavior -count=1
 
 {
-  echo "ingress_modes_e2e:pass"
+  echo "skill_mounts_e2e:pass"
   echo "timestamp:$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-} > "$ARTIFACTS_DIR/e2e-ingress-summary.txt"
+} > "$ARTIFACTS_DIR/e2e-skill-mounts-summary.txt"
 
-echo "ingress modes e2e complete"
+echo "skill mounts e2e complete"

@@ -41,9 +41,9 @@ Provide a consistent, low-friction local workflow for Smith using `make` as the 
 - `make test`
   - Run default local test suite.
 - `make test-integration`
-  - Run integration suite against local k3d/vcluster env.
+  - Run integration suite against local k3d/vcluster env and print artifact path.
 - `make test-e2e`
-  - Run selected e2e loop scenarios locally.
+  - Run loop e2e scenarios (single, concurrent, ingress, environment, skill mounts) and print artifact path.
 
 ### Quality and Hygiene
 - `make lint`
@@ -62,4 +62,3 @@ Provide a consistent, low-friction local workflow for Smith using `make` as the 
 
 - Replacing CI/release workflows with local-only scripts.
 - Supporting all cloud-specific production paths from local make targets.
-

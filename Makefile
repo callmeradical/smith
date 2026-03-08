@@ -9,6 +9,9 @@ SMITH_STAGING_VALUES ?= helm/smith/values/staging.yaml
 SMITH_PROD_VALUES ?= helm/smith/values/prod.yaml
 SMITH_TEST_ARTIFACTS_DIR ?= /tmp/smith-test-artifacts
 SMITH_FIXTURE_DIR ?= /tmp/smith-test-repo
+SMITH_MIN_GO_VERSION ?= 1.22.0
+SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
+SMITH_MIN_HELM_VERSION ?= 3.13.0
 
 .PHONY: help \
 	doctor bootstrap \
@@ -36,10 +39,40 @@ doctor: ## Validate local prerequisites for make-first workflow
 	  echo "doctor failed: install missing prerequisites before continuing"; \
 	  exit 1; \
 	fi; \
+	ver_ge() { \
+	  local current="$$1"; local required="$$2"; \
+	  [[ "$$(printf '%s\n%s\n' "$$required" "$$current" | sort -V | head -n1)" == "$$required" ]]; \
+	}; \
+	go_v="$$(go version | awk '{print $$3}' | sed 's/^go//')"; \
+	if ! ver_ge "$$go_v" "$(SMITH_MIN_GO_VERSION)"; then \
+	  echo "doctor failed: go $$go_v is below required $(SMITH_MIN_GO_VERSION)"; \
+	  echo "remediation: install newer Go from https://go.dev/dl/"; \
+	  exit 1; \
+	fi; \
+	kubectl_v="$$(kubectl version --client=true -o yaml 2>/dev/null | awk '/gitVersion:/{print $$2; exit}' | sed 's/^v//')"; \
+	if [[ -n "$$kubectl_v" ]] && ! ver_ge "$$kubectl_v" "$(SMITH_MIN_KUBECTL_VERSION)"; then \
+	  echo "doctor failed: kubectl $$kubectl_v is below required $(SMITH_MIN_KUBECTL_VERSION)"; \
+	  echo "remediation: upgrade kubectl via package manager or Kubernetes release binaries"; \
+	  exit 1; \
+	fi; \
+	helm_v="$$(helm version --short 2>/dev/null | sed -E 's/^v([0-9]+\.[0-9]+\.[0-9]+).*/\\1/')"; \
+	if [[ -n "$$helm_v" ]] && ! ver_ge "$$helm_v" "$(SMITH_MIN_HELM_VERSION)"; then \
+	  echo "doctor failed: helm $$helm_v is below required $(SMITH_MIN_HELM_VERSION)"; \
+	  echo "remediation: upgrade helm via package manager or https://helm.sh/docs/intro/install/"; \
+	  exit 1; \
+	fi; \
 	echo "doctor passed: required local tools found"
 
 bootstrap: ## Install missing k3d/vcluster prerequisites
-	./scripts/integration/prereqs.sh
+	@set -euo pipefail; \
+	./scripts/integration/prereqs.sh; \
+	mkdir -p "$$HOME/.smith"; \
+	if [[ ! -f "$$HOME/.smith/config.json" ]]; then \
+	  printf '%s\n' '{"current_context":"default","contexts":{"default":{"server":"http://127.0.0.1:8080","token":""}}}' > "$$HOME/.smith/config.json"; \
+	  echo "bootstrap: created $$HOME/.smith/config.json"; \
+	else \
+	  echo "bootstrap: preserved existing $$HOME/.smith/config.json"; \
+	fi
 
 cluster: cluster-up ## Alias for cluster-up
 
@@ -143,16 +176,23 @@ test-matrix: ## Run script-based local matrix (fixture + e2e + verification)
 	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" \
 	SMITH_FIXTURE_DIR="$(SMITH_FIXTURE_DIR)" \
 	./scripts/test/run-matrix.sh
+	@echo "artifacts: $(SMITH_TEST_ARTIFACTS_DIR)"
 
 test-integration: ## Run vcluster-backed integration workflow
+	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" \
 	./scripts/integration/run-tests.sh
+	@echo "artifacts: $(SMITH_TEST_ARTIFACTS_DIR)"
 
 test-observability-latency: ## Measure end-to-end journal propagation latency to console stream
 	./scripts/integration/measure-observability-latency.sh
 
 test-e2e: ## Run local e2e scripts directly
-	./scripts/test/e2e-single-loop.sh
-	./scripts/test/e2e-concurrent-loops.sh
+	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-single-loop.sh
+	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-concurrent-loops.sh
+	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-ingress-modes.sh
+	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-environment-modes.sh
+	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-skill-mounts.sh
+	@echo "artifacts: $(SMITH_TEST_ARTIFACTS_DIR)"
 
 test-bdd: ## Run godog-based BDD acceptance suite
 	go test ./test/acceptance -run TestFeatures -count=1

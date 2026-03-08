@@ -6,6 +6,7 @@ VCLUSTER_NAME="${SMITH_VCLUSTER_NAME:-smith-vc}"
 VCLUSTER_NAMESPACE="${SMITH_VCLUSTER_NAMESPACE:-smith-vcluster}"
 ETCD_NAMESPACE="${SMITH_ETCD_NAMESPACE:-smith-system}"
 ETCD_RELEASE_NAME="${SMITH_ETCD_RELEASE_NAME:-smith-etcd}"
+USE_VCLUSTER="${SMITH_USE_VCLUSTER:-true}"
 
 info() { echo "[env-down] $*"; }
 
@@ -29,13 +30,15 @@ if command -v helm >/dev/null 2>&1; then
   run_with_timeout 60 helm uninstall "$ETCD_RELEASE_NAME" -n "$ETCD_NAMESPACE"
 fi
 
-if command -v vcluster >/dev/null 2>&1; then
+if [[ "$USE_VCLUSTER" == "true" ]] && command -v vcluster >/dev/null 2>&1; then
   run_with_timeout 90 vcluster delete "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE"
 fi
 
 if command -v kubectl >/dev/null 2>&1; then
   run_with_timeout 45 kubectl delete namespace "$ETCD_NAMESPACE" --ignore-not-found
-  run_with_timeout 45 kubectl delete namespace "$VCLUSTER_NAMESPACE" --ignore-not-found
+  if [[ "$USE_VCLUSTER" == "true" ]]; then
+    run_with_timeout 45 kubectl delete namespace "$VCLUSTER_NAMESPACE" --ignore-not-found
+  fi
 fi
 
 if command -v k3d >/dev/null 2>&1; then

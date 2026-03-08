@@ -110,6 +110,7 @@ Phase 4: CI and retirement
 
 - Update CI to use `go test`-based acceptance targets.
 - Retire bash implementations once parity matrix is green for two consecutive releases.
+- Transitional wrapper retirement date for ingress/environment/skill wrappers: **June 30, 2026**.
 
 ## Command Surface
 
@@ -133,6 +134,7 @@ Wrapper compatibility (temporary):
 
 - `scripts/test/run-matrix.sh` becomes a thin invoker for the Go suites.
 - Existing shell commands remain documented until full retirement.
+- Transitional wrappers must include `RETIRE_AFTER=2026-06-30` annotations.
 
 ## Approval Criteria
 

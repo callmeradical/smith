@@ -21,6 +21,7 @@ Preferred baseline:
 - Enable cluster/node autoscaler for worker node groups.
 - Set min/max node boundaries aligned with expected loop concurrency.
 - Reserve headroom for system components to avoid scheduler starvation.
+- Use `docs/cluster-autoscaler-prerequisites-runbook.md` as the operational runbook for rollout, failure modes, and troubleshooting.
 
 Recommended node group bounds:
 - `local`: min 1, max 3 nodes.
