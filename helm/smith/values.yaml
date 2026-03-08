@@ -1,0 +1,113 @@
+global:
+  environment: local
+  imagePullSecrets: []
+  featureFlags:
+    loopPolicyConfig: true
+    operatorOverrides: true
+    auditStream: true
+    interactiveAttach: false
+
+etcd:
+  endpoints:
+    - http://etcd:2379
+  tls:
+    enabled: false
+    caSecretName: ""
+    certSecretName: ""
+
+secrets:
+  existingSecret: ""
+  create: false
+  managed:
+    gitPat: ""
+    runtimeCredentials: ""
+  keys:
+    gitPat: git_pat
+    runtimeCredentials: runtime_credentials
+
+core:
+  replicaCount: 1
+  enabled: true
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
+  image:
+    repository: ghcr.io/smith/core
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+  loopPolicy:
+    maxAttempts: 3
+    backoffInitial: 5s
+    backoffMax: 2m
+    timeout: 30m
+    terminateOnError: false
+  replicaTemplate:
+    serviceAccountName: ""
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    env: []
+  resources: {}
+  env: []
+
+api:
+  replicaCount: 1
+  enabled: true
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
+  image:
+    repository: ghcr.io/smith/api
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  serviceAccount:
+    create: true
+    name: ""
+  resources: {}
+  env: []
+
+console:
+  replicaCount: 1
+  enabled: true
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
+  image:
+    repository: ghcr.io/smith/console
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  serviceAccount:
+    create: true
+    name: ""
+  resources: {}
+  env: []
+
+rbac:
+  create: true
+
+nameOverride: ""
+fullnameOverride: ""

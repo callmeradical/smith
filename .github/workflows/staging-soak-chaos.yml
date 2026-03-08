@@ -1,0 +1,102 @@
+name: Staging Soak Chaos
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      soak_iterations:
+        description: 'Number of soak iterations'
+        required: false
+        default: '3'
+      soak_interval_seconds:
+        description: 'Seconds between iterations'
+        required: false
+        default: '60'
+
+jobs:
+  staging-vcluster-soak-chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install integration prerequisites
+        run: ./scripts/integration/prereqs.sh
+
+      - name: Provision staging k3d + vCluster + etcd
+        timeout-minutes: 20
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-staging
+          SMITH_VCLUSTER_NAME: smith-staging-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-staging-vcluster
+          SMITH_ETCD_NAMESPACE: smith-staging-system
+          SMITH_ETCD_RELEASE_NAME: smith-staging-etcd
+          SMITH_ETCD_MODE: simple
+          SMITH_VCLUSTER_CONNECT: "true"
+        run: ./scripts/integration/env-up.sh
+
+      - name: Run soak + chaos in vCluster
+        timeout-minutes: 120
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-staging
+          SMITH_VCLUSTER_NAME: smith-staging-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-staging-vcluster
+          SMITH_ETCD_NAMESPACE: smith-staging-system
+          SMITH_ETCD_RELEASE_NAME: smith-staging-etcd
+          SMITH_SOAK_ITERATIONS: ${{ github.event.inputs.soak_iterations || '3' }}
+          SMITH_SOAK_INTERVAL_SECONDS: ${{ github.event.inputs.soak_interval_seconds || '60' }}
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-staging-artifacts
+        run: ./scripts/integration/staging-soak-chaos.sh
+
+      - name: Upload staging artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-staging-soak-chaos-artifacts
+          path: /tmp/smith-staging-artifacts
+
+      - name: Tear down staging environment
+        if: always()
+        timeout-minutes: 15
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-staging
+          SMITH_VCLUSTER_NAME: smith-staging-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-staging-vcluster
+          SMITH_ETCD_NAMESPACE: smith-staging-system
+          SMITH_ETCD_RELEASE_NAME: smith-staging-etcd
+        run: ./scripts/integration/env-down.sh
+
+  parity-spot-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run non-vCluster parity spot-check
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-parity-artifacts
+          SMITH_FIXTURE_DIR: /tmp/smith-parity-repo
+        run: ./scripts/test/parity-spot-check.sh
+
+      - name: Upload parity artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-parity-spot-check-artifacts
+          path: /tmp/smith-parity-artifacts

@@ -1,0 +1,93 @@
+name: Ephemeral Integration Environment
+
+on:
+  pull_request:
+    paths:
+      - 'internal/**'
+      - 'scripts/integration/**'
+      - 'scripts/test/**'
+      - 'test/fixtures/**'
+      - '.github/workflows/ephemeral-integration-env.yml'
+  workflow_dispatch:
+
+jobs:
+  integration-vcluster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install integration prerequisites
+        run: ./scripts/integration/prereqs.sh
+
+      - name: Provision ephemeral k3d + vCluster + etcd
+        timeout-minutes: 15
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+          SMITH_ETCD_MODE: simple
+          SMITH_VCLUSTER_CONNECT: "true"
+        run: ./scripts/integration/env-up.sh
+
+      - name: Run vCluster watch/reconcile integration tests
+        timeout-minutes: 10
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+        run: ./scripts/integration/test-watch-reconcile.sh
+
+      - name: Run cluster-enabled test matrix
+        timeout-minutes: 10
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts
+          SMITH_FIXTURE_DIR: /tmp/smith-test-repo
+          SMITH_ENABLE_CLUSTER_TESTS: "true"
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+        run: ./scripts/test/run-matrix.sh
+
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p /tmp/smith-ci-diag
+          kubectl get nodes -o wide > /tmp/smith-ci-diag/nodes.txt || true
+          kubectl get pods -A -o wide > /tmp/smith-ci-diag/pods.txt || true
+          kubectl get events -A --sort-by=.lastTimestamp > /tmp/smith-ci-diag/events.txt || true
+
+      - name: Upload diagnostics and artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-ephemeral-integration-artifacts
+          path: |
+            /tmp/smith-ci-diag
+            /tmp/smith-test-artifacts
+
+      - name: Tear down ephemeral environment
+        if: always()
+        timeout-minutes: 10
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+        run: ./scripts/integration/env-down.sh
