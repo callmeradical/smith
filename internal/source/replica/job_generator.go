@@ -59,6 +59,7 @@ type JobRequest struct {
 	Image                   string
 	ImagePullPolicy         string
 	Git                     GitContext
+	SkillMounts             []SkillMount
 	GitAuth                 *GitAuthConfig
 	HandoffConfigMapName    string
 	RuntimeSecretName       string
@@ -103,6 +104,7 @@ type PodSpec struct {
 type Volume struct {
 	Name          string
 	ConfigMapName string
+	Optional      bool
 }
 
 type Container struct {
@@ -138,6 +140,14 @@ type JobsAPI interface {
 
 type JobGenerator struct {
 	jobs JobsAPI
+}
+
+type SkillMount struct {
+	Name      string
+	Source    string
+	Version   string
+	MountPath string
+	ReadOnly  bool
 }
 
 func NewJobGenerator(jobs JobsAPI) *JobGenerator {
@@ -227,6 +237,7 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 		{
 			Name:          "handoff",
 			ConfigMapName: req.HandoffConfigMapName,
+			Optional:      false,
 		},
 	}
 
@@ -236,6 +247,27 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 			MountPath: "/smith/handoff",
 			ReadOnly:  true,
 		},
+	}
+	resolvedSkillNames := make([]string, 0, len(req.SkillMounts))
+	for i, skill := range req.SkillMounts {
+		volumeName := fmt.Sprintf("skill-%d-%s", i, sanitizeName(skill.Name))
+		volumes = append(volumes, Volume{
+			Name:          volumeName,
+			ConfigMapName: skillConfigMapName(skill.Source),
+			Optional:      false,
+		})
+		volumeMounts = append(volumeMounts, VolumeMount{
+			Name:      volumeName,
+			MountPath: skill.MountPath,
+			ReadOnly:  skill.ReadOnly,
+		})
+		resolvedSkillNames = append(resolvedSkillNames, skill.Name)
+	}
+	if len(req.SkillMounts) > 0 {
+		env = append(env,
+			EnvVar{Name: "SMITH_SKILL_MOUNT_COUNT", Value: fmt.Sprintf("%d", len(req.SkillMounts))},
+			EnvVar{Name: "SMITH_SKILL_MOUNTS", Value: strings.Join(resolvedSkillNames, ",")},
+		)
 	}
 
 	return JobManifest{
@@ -320,6 +352,20 @@ func validateRequest(req JobRequest) error {
 	if req.BackoffLimit < 0 || req.ActiveDeadlineSeconds <= 0 || req.TTLSecondsAfterFinished < 0 {
 		return fmt.Errorf("%w: invalid retry/timeout settings", ErrInvalidJobRequest)
 	}
+	for _, skill := range req.SkillMounts {
+		if strings.TrimSpace(skill.Name) == "" {
+			return fmt.Errorf("%w: skill mount name is required", ErrInvalidJobRequest)
+		}
+		if strings.TrimSpace(skill.Source) == "" {
+			return fmt.Errorf("%w: skill mount source is required", ErrInvalidJobRequest)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(skill.Source), "local://skills/") {
+			return fmt.Errorf("%w: unsupported skill mount source %q", ErrInvalidJobRequest, skill.Source)
+		}
+		if strings.TrimSpace(skill.MountPath) == "" || !strings.HasPrefix(skill.MountPath, "/") {
+			return fmt.Errorf("%w: skill mount path must be absolute", ErrInvalidJobRequest)
+		}
+	}
 	if req.RuntimeSecretName != "" && strings.TrimSpace(req.RuntimeCredentialsKey) == "" {
 		return fmt.Errorf("%w: runtime credentials key is required when runtime secret is set", ErrInvalidJobRequest)
 	}
@@ -358,6 +404,16 @@ func validateRequest(req JobRequest) error {
 		return fmt.Errorf("%w: unsupported git auth provider %q", ErrInvalidJobRequest, req.GitAuth.Provider)
 	}
 	return nil
+}
+
+func skillConfigMapName(source string) string {
+	trimmed := strings.TrimSpace(source)
+	name := strings.TrimPrefix(trimmed, "local://skills/")
+	name = sanitizeName(name)
+	if name == "" {
+		name = "unknown"
+	}
+	return "skill-" + name
 }
 
 func sanitizeName(loopID string) string {

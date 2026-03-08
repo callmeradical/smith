@@ -14,6 +14,18 @@ const (
 
 var skillNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
+type SkillPolicy struct {
+	AllowedSourcePrefixes []string
+	AllowWritable         bool
+}
+
+type SkillNormalizationAudit struct {
+	RequestedCount        int
+	DefaultReadOnlyCount  int
+	WritableCount         int
+	WritableOverrideCount int
+}
+
 type LoopSkillMount struct {
 	Name      string `json:"name"`
 	Source    string `json:"source"`
@@ -22,37 +34,59 @@ type LoopSkillMount struct {
 	ReadOnly  *bool  `json:"read_only,omitempty"`
 }
 
+func DefaultSkillPolicy() SkillPolicy {
+	return SkillPolicy{
+		AllowedSourcePrefixes: []string{"local://skills/"},
+		AllowWritable:         false,
+	}
+}
+
 func NormalizeLoopSkills(skills []LoopSkillMount, providerID string) ([]LoopSkillMount, error) {
+	normalized, _, err := NormalizeLoopSkillsWithPolicy(skills, providerID, DefaultSkillPolicy())
+	return normalized, err
+}
+
+func NormalizeLoopSkillsWithPolicy(skills []LoopSkillMount, providerID string, policy SkillPolicy) ([]LoopSkillMount, SkillNormalizationAudit, error) {
 	provider := strings.ToLower(strings.TrimSpace(providerID))
 	if provider == "" {
 		provider = DefaultProviderID
 	}
 	if provider != DefaultProviderID {
-		return nil, fmt.Errorf("loop.skills unsupported for provider %q", provider)
+		return nil, SkillNormalizationAudit{}, fmt.Errorf("loop.skills unsupported for provider %q", provider)
 	}
 	if len(skills) == 0 {
-		return nil, nil
+		return nil, SkillNormalizationAudit{}, nil
 	}
+	normalizedPrefixes := normalizeSourcePrefixes(policy.AllowedSourcePrefixes)
+	audit := SkillNormalizationAudit{RequestedCount: len(skills)}
 
 	normalized := make([]LoopSkillMount, 0, len(skills))
 	seenNames := map[string]struct{}{}
 	for i, skill := range skills {
 		name := strings.TrimSpace(skill.Name)
 		if name == "" {
-			return nil, fmt.Errorf("loop.skills[%d].name is required", i)
+			return nil, SkillNormalizationAudit{}, fmt.Errorf("loop.skills[%d].name is required", i)
 		}
 		if !skillNamePattern.MatchString(name) {
-			return nil, fmt.Errorf("loop.skills[%d].name %q is invalid (allowed: alphanumeric, ., _, -)", i, name)
+			return nil, SkillNormalizationAudit{}, fmt.Errorf("loop.skills[%d].name %q is invalid (allowed: alphanumeric, ., _, -)", i, name)
 		}
 		canonicalName := strings.ToLower(name)
 		if _, exists := seenNames[canonicalName]; exists {
-			return nil, fmt.Errorf("loop.skills[%d].name %q is duplicated", i, name)
+			return nil, SkillNormalizationAudit{}, fmt.Errorf("loop.skills[%d].name %q is duplicated", i, name)
 		}
 		seenNames[canonicalName] = struct{}{}
 
 		source := strings.TrimSpace(skill.Source)
 		if source == "" {
-			return nil, fmt.Errorf("loop.skills[%d].source is required", i)
+			return nil, SkillNormalizationAudit{}, fmt.Errorf("loop.skills[%d].source is required", i)
+		}
+		if !sourceAllowed(source, normalizedPrefixes) {
+			return nil, SkillNormalizationAudit{}, fmt.Errorf(
+				"loop.skills[%d].source %q is not allowed (allowed prefixes: %s)",
+				i,
+				source,
+				strings.Join(normalizedPrefixes, ", "),
+			)
 		}
 
 		mountPath := strings.TrimSpace(skill.MountPath)
@@ -60,12 +94,22 @@ func NormalizeLoopSkills(skills []LoopSkillMount, providerID string) ([]LoopSkil
 			mountPath = path.Join(CodexDefaultSkillMountRoot, canonicalName)
 		}
 		if err := validateSkillMountPath(mountPath, i); err != nil {
-			return nil, err
+			return nil, SkillNormalizationAudit{}, err
 		}
 
 		readOnly := true
 		if skill.ReadOnly != nil {
 			readOnly = *skill.ReadOnly
+		}
+		if skill.ReadOnly == nil {
+			audit.DefaultReadOnlyCount++
+		}
+		if !readOnly {
+			if !policy.AllowWritable {
+				return nil, SkillNormalizationAudit{}, fmt.Errorf("loop.skills[%d].read_only=false is not allowed by policy", i)
+			}
+			audit.WritableCount++
+			audit.WritableOverrideCount++
 		}
 		version := strings.TrimSpace(skill.Version)
 
@@ -81,7 +125,7 @@ func NormalizeLoopSkills(skills []LoopSkillMount, providerID string) ([]LoopSkil
 	sort.Slice(normalized, func(i, j int) bool {
 		return strings.ToLower(normalized[i].Name) < strings.ToLower(normalized[j].Name)
 	})
-	return normalized, nil
+	return normalized, audit, nil
 }
 
 func validateSkillMountPath(mountPath string, index int) error {
@@ -103,4 +147,34 @@ func validateSkillMountPath(mountPath string, index int) error {
 
 func boolPtr(v bool) *bool {
 	return &v
+}
+
+func normalizeSourcePrefixes(prefixes []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		trimmed := strings.TrimSpace(prefix)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return append([]string{}, DefaultSkillPolicy().AllowedSourcePrefixes...)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sourceAllowed(source string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(source, prefix) {
+			return true
+		}
+	}
+	return false
 }

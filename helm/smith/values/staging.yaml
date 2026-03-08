@@ -1,5 +1,3 @@
-# Legacy alias retained for backward compatibility.
-# Prefer values/staging.yaml for all new deployments.
 global:
   environment: staging
 

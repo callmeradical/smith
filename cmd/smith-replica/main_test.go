@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestExecutionImageMetadataFromEnv(t *testing.T) {
 	t.Setenv("SMITH_EXECUTION_IMAGE_REF", "ghcr.io/acme/replica@sha256:abc")
@@ -8,7 +12,7 @@ func TestExecutionImageMetadataFromEnv(t *testing.T) {
 	t.Setenv("SMITH_EXECUTION_IMAGE_DIGEST", "sha256:abc")
 	t.Setenv("SMITH_EXECUTION_IMAGE_PULL_POLICY", "Always")
 
-	metadata := executionImageMetadataFromEnv()
+	metadata := runtimeMetadataFromEnv()
 	if metadata["execution_image_ref"] != "ghcr.io/acme/replica@sha256:abc" {
 		t.Fatalf("unexpected execution_image_ref: %q", metadata["execution_image_ref"])
 	}
@@ -29,7 +33,32 @@ func TestExecutionImageMetadataFromEnvEmpty(t *testing.T) {
 	t.Setenv("SMITH_EXECUTION_IMAGE_DIGEST", "")
 	t.Setenv("SMITH_EXECUTION_IMAGE_PULL_POLICY", "")
 
-	if metadata := executionImageMetadataFromEnv(); metadata != nil {
+	if metadata := runtimeMetadataFromEnv(); metadata != nil {
 		t.Fatalf("expected nil metadata, got %#v", metadata)
+	}
+}
+
+func TestReadHandoffFileMissingIsNil(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.json")
+	parsed, err := readHandoffFile(path)
+	if err != nil {
+		t.Fatalf("expected nil error for missing file, got %v", err)
+	}
+	if parsed != nil {
+		t.Fatalf("expected nil parsed handoff, got %#v", parsed)
+	}
+}
+
+func TestReadHandoffFileParsesJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "handoff.json")
+	if err := os.WriteFile(path, []byte(`{"loop_id":"loop-abc"}`), 0o644); err != nil {
+		t.Fatalf("write handoff file: %v", err)
+	}
+	parsed, err := readHandoffFile(path)
+	if err != nil {
+		t.Fatalf("readHandoffFile error: %v", err)
+	}
+	if parsed == nil || parsed.LoopID != "loop-abc" {
+		t.Fatalf("unexpected parsed handoff: %#v", parsed)
 	}
 }

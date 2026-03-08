@@ -9,7 +9,7 @@
       "properties": {
         "environment": {
           "type": "string",
-          "enum": ["local", "stage", "prod"]
+          "enum": ["local", "staging", "stage", "prod"]
         },
         "imagePullSecrets": {
           "type": "array",

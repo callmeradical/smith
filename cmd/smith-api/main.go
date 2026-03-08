@@ -21,6 +21,8 @@ import (
 	"smith/internal/source/model"
 	"smith/internal/source/provider"
 	"smith/internal/source/store"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 const (
@@ -35,13 +37,15 @@ type config struct {
 	operatorToken   string
 	authStorePath   string
 	defaultPreset   string
+	skillPolicy     model.SkillPolicy
 }
 
 type server struct {
-	cfg     config
-	store   *store.Store
-	auth    *provider.AuthManager
-	presets *presetCatalog
+	cfg         config
+	store       *store.Store
+	auth        *provider.AuthManager
+	presets     *presetCatalog
+	skillPolicy model.SkillPolicy
 }
 
 type overrideRequest struct {
@@ -153,7 +157,13 @@ func main() {
 		&auditBridge{store: es},
 	)
 
-	s := &server{cfg: cfg, store: es, auth: authManager, presets: newPresetCatalog(cfg.defaultPreset)}
+	s := &server{
+		cfg:         cfg,
+		store:       es,
+		auth:        authManager,
+		presets:     newPresetCatalog(cfg.defaultPreset),
+		skillPolicy: cfg.skillPolicy,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/readyz", s.handleReady)
@@ -390,7 +400,7 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
-	skills, err := model.NormalizeLoopSkills(req.Skills, selection.ProviderID)
+	skills, skillAudit, err := model.NormalizeLoopSkillsWithPolicy(req.Skills, selection.ProviderID, s.skillPolicy)
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
@@ -457,10 +467,13 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		Message:       "loop created from ingress",
 		CorrelationID: req.CorrelationID,
 		Metadata: map[string]string{
-			"source_type":       req.SourceType,
-			"source_ref":        req.SourceRef,
-			"environment_mode":  environment.ResolvedMode,
-			"skill_mount_count": strconv.Itoa(len(skills)),
+			"source_type":                       req.SourceType,
+			"source_ref":                        req.SourceRef,
+			"environment_mode":                  environment.ResolvedMode,
+			"skill_mount_count":                 strconv.Itoa(len(skills)),
+			"skill_default_read_only_count":     strconv.Itoa(skillAudit.DefaultReadOnlyCount),
+			"skill_writable_mount_count":        strconv.Itoa(skillAudit.WritableCount),
+			"skill_writable_override_audit_cnt": strconv.Itoa(skillAudit.WritableOverrideCount),
 		},
 	})
 
@@ -574,8 +587,136 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, journal)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "journal" && parts[2] == "stream" {
+		if r.Method != http.MethodGet {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		s.handleJournalStream(w, r, loopID)
+		return
+	}
 
 	writeErr(w, http.StatusNotFound, "endpoint not found")
+}
+
+func (s *server) handleJournalStream(w http.ResponseWriter, r *http.Request, loopID string) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	sinceSeq := parseInt64Default(r.URL.Query().Get("since_seq"), 0)
+	if sinceSeq < 0 {
+		sinceSeq = 0
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	send := func(event string, payload any) error {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+	_ = send("ready", map[string]any{"loop_id": loopID, "since_seq": sinceSeq})
+	initial, rev, err := s.listJournalSinceWithRevision(r.Context(), loopID, sinceSeq)
+	if err != nil {
+		_ = send("error", map[string]string{"error": err.Error()})
+		return
+	}
+	for _, entry := range initial {
+		if err := send("entry", map[string]any{
+			"entry":      entry,
+			"emitted_at": time.Now().UTC().Format(time.RFC3339Nano),
+		}); err != nil {
+			return
+		}
+		sinceSeq = entry.Sequence
+	}
+
+	watchCh := s.store.Client().Watch(
+		r.Context(),
+		model.JournalPrefix(loopID)+"/",
+		clientv3.WithPrefix(),
+		clientv3.WithRev(rev+1),
+	)
+
+	keepAlive := time.NewTicker(15 * time.Second)
+	defer keepAlive.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-keepAlive.C:
+			if _, err := fmt.Fprintf(w, ": keepalive %d\n\n", sinceSeq); err != nil {
+				return
+			}
+			flusher.Flush()
+		case resp, ok := <-watchCh:
+			if !ok {
+				return
+			}
+			if err := resp.Err(); err != nil {
+				_ = send("error", map[string]string{"error": err.Error()})
+				return
+			}
+			for _, event := range resp.Events {
+				if event.Type != clientv3.EventTypePut || len(event.Kv.Value) == 0 {
+					continue
+				}
+				var entry model.JournalEntry
+				if err := json.Unmarshal(event.Kv.Value, &entry); err != nil {
+					continue
+				}
+				if entry.Sequence <= sinceSeq {
+					continue
+				}
+				if err := send("entry", map[string]any{
+					"entry":      entry,
+					"emitted_at": time.Now().UTC().Format(time.RFC3339Nano),
+				}); err != nil {
+					return
+				}
+				sinceSeq = entry.Sequence
+			}
+		}
+	}
+}
+
+func (s *server) listJournalSinceWithRevision(ctx context.Context, loopID string, sinceSeq int64) ([]model.JournalEntry, int64, error) {
+	resp, err := s.store.Client().Get(
+		ctx,
+		model.JournalPrefix(loopID)+"/",
+		clientv3.WithPrefix(),
+		clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend),
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	entries := make([]model.JournalEntry, 0, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		var entry model.JournalEntry
+		if err := json.Unmarshal(kv.Value, &entry); err != nil {
+			continue
+		}
+		if entry.Sequence <= sinceSeq {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	return entries, resp.Header.Revision, nil
 }
 
 func (s *server) handleOverride(w http.ResponseWriter, r *http.Request) {
@@ -802,6 +943,11 @@ func loadConfig() (config, error) {
 	if len(endpoints) == 0 {
 		endpoints = []string{"http://127.0.0.1:2379"}
 	}
+	skillPolicy := model.DefaultSkillPolicy()
+	if raw := splitCSV(os.Getenv("SMITH_SKILL_ALLOWED_SOURCES")); len(raw) > 0 {
+		skillPolicy.AllowedSourcePrefixes = raw
+	}
+	skillPolicy.AllowWritable = envBool("SMITH_SKILL_ALLOW_WRITABLE", skillPolicy.AllowWritable)
 	return config{
 		port:            envInt("SMITH_API_PORT", defaultPort),
 		etcdEndpoints:   endpoints,
@@ -809,6 +955,7 @@ func loadConfig() (config, error) {
 		operatorToken:   strings.TrimSpace(os.Getenv("SMITH_OPERATOR_TOKEN")),
 		authStorePath:   envString("SMITH_AUTH_STORE_PATH", "/tmp/smith-auth/tokens.json"),
 		defaultPreset:   strings.TrimSpace(os.Getenv("SMITH_DEFAULT_ENV_PRESET")),
+		skillPolicy:     skillPolicy,
 	}, nil
 }
 
@@ -1017,6 +1164,18 @@ func envDuration(name string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func envBool(name string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func envInt(name string, fallback int) int {

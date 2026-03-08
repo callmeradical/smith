@@ -8,10 +8,26 @@ helm upgrade --install smith ./helm/smith -n smith-system --create-namespace
 
 ## Environment Overlays
 
+Prerequisites:
+
+- Kubernetes context points to the target environment cluster.
+- Runtime secret exists in target namespace (`secrets.existingSecret`) unless using local chart-managed secret flow.
+- Image pull credentials are configured when using private registries (`global.imagePullSecrets`).
+
+Single-command deploys by environment:
+
 ```bash
 helm upgrade --install smith ./helm/smith -n smith-system -f ./helm/smith/values/local.yaml
-helm upgrade --install smith ./helm/smith -n smith-system -f ./helm/smith/values/stage.yaml
+helm upgrade --install smith ./helm/smith -n smith-system -f ./helm/smith/values/staging.yaml
 helm upgrade --install smith ./helm/smith -n smith-system -f ./helm/smith/values/prod.yaml
+```
+
+Equivalent make targets:
+
+```bash
+make deploy-local
+make deploy-staging
+make deploy-prod
 ```
 
 ## Values Contract
@@ -47,8 +63,16 @@ Image tag defaults:
 
 Environment examples:
 - `values/local.yaml`: single-replica local baseline, faster retry cadence.
-- `values/stage.yaml`: pre-prod sizing with moderate retry bounds.
+- `values/staging.yaml`: pre-prod sizing with moderate retry bounds.
 - `values/prod.yaml`: production sizing with stricter retry/timeout defaults and HPA enabled.
+
+Minimal profile deltas:
+
+| Profile | Core/API/Console replicas | Secret mode | Autoscaling |
+| --- | --- | --- | --- |
+| `local` | `1/1/1` | chart-managed (`secrets.create=true`) | disabled |
+| `staging` | `2/2/1` | pre-created (`secrets.existingSecret`) | disabled |
+| `prod` | `3/3/2` | pre-created (`secrets.existingSecret`) | enabled for all components |
 
 Autoscaling behavior:
 - HPAs are emitted from `templates/hpa.yaml` when `<component>.autoscaling.enabled=true`.
@@ -88,6 +112,7 @@ Chart-managed secret rotation:
 Operational note:
 - Avoid passing secret values through shell history or plaintext checked-in values files.
 - Prefer CI secret stores or sealed/external secret controllers for production rotation.
+- See `docs/helm-upgrade-rollback-runbook.md` for upgrade/rollback and zero-downtime procedures.
 
 ## Notes
 

@@ -15,6 +15,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -23,6 +24,7 @@ import (
 	"smith/internal/source/core"
 	"smith/internal/source/locking"
 	"smith/internal/source/model"
+	"smith/internal/source/replica"
 	"smith/internal/source/store"
 )
 
@@ -202,11 +204,16 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 	if err != nil {
 		return err
 	}
-	var anomalyPtr *model.Anomaly
-	if anomalyFound {
-		anomalyPtr = &anomaly
+	if !anomalyFound {
+		return fmt.Errorf("anomaly not found for loop %s", intent.LoopID)
 	}
+	var anomalyPtr *model.Anomaly
+	anomalyPtr = &anomaly
 	executionImage := resolveExecutionImageSelection(anomalyPtr, o.cfg)
+	resolvedSkillMounts, resolvedSkillNames, err := resolveSkillMounts(anomalyPtr)
+	if err != nil {
+		return err
+	}
 
 	jobName := replicaJobName(intent.LoopID)
 	next := current.Record
@@ -219,7 +226,7 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 		return putErr
 	}
 
-	if err := o.createReplicaJob(ctx, intent.LoopID, jobName, next.CorrelationID, executionImage); err != nil {
+	if err := o.createReplicaJob(ctx, intent.LoopID, jobName, next.CorrelationID, executionImage, anomaly, resolvedSkillMounts); err != nil {
 		_, _ = o.store.PutStateFromCurrent(ctx, intent.LoopID, func(current model.StateRecord) (model.StateRecord, error) {
 			if current.State != model.LoopStateOverwriting {
 				return current, nil
@@ -259,59 +266,55 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 			"execution_image_source":      executionImage.Source,
 			"execution_image_digest":      executionImage.Digest,
 			"execution_image_pull_policy": executionImage.PullPolicy,
+			"skill_mount_count":           strconv.Itoa(len(resolvedSkillMounts)),
+			"skill_mounts":                strings.Join(resolvedSkillNames, ","),
 		},
 	})
 	return nil
 }
 
-func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, correlationID string, executionImage executionImageSelection) error {
-	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: o.cfg.namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/name":      "smith-replica",
-				"app.kubernetes.io/component": "replica",
-				"smith.io/loop-id":            loopID,
-			},
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit:            &o.jobBackoff,
-			TTLSecondsAfterFinished: &o.jobTTL,
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app.kubernetes.io/name":      "smith-replica",
-						"app.kubernetes.io/component": "replica",
-						"smith.io/loop-id":            loopID,
-					},
-				},
-				Spec: corev1.PodSpec{
-					ServiceAccountName: o.cfg.replicaSA,
-					RestartPolicy:      corev1.RestartPolicyNever,
-					Containers: []corev1.Container{
-						{
-							Name:            "replica",
-							Image:           executionImage.Ref,
-							ImagePullPolicy: corev1.PullPolicy(executionImage.PullPolicy),
-							Env: []corev1.EnvVar{
-								{Name: "SMITH_LOOP_ID", Value: loopID},
-								{Name: "SMITH_CORRELATION_ID", Value: correlationID},
-								{Name: "SMITH_ETCD_ENDPOINTS", Value: strings.Join(o.cfg.etcdEndpoints, ",")},
-								{Name: "SMITH_EXECUTION_IMAGE_REF", Value: executionImage.Ref},
-								{Name: "SMITH_EXECUTION_IMAGE_SOURCE", Value: executionImage.Source},
-								{Name: "SMITH_EXECUTION_IMAGE_DIGEST", Value: executionImage.Digest},
-								{Name: "SMITH_EXECUTION_IMAGE_PULL_POLICY", Value: executionImage.PullPolicy},
-							},
-						},
-					},
-				},
-			},
-		},
+func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, correlationID string, executionImage executionImageSelection, anomaly model.Anomaly, skillMounts []replica.SkillMount) error {
+	if err := o.ensureSkillSourcesExist(ctx, skillMounts); err != nil {
+		return err
 	}
-
-	_, err := o.kube.BatchV1().Jobs(o.cfg.namespace).Create(ctx, job, metav1.CreateOptions{})
+	request := replica.JobRequest{
+		Namespace:               o.cfg.namespace,
+		LoopID:                  loopID,
+		CorrelationID:           correlationID,
+		ServiceAccountName:      o.cfg.replicaSA,
+		Image:                   executionImage.Ref,
+		ImagePullPolicy:         executionImage.PullPolicy,
+		Git:                     gitContextFor(anomaly),
+		SkillMounts:             skillMounts,
+		HandoffConfigMapName:    handoffConfigMapName(loopID),
+		BackoffLimit:            o.jobBackoff,
+		ActiveDeadlineSeconds:   int64(o.cfg.defaultPolicy.Timeout.Seconds()),
+		TTLSecondsAfterFinished: o.jobTTL,
+	}
+	generator := replica.NewJobGenerator(kubeJobsAPI{
+		kube:      o.kube,
+		namespace: o.cfg.namespace,
+	})
+	_, err := generator.Submit(ctx, request)
 	return err
+}
+
+func (o *orchestrator) ensureSkillSourcesExist(ctx context.Context, mounts []replica.SkillMount) error {
+	for _, mount := range mounts {
+		configMapName := skillSourceConfigMapName(mount.Source)
+		if configMapName == "" {
+			return fmt.Errorf("invalid skill source %q", mount.Source)
+		}
+		_, err := o.kube.CoreV1().ConfigMaps(o.cfg.namespace).Get(ctx, configMapName, metav1.GetOptions{})
+		if err == nil {
+			continue
+		}
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("skill %q source %q is not available (missing configmap %q)", mount.Name, mount.Source, configMapName)
+		}
+		return fmt.Errorf("failed to resolve skill %q source %q: %w", mount.Name, mount.Source, err)
+	}
+	return nil
 }
 
 func resolveExecutionImageSelection(anomaly *model.Anomaly, cfg config) executionImageSelection {
@@ -348,6 +351,205 @@ func parseImageDigest(ref string) string {
 	}
 	return strings.TrimSpace(parts[1])
 }
+
+func gitContextFor(anomaly model.Anomaly) replica.GitContext {
+	repo := strings.TrimSpace(anomaly.Metadata["github_repository"])
+	if repo == "" && anomaly.SourceType == "github_issue" {
+		ref := strings.TrimSpace(anomaly.SourceRef)
+		if parts := strings.SplitN(ref, "#", 2); len(parts) > 0 {
+			repo = strings.TrimSpace(parts[0])
+		}
+	}
+	if repo == "" {
+		repo = "unknown"
+	}
+	branch := strings.TrimSpace(anomaly.Metadata["git_branch"])
+	if branch == "" {
+		branch = "main"
+	}
+	commit := strings.TrimSpace(anomaly.Metadata["git_commit_sha"])
+	if commit == "" {
+		commit = "unknown"
+	}
+	return replica.GitContext{
+		Repository: repo,
+		Branch:     branch,
+		CommitSHA:  commit,
+	}
+}
+
+func handoffConfigMapName(loopID string) string {
+	base := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-").Replace(strings.ToLower(loopID))
+	base = strings.Trim(base, "-")
+	if base == "" {
+		base = "loop"
+	}
+	if len(base) > 40 {
+		base = base[:40]
+	}
+	return "handoff-" + base
+}
+
+func resolveSkillMounts(anomaly *model.Anomaly) ([]replica.SkillMount, []string, error) {
+	if anomaly == nil || len(anomaly.Skills) == 0 {
+		return nil, nil, nil
+	}
+	mounts := make([]replica.SkillMount, 0, len(anomaly.Skills))
+	names := make([]string, 0, len(anomaly.Skills))
+	for _, skill := range anomaly.Skills {
+		name := strings.TrimSpace(skill.Name)
+		source := strings.TrimSpace(skill.Source)
+		mountPath := strings.TrimSpace(skill.MountPath)
+		if name == "" || source == "" || mountPath == "" {
+			return nil, nil, fmt.Errorf("invalid skill definition in anomaly %s", anomaly.ID)
+		}
+		readOnly := true
+		if skill.ReadOnly != nil {
+			readOnly = *skill.ReadOnly
+		}
+		mounts = append(mounts, replica.SkillMount{
+			Name:      name,
+			Source:    source,
+			Version:   strings.TrimSpace(skill.Version),
+			MountPath: mountPath,
+			ReadOnly:  readOnly,
+		})
+		names = append(names, name)
+	}
+	return mounts, names, nil
+}
+
+func skillSourceConfigMapName(source string) string {
+	trimmed := strings.TrimSpace(source)
+	if !strings.HasPrefix(trimmed, "local://skills/") {
+		return ""
+	}
+	name := strings.TrimPrefix(trimmed, "local://skills/")
+	name = strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-").Replace(strings.ToLower(name))
+	name = strings.Trim(name, "-")
+	if name == "" {
+		return ""
+	}
+	if len(name) > 45 {
+		name = name[:45]
+	}
+	return "skill-" + name
+}
+
+type kubeJobsAPI struct {
+	kube      kubernetes.Interface
+	namespace string
+}
+
+func (k kubeJobsAPI) CreateJob(ctx context.Context, job replica.JobManifest) error {
+	k8sJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      job.Metadata.Name,
+			Namespace: k.namespace,
+			Labels:    copyMap(job.Metadata.Labels),
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit:            int32Ptr(job.Spec.BackoffLimit),
+			ActiveDeadlineSeconds:   int64Ptr(job.Spec.ActiveDeadlineSeconds),
+			TTLSecondsAfterFinished: int32Ptr(job.Spec.TTLSecondsAfterFinished),
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: copyMap(job.Spec.Template.Metadata.Labels)},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: job.Spec.Template.Spec.ServiceAccountName,
+					RestartPolicy:      corev1.RestartPolicy(job.Spec.Template.Spec.RestartPolicy),
+					Volumes:            toK8sVolumes(job.Spec.Template.Spec.Volumes),
+					Containers:         toK8sContainers(job.Spec.Template.Spec.Containers),
+				},
+			},
+		},
+	}
+	_, err := k.kube.BatchV1().Jobs(k.namespace).Create(ctx, k8sJob, metav1.CreateOptions{})
+	return err
+}
+
+func (k kubeJobsAPI) DeleteJob(ctx context.Context, namespace string, name string) error {
+	targetNS := strings.TrimSpace(namespace)
+	if targetNS == "" {
+		targetNS = k.namespace
+	}
+	return k.kube.BatchV1().Jobs(targetNS).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
+func toK8sVolumes(volumes []replica.Volume) []corev1.Volume {
+	out := make([]corev1.Volume, 0, len(volumes))
+	for _, v := range volumes {
+		optional := v.Optional
+		out = append(out, corev1.Volume{
+			Name: v.Name,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: v.ConfigMapName},
+					Optional:             &optional,
+				},
+			},
+		})
+	}
+	return out
+}
+
+func toK8sContainers(containers []replica.Container) []corev1.Container {
+	out := make([]corev1.Container, 0, len(containers))
+	for _, c := range containers {
+		out = append(out, corev1.Container{
+			Name:            c.Name,
+			Image:           c.Image,
+			ImagePullPolicy: corev1.PullPolicy(c.ImagePullPolicy),
+			Command:         append([]string{}, c.Command...),
+			Env:             toK8sEnv(c.Env),
+			VolumeMounts:    toK8sVolumeMounts(c.VolumeMounts),
+		})
+	}
+	return out
+}
+
+func toK8sEnv(in []replica.EnvVar) []corev1.EnvVar {
+	out := make([]corev1.EnvVar, 0, len(in))
+	for _, env := range in {
+		item := corev1.EnvVar{Name: env.Name, Value: env.Value}
+		if env.SecretKeyRef != nil {
+			item.ValueFrom = &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: env.SecretKeyRef.Name},
+					Key:                  env.SecretKeyRef.Key,
+				},
+			}
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func toK8sVolumeMounts(in []replica.VolumeMount) []corev1.VolumeMount {
+	out := make([]corev1.VolumeMount, 0, len(in))
+	for _, mount := range in {
+		out = append(out, corev1.VolumeMount{
+			Name:      mount.Name,
+			MountPath: mount.MountPath,
+			ReadOnly:  mount.ReadOnly,
+		})
+	}
+	return out
+}
+
+func copyMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func int32Ptr(v int32) *int32 { return &v }
+
+func int64Ptr(v int64) *int64 { return &v }
 
 func loadConfig() (config, error) {
 	endpoints := splitCSV(os.Getenv("SMITH_ETCD_ENDPOINTS"))

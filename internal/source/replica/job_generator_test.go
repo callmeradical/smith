@@ -40,6 +40,8 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 		"SMITH_GIT_BRANCH",
 		"SMITH_GIT_COMMIT_SHA",
 		"SMITH_HANDOFF_PATH",
+		"SMITH_SKILL_MOUNT_COUNT",
+		"SMITH_SKILL_MOUNTS",
 	}
 	for _, key := range required {
 		if _, ok := env[key]; !ok {
@@ -55,6 +57,32 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	}
 	if secretEnv.SecretKeyRef.Name != "smith-runtime" || secretEnv.SecretKeyRef.Key != "runtime_credentials" {
 		t.Fatalf("unexpected secret ref %+v", secretEnv.SecretKeyRef)
+	}
+	if env["SMITH_SKILL_MOUNT_COUNT"].Value != "2" {
+		t.Fatalf("expected SMITH_SKILL_MOUNT_COUNT=2, got %q", env["SMITH_SKILL_MOUNT_COUNT"].Value)
+	}
+	if env["SMITH_SKILL_MOUNTS"].Value != "commit,lint" {
+		t.Fatalf("expected resolved skill names, got %q", env["SMITH_SKILL_MOUNTS"].Value)
+	}
+	volumes := map[string]Volume{}
+	for _, v := range job.Spec.Template.Spec.Volumes {
+		volumes[v.Name] = v
+	}
+	if volumes["skill-0-commit"].ConfigMapName != "skill-commit" {
+		t.Fatalf("unexpected configmap for commit skill: %+v", volumes["skill-0-commit"])
+	}
+	if volumes["skill-1-lint"].ConfigMapName != "skill-lint" {
+		t.Fatalf("unexpected configmap for lint skill: %+v", volumes["skill-1-lint"])
+	}
+	mounts := map[string]VolumeMount{}
+	for _, m := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+		mounts[m.Name] = m
+	}
+	if mounts["skill-0-commit"].MountPath != "/smith/skills/commit" || !mounts["skill-0-commit"].ReadOnly {
+		t.Fatalf("unexpected commit mount: %+v", mounts["skill-0-commit"])
+	}
+	if mounts["skill-1-lint"].MountPath != "/smith/skills/lint" || mounts["skill-1-lint"].ReadOnly {
+		t.Fatalf("unexpected lint mount: %+v", mounts["skill-1-lint"])
 	}
 }
 
@@ -173,6 +201,16 @@ func TestBuildReplicaJobValidation(t *testing.T) {
 	if !errors.Is(err, ErrInvalidJobRequest) {
 		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
 	}
+
+	req = validRequest()
+	req.SkillMounts = append(req.SkillMounts, SkillMount{Source: "local://skills/no-name", MountPath: "/smith/skills/no-name", ReadOnly: true})
+	_, err = BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error for missing skill name")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
+	}
 }
 
 func TestSubmitSurfacesClientFailure(t *testing.T) {
@@ -238,6 +276,20 @@ func validRequest() JobRequest {
 			Provider:      GitAuthProviderPAT,
 			PATSecretName: "smith-git-pat",
 			PATSecretKey:  "token",
+		},
+		SkillMounts: []SkillMount{
+			{
+				Name:      "commit",
+				Source:    "local://skills/commit",
+				MountPath: "/smith/skills/commit",
+				ReadOnly:  true,
+			},
+			{
+				Name:      "lint",
+				Source:    "local://skills/lint",
+				MountPath: "/smith/skills/lint",
+				ReadOnly:  false,
+			},
 		},
 		HandoffConfigMapName:    "handoff-loop-123",
 		RuntimeSecretName:       "smith-runtime",
