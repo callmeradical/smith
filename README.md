@@ -44,7 +44,9 @@ Smith is split into control-plane and data-plane components.
 - `POST /v1/ingress/github/issues` ingest one or more GitHub issues into loop specs.
 - `POST /v1/ingress/prd` ingest markdown/json PRD inputs into loop specs.
 - `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
+- `GET /v1/loops/{id}/handoffs`, `GET /v1/loops/{id}/overrides`, and `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
 - `POST /v1/control/override` for operator state overrides with reason/audit trail.
+- `GET /v1/audit?loop_id={id}` for immutable operator/auth action audit records.
 
 ## Local Git Hooks
 

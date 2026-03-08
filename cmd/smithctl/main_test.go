@@ -84,6 +84,93 @@ func TestLoopCreateBatchArrayFile(t *testing.T) {
 	}
 }
 
+func TestLoopCreateWithEnvironmentImageFlags(t *testing.T) {
+	var received map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/loops" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &received)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "create",
+		"--title", "Env", "--description", "Test", "--source-type", "interactive", "--source-ref", "terminal/session-01",
+		"--env-image-ref", "ghcr.io/acme/replica:v2", "--env-image-pull-policy", "Always",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	rawEnv, ok := received["environment"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected environment payload, got %#v", received)
+	}
+	rawImage, ok := rawEnv["container_image"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected container_image payload, got %#v", rawEnv)
+	}
+	if rawImage["ref"] != "ghcr.io/acme/replica:v2" || rawImage["pull_policy"] != "Always" {
+		t.Fatalf("unexpected container image payload: %#v", rawImage)
+	}
+}
+
+func TestLoopCreateWithSkillFlags(t *testing.T) {
+	var received map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/loops" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &received)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "create",
+		"--title", "Skill", "--description", "Test", "--source-type", "interactive", "--source-ref", "terminal/session-01",
+		"--skill", "name=commit,source=local://skills/commit",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	skillsRaw, ok := received["skills"].([]any)
+	if !ok || len(skillsRaw) != 1 {
+		t.Fatalf("expected one skill in payload, got %#v", received["skills"])
+	}
+	skill, ok := skillsRaw[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected skill map payload, got %#v", skillsRaw[0])
+	}
+	if skill["name"] != "commit" || skill["source"] != "local://skills/commit" {
+		t.Fatalf("unexpected skill payload: %#v", skill)
+	}
+	if _, exists := skill["mount_path"]; exists {
+		t.Fatalf("expected mount_path to be omitted when not provided: %#v", skill)
+	}
+}
+
+func TestLoopCreateEnvironmentSourceConflict(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--output", "json", "loop", "create",
+		"--title", "Env", "--description", "Test", "--source-type", "interactive", "--source-ref", "terminal/session-01",
+		"--env-image-ref", "ghcr.io/acme/replica:v2",
+		"--env-docker-context", ".", "--env-dockerfile", "Dockerfile",
+	}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected code=2 for source conflict, got %d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "environment source conflict") {
+		t.Fatalf("expected conflict error, got stderr=%s", stderr.String())
+	}
+}
+
 func TestLoopGetBatchIDs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -104,6 +191,41 @@ func TestLoopGetBatchIDs(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--server", srv.URL, "--output", "json", "loop", "get", "loop-a", "loop-b"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	results, ok := out["results"].([]any)
+	if !ok || len(results) != 2 {
+		t.Fatalf("unexpected results: %#v", out)
+	}
+}
+
+func TestLoopTraceBatchIDs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if !strings.HasPrefix(r.URL.Path, "/v1/loops/") || !strings.HasSuffix(r.URL.Path, "/trace") {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/loops/"), "/trace")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"loop_id": id,
+			"state": map[string]any{
+				"loop_id": id,
+				"state":   "synced",
+			},
+			"journal": []any{},
+		})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--server", srv.URL, "--output", "json", "loop", "trace", "loop-a", "loop-b"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
 	}
@@ -149,6 +271,61 @@ func TestLoopCancelBatchPostsOverride(t *testing.T) {
 		if payload["reason"] != "test-reason" {
 			t.Fatalf("expected reason, got %#v", payload)
 		}
+	}
+}
+
+func TestLoopDetachPostsControlDetach(t *testing.T) {
+	var calls []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/control/detach") {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		calls = append(calls, payload)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "detach",
+		"--actor", "test-actor", "loop-a",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0]["actor"] != "test-actor" {
+		t.Fatalf("expected actor=test-actor, got %#v", calls[0])
+	}
+}
+
+func TestLoopCommandPostsControlCommand(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/control/command") {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_ = json.NewEncoder(w).Encode(map[string]any{"accepted": true})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "command",
+		"loop-a", "--actor", "test-actor", "--command", "pause",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if got["actor"] != "test-actor" || got["command"] != "pause" {
+		t.Fatalf("unexpected payload: %#v", got)
 	}
 }
 
