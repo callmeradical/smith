@@ -3,6 +3,7 @@
 Sources:
 - Requirements: `docs/requirements-fr-nfr.md`
 - Backlog: `td` issues in this repository
+- MVP delivery umbrella: `td-395d2a` (distributed autonomous orchestration end-to-end verification)
 
 ## Functional Requirements Traceability
 
