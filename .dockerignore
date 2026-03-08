@@ -1,8 +1,0 @@
-.git
-.github
-td
-**/*_test.go
-docs
-helm
-scripts
-.DS_Store
