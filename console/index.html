@@ -7,65 +7,724 @@
   <script src="/runtime-config.js"></script>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f4f6f8;
-      --fg: #101418;
-      --panel: #ffffff;
-      --border: #d6dce2;
-      --accent: #0f766e;
+      --bg: #090b0f;
+      --bg-elev: #11161d;
+      --panel: rgba(255, 255, 255, 0.06);
+      --panel-strong: rgba(255, 255, 255, 0.1);
+      --border: rgba(255, 255, 255, 0.16);
+      --text: #e5edf7;
+      --muted: #8ea0b6;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --accent: #06b6d4;
+      --radius: 10px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "Noto Sans", Helvetica, Arial, sans-serif;
+    }
+    * {
+      box-sizing: border-box;
     }
     body {
       margin: 0;
-      background: radial-gradient(circle at 20% -10%, #e2f7f5, transparent 50%), var(--bg);
-      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-      color: var(--fg);
+      background:
+        radial-gradient(1200px 600px at 90% -20%, rgba(6, 182, 212, 0.12), transparent 50%),
+        radial-gradient(900px 500px at -10% -10%, rgba(16, 185, 129, 0.12), transparent 45%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
       min-height: 100vh;
+    }
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 12px 14px 24px;
       display: grid;
-      place-items: center;
-      padding: 24px;
+      gap: 12px;
     }
-    main {
-      width: min(720px, 100%);
-      background: var(--panel);
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      backdrop-filter: blur(10px);
+      background: rgba(9, 11, 15, 0.7);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 12px 30px rgba(10, 18, 30, 0.08);
+      border-radius: var(--radius);
+      padding: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      align-items: center;
+      justify-content: space-between;
     }
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.8rem;
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
     }
-    p {
-      margin: 0 0 14px;
-      line-height: 1.5;
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warn);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
     }
-    code {
-      background: #ecf2f3;
-      border-radius: 6px;
+    .dot.ok {
+      background: var(--ok);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.7);
+    }
+    .dot.err {
+      background: var(--err);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    button,
+    select,
+    input {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 0.9rem;
+    }
+    button:hover,
+    select:hover,
+    input:hover {
+      border-color: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.09);
+    }
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible,
+    .card:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 10px;
+    }
+    .stat {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 10px;
+    }
+    .stat small {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.7rem;
+    }
+    .stat strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 1.2rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .main {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 10px;
+      min-height: 64vh;
+    }
+    .grid {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      max-height: 70vh;
+      overflow: auto;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 10px;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+    .card:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 255, 255, 0.4);
+      background: var(--panel-strong);
+    }
+    .card:hover::before {
+      opacity: 1;
+    }
+    .card.selected {
+      border-color: var(--accent);
+      background: rgba(6, 182, 212, 0.12);
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .loop-id {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: #cbe4ff;
+      word-break: break-all;
+    }
+    .badge {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
       padding: 2px 6px;
-      font-family: "IBM Plex Mono", monospace;
-    }
-    .chip {
-      display: inline-block;
-      border: 1px solid #8ab0aa;
-      color: var(--accent);
       border-radius: 999px;
-      padding: 5px 10px;
-      font-size: 0.85rem;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .state-unresolved,
+    .state-overwriting {
+      color: var(--warn);
+      background: rgba(245, 158, 11, 0.18);
+      border-color: rgba(245, 158, 11, 0.35);
+    }
+    .state-synced {
+      color: var(--ok);
+      background: rgba(16, 185, 129, 0.18);
+      border-color: rgba(16, 185, 129, 0.35);
+    }
+    .state-flatline,
+    .state-cancelled {
+      color: var(--err);
+      background: rgba(239, 68, 68, 0.18);
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      font-size: 0.76rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .metrics span {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 4px 6px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .journal {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(0, 0, 0, 0.45);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 70vh;
+      overflow: hidden;
+    }
+    .journal-header {
+      border-bottom: 1px solid var(--border);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .journal-headline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.9rem;
+    }
+    .override-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr auto;
+      gap: 6px;
+    }
+    .override-bar .danger {
+      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.12);
+      color: #fecaca;
+    }
+    .override-bar .danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.7);
+    }
+    .terminal {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: #c6ddf5;
+      overflow: auto;
+      padding: 10px;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .terminal .ts {
+      color: #93afcb;
+    }
+    .terminal .level-error {
+      color: #fda4af;
+    }
+    .terminal .level-warn {
+      color: #fcd34d;
+    }
+    .terminal .level-info {
+      color: #93c5fd;
+    }
+    .muted {
+      color: var(--muted);
+    }
+    .empty {
+      border: 1px dashed rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius);
+      padding: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+    @media (max-width: 960px) {
+      .stats {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+      .main {
+        grid-template-columns: 1fr;
+      }
+      .grid,
+      .journal {
+        min-height: 42vh;
+        max-height: none;
+      }
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .override-bar {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+        transition: none !important;
+      }
     }
   </style>
 </head>
 <body>
-  <main>
-    <span class="chip">smith-console</span>
-    <h1>Operator Console</h1>
-    <p>Runtime API endpoint: <code id="api-url"></code></p>
-    <p>This container serves the console shell and injects API endpoint config from environment at startup.</p>
-  </main>
+  <div class="app">
+    <header class="topbar">
+      <div class="title">
+        <span id="api-dot" class="dot" aria-hidden="true"></span>
+        <span>Smith Operator Console</span>
+        <small class="muted" id="api-url"></small>
+      </div>
+      <div class="controls">
+        <select id="state-filter" aria-label="State filter">
+          <option value="all">All States</option>
+          <option value="active">Active Only</option>
+          <option value="unresolved">Unresolved</option>
+          <option value="overwriting">Overwriting</option>
+          <option value="synced">Synced</option>
+          <option value="flatline">Flatline</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <input id="search" type="search" placeholder="Filter loop id">
+        <input id="auth-token" type="password" placeholder="operator bearer token (optional)">
+        <label class="muted"><input id="auto-refresh" type="checkbox" checked> auto-refresh</label>
+        <button id="refresh">refresh</button>
+      </div>
+    </header>
+
+    <section class="stats">
+      <div class="stat"><small>Total</small><strong id="stat-total">0</strong></div>
+      <div class="stat"><small>Active</small><strong id="stat-active">0</strong></div>
+      <div class="stat"><small>Flatline</small><strong id="stat-flatline">0</strong></div>
+      <div class="stat"><small>Last Refresh</small><strong id="stat-refresh">-</strong></div>
+    </section>
+
+    <section class="main">
+      <div id="grid" class="grid" role="list" aria-label="Anomaly grid"></div>
+      <div class="journal">
+        <div class="journal-header">
+          <div class="journal-headline">
+            <strong id="journal-title">Live Journal</strong>
+            <span id="journal-latency" class="muted">p95 --</span>
+            <span id="journal-status" class="muted">idle</span>
+          </div>
+          <div class="override-bar">
+            <select id="override-state" aria-label="Override target state">
+              <option value="unresolved">unresolved</option>
+              <option value="overwriting">overwriting</option>
+              <option value="synced">synced</option>
+              <option value="flatline">flatline</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+            <input id="override-reason" type="text" placeholder="override reason (required)">
+            <input id="override-actor" type="text" placeholder="actor (default: operator)">
+            <input id="override-confirm" type="text" placeholder="type APPLY to confirm">
+            <button id="override-apply" class="danger">apply override</button>
+          </div>
+        </div>
+        <pre id="terminal" class="terminal"></pre>
+      </div>
+    </section>
+  </div>
+
   <script>
-    var config = window.__SMITH_CONFIG__ || {};
-    document.getElementById("api-url").textContent = config.apiBaseUrl || "(unset)";
+    const config = window.__SMITH_CONFIG__ || {};
+    const apiBase = String(config.apiBaseUrl || "").replace(/\/+$/, "");
+    const state = {
+      loops: [],
+      selectedLoop: "",
+      journalEntries: [],
+      journalLastSeq: 0,
+      latencySamplesMs: [],
+      journalSource: null,
+      reconnectTimer: null
+    };
+
+    const gridEl = document.getElementById("grid");
+    const terminalEl = document.getElementById("terminal");
+    const apiDotEl = document.getElementById("api-dot");
+    const journalLatencyEl = document.getElementById("journal-latency");
+    const journalStatusEl = document.getElementById("journal-status");
+    document.getElementById("api-url").textContent = apiBase || "(api unset)";
+    document.getElementById("auth-token").value = config.operatorToken || "";
+
+    function isActive(status) {
+      return status === "unresolved" || status === "overwriting";
+    }
+
+    async function fetchJSON(path) {
+      const headers = { "Accept": "application/json" };
+      const token = document.getElementById("auth-token").value.trim();
+      if (token) headers.Authorization = "Bearer " + token;
+      const res = await fetch(apiBase + path, { headers });
+      if (!res.ok) {
+        throw new Error("HTTP " + res.status + " for " + path);
+      }
+      return res.json();
+    }
+
+    async function postJSON(path, payload) {
+      const headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      };
+      const token = document.getElementById("auth-token").value.trim();
+      if (token) headers.Authorization = "Bearer " + token;
+      const res = await fetch(apiBase + path, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload)
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = body.error || ("HTTP " + res.status);
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      return body;
+    }
+
+    function normalizeLoop(item) {
+      const record = item.record || item.Record || {};
+      const loopID = record.loop_id || record.LoopID || item.loop_id || "unknown-loop";
+      const status = (record.state || record.State || "unknown").toLowerCase();
+      const attempt = Number(record.attempt || record.Attempt || 0);
+      const reason = record.reason || record.Reason || "";
+      const revision = Number(item.revision || item.Revision || record.observed_revision || 0);
+      return {
+        loopID,
+        status,
+        attempt,
+        reason,
+        revision,
+        cpu: "--",
+        memory: "--"
+      };
+    }
+
+    function updateStats(loops) {
+      const total = loops.length;
+      const active = loops.filter(l => isActive(l.status)).length;
+      const flatline = loops.filter(l => l.status === "flatline").length;
+      document.getElementById("stat-total").textContent = String(total);
+      document.getElementById("stat-active").textContent = String(active);
+      document.getElementById("stat-flatline").textContent = String(flatline);
+      document.getElementById("stat-refresh").textContent = new Date().toLocaleTimeString();
+    }
+
+    function filteredLoops() {
+      const filter = document.getElementById("state-filter").value;
+      const query = document.getElementById("search").value.trim().toLowerCase();
+      return state.loops.filter(loop => {
+        if (filter === "active" && !isActive(loop.status)) return false;
+        if (filter !== "all" && filter !== "active" && loop.status !== filter) return false;
+        if (query && !loop.loopID.toLowerCase().includes(query)) return false;
+        return true;
+      });
+    }
+
+    function renderGrid() {
+      const loops = filteredLoops();
+      if (loops.length === 0) {
+        gridEl.innerHTML = '<div class="empty">No anomalies for selected filter.</div>';
+        return;
+      }
+      gridEl.innerHTML = "";
+      for (const loop of loops) {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "card" + (state.selectedLoop === loop.loopID ? " selected" : "");
+        card.setAttribute("role", "listitem");
+        card.innerHTML = [
+          '<div class="row">',
+          '  <span class="loop-id">' + escapeHtml(loop.loopID) + '</span>',
+          '  <span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + '</span>',
+          "</div>",
+          '<div class="metrics">',
+          '  <span><b>CPU</b><i>' + escapeHtml(loop.cpu) + "</i></span>",
+          '  <span><b>MEM</b><i>' + escapeHtml(loop.memory) + "</i></span>",
+          '  <span><b>ATT</b><i>' + String(loop.attempt) + "</i></span>",
+          '  <span><b>REV</b><i>' + String(loop.revision) + "</i></span>",
+          "</div>",
+          loop.reason ? '<div class="muted" style="margin-top:6px;font-size:.76rem;">' + escapeHtml(loop.reason) + "</div>" : ""
+        ].join("");
+        card.addEventListener("click", () => selectLoop(loop.loopID));
+        gridEl.appendChild(card);
+      }
+    }
+
+    function escapeHtml(v) {
+      return String(v).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+    }
+
+    async function refreshLoops() {
+      try {
+        const raw = await fetchJSON("/v1/loops");
+        state.loops = Array.isArray(raw) ? raw.map(normalizeLoop) : [];
+        updateStats(state.loops);
+        renderGrid();
+        apiDotEl.className = "dot ok";
+        if (!state.selectedLoop && state.loops.length > 0) {
+          selectLoop(state.loops[0].loopID);
+        } else if (state.selectedLoop && !state.loops.some(l => l.loopID === state.selectedLoop)) {
+          clearJournal("selected anomaly no longer present");
+          state.selectedLoop = "";
+        }
+      } catch (err) {
+        apiDotEl.className = "dot err";
+      }
+    }
+
+    function clearJournal(reason) {
+      state.journalEntries = [];
+      state.journalLastSeq = 0;
+      state.latencySamplesMs = [];
+      renderLatency();
+      terminalEl.textContent = reason ? "[journal] " + reason + "\n" : "";
+    }
+
+    function percentile(values, p) {
+      if (!Array.isArray(values) || values.length === 0) return null;
+      const sorted = values.slice().sort((a, b) => a - b);
+      const rank = Math.ceil((p / 100) * sorted.length);
+      const idx = Math.min(sorted.length - 1, Math.max(0, rank - 1));
+      return sorted[idx];
+    }
+
+    function renderLatency() {
+      const p95 = percentile(state.latencySamplesMs, 95);
+      if (p95 == null) {
+        journalLatencyEl.textContent = "p95 --";
+        return;
+      }
+      journalLatencyEl.textContent = "p95 " + Math.round(p95) + "ms (n=" + state.latencySamplesMs.length + ")";
+    }
+
+    function appendJournal(entry) {
+      if (!entry || typeof entry !== "object") return;
+      const seq = Number(entry.sequence || entry.Sequence || 0);
+      if (seq <= state.journalLastSeq) return;
+      state.journalLastSeq = seq;
+      const tsRaw = String(entry.timestamp || entry.Timestamp || "");
+      const tsMs = Date.parse(tsRaw);
+      if (Number.isFinite(tsMs)) {
+        const latencyMs = Date.now() - tsMs;
+        if (latencyMs >= 0 && latencyMs < 10 * 60 * 1000) {
+          state.latencySamplesMs.push(latencyMs);
+          if (state.latencySamplesMs.length > 300) {
+            state.latencySamplesMs.splice(0, state.latencySamplesMs.length - 300);
+          }
+          renderLatency();
+        }
+      }
+      state.journalEntries.push(entry);
+      if (state.journalEntries.length > 500) {
+        state.journalEntries.splice(0, state.journalEntries.length - 500);
+      }
+      renderJournal();
+    }
+
+    function renderJournal() {
+      if (state.journalEntries.length === 0) {
+        terminalEl.textContent = "[journal] waiting for entries...\n";
+        return;
+      }
+      const lines = state.journalEntries.map(entry => {
+        const ts = String(entry.timestamp || entry.Timestamp || "");
+        const level = String(entry.level || entry.Level || "info").toLowerCase();
+        const phase = String(entry.phase || entry.Phase || "-");
+        const actor = String(entry.actor_id || entry.ActorID || "-");
+        const msg = String(entry.message || entry.Message || "");
+        return "[" + ts + "] [" + level + "] [" + phase + "] [" + actor + "] " + msg;
+      });
+      terminalEl.textContent = lines.join("\n") + "\n";
+      terminalEl.scrollTop = terminalEl.scrollHeight;
+    }
+
+    function selectLoop(loopID) {
+      state.selectedLoop = loopID;
+      document.getElementById("journal-title").textContent = "Live Journal: " + loopID;
+      renderGrid();
+      clearJournal("attaching to stream...");
+      attachStream(loopID);
+    }
+
+    async function applyOverride() {
+      const loopID = state.selectedLoop;
+      if (!loopID) {
+        journalStatusEl.textContent = "select a loop first";
+        return;
+      }
+      const targetState = document.getElementById("override-state").value;
+      const reason = document.getElementById("override-reason").value.trim();
+      const actor = document.getElementById("override-actor").value.trim();
+      const confirmText = document.getElementById("override-confirm").value.trim();
+      if (!reason) {
+        journalStatusEl.textContent = "override reason required";
+        return;
+      }
+      if (confirmText !== "APPLY") {
+        journalStatusEl.textContent = "type APPLY to confirm";
+        return;
+      }
+      const confirm = window.confirm(
+        "Apply override?\n\nLoop: " + loopID + "\nTarget: " + targetState + "\nReason: " + reason
+      );
+      if (!confirm) return;
+      try {
+        const res = await postJSON("/v1/control/override", {
+          loop_id: loopID,
+          target_state: targetState,
+          reason,
+          actor
+        });
+        journalStatusEl.textContent = "override applied";
+        terminalEl.textContent += "[override] state -> " + targetState + " (revision " + (res.revision || "?") + ")\n";
+        terminalEl.scrollTop = terminalEl.scrollHeight;
+        document.getElementById("override-confirm").value = "";
+        await refreshLoops();
+      } catch (err) {
+        if (err.status === 401) {
+          journalStatusEl.textContent = "unauthorized override";
+        } else {
+          journalStatusEl.textContent = "override failed";
+        }
+        terminalEl.textContent += "[override-error] " + err.message + "\n";
+        terminalEl.scrollTop = terminalEl.scrollHeight;
+      }
+    }
+
+    function detachStream() {
+      if (state.journalSource) {
+        state.journalSource.close();
+        state.journalSource = null;
+      }
+      if (state.reconnectTimer) {
+        clearTimeout(state.reconnectTimer);
+        state.reconnectTimer = null;
+      }
+    }
+
+    function attachStream(loopID, delayMs) {
+      detachStream();
+      if (!loopID) return;
+      if (delayMs) {
+        state.reconnectTimer = setTimeout(() => attachStream(loopID, 0), delayMs);
+        return;
+      }
+      const streamURL = apiBase + "/v1/loops/" + encodeURIComponent(loopID) + "/journal/stream?since_seq=" + state.journalLastSeq;
+      journalStatusEl.textContent = "connecting";
+      try {
+        const source = new EventSource(streamURL);
+        state.journalSource = source;
+        source.addEventListener("ready", () => {
+          journalStatusEl.textContent = "connected";
+        });
+        source.addEventListener("entry", ev => {
+          try {
+            const parsed = JSON.parse(ev.data);
+            appendJournal(parsed.entry || parsed);
+          } catch (_) {}
+        });
+        source.addEventListener("error", () => {
+          journalStatusEl.textContent = "reconnecting";
+          attachStream(loopID, 1200);
+        });
+      } catch (_) {
+        journalStatusEl.textContent = "fallback-poll";
+        pollJournal(loopID);
+      }
+    }
+
+    async function pollJournal(loopID) {
+      try {
+        const entries = await fetchJSON("/v1/loops/" + encodeURIComponent(loopID) + "/journal?limit=500");
+        if (Array.isArray(entries)) {
+          for (const entry of entries) appendJournal(entry);
+        }
+        journalStatusEl.textContent = "polling";
+      } catch (_) {
+        journalStatusEl.textContent = "poll-error";
+      }
+      state.reconnectTimer = setTimeout(() => pollJournal(loopID), 1500);
+    }
+
+    document.getElementById("refresh").addEventListener("click", refreshLoops);
+    document.getElementById("state-filter").addEventListener("change", renderGrid);
+    document.getElementById("search").addEventListener("input", renderGrid);
+    document.getElementById("override-apply").addEventListener("click", applyOverride);
+
+    refreshLoops();
+    setInterval(() => {
+      if (document.getElementById("auto-refresh").checked) refreshLoops();
+    }, 2000);
   </script>
 </body>
 </html>

@@ -71,3 +71,67 @@ func TestParseImageDigest(t *testing.T) {
 		t.Fatalf("unexpected digest: %q", got)
 	}
 }
+
+func TestGitContextForGitHubIssueFallback(t *testing.T) {
+	anomaly := model.Anomaly{
+		SourceType: "github_issue",
+		SourceRef:  "acme/smith#42",
+	}
+	got := gitContextFor(anomaly)
+	if got.Repository != "acme/smith" {
+		t.Fatalf("repo: got %q", got.Repository)
+	}
+	if got.Branch != "main" {
+		t.Fatalf("branch: got %q", got.Branch)
+	}
+	if got.CommitSHA != "unknown" {
+		t.Fatalf("commit: got %q", got.CommitSHA)
+	}
+}
+
+func TestHandoffConfigMapNameSanitizesAndBounds(t *testing.T) {
+	got := handoffConfigMapName("LOOP/With Spaces.and_extra_chars___abcdefghijklmnopqrstuvwxyz")
+	if got == "" {
+		t.Fatal("expected non-empty configmap name")
+	}
+	if len(got) > 48 {
+		t.Fatalf("expected bounded configmap name, got len=%d (%q)", len(got), got)
+	}
+	if got[:8] != "handoff-" {
+		t.Fatalf("expected handoff prefix, got %q", got)
+	}
+}
+
+func TestResolveSkillMountsFromAnomaly(t *testing.T) {
+	readOnly := true
+	anomaly := &model.Anomaly{
+		ID: "loop-1",
+		Skills: []model.LoopSkillMount{
+			{
+				Name:      "commit",
+				Source:    "local://skills/commit",
+				MountPath: "/smith/skills/commit",
+				ReadOnly:  &readOnly,
+			},
+		},
+	}
+	mounts, names, err := resolveSkillMounts(anomaly)
+	if err != nil {
+		t.Fatalf("resolveSkillMounts error: %v", err)
+	}
+	if len(mounts) != 1 || len(names) != 1 {
+		t.Fatalf("expected one skill mount, got mounts=%d names=%d", len(mounts), len(names))
+	}
+	if mounts[0].Source != "local://skills/commit" || mounts[0].MountPath != "/smith/skills/commit" || !mounts[0].ReadOnly {
+		t.Fatalf("unexpected mount %+v", mounts[0])
+	}
+}
+
+func TestSkillSourceConfigMapName(t *testing.T) {
+	if got := skillSourceConfigMapName("local://skills/commit"); got != "skill-commit" {
+		t.Fatalf("unexpected configmap name %q", got)
+	}
+	if got := skillSourceConfigMapName("http://example.com/skill"); got != "" {
+		t.Fatalf("expected unsupported source to return empty name, got %q", got)
+	}
+}

@@ -17,9 +17,18 @@ Target matrix:
 | `make doctor` | Fails fast when required local tools are missing. | `go`, `kubectl`, `helm`, `docker`, `k3d`, `vcluster` in `PATH` |
 | `make bootstrap` | Installs missing `k3d`/`vcluster` via script helpers. | `brew` or `curl` available |
 | `make cluster-up` (`make cluster`) | Provisions local `k3d + vcluster + etcd`. | Doctor checks pass |
+| `make cluster-down` | Removes local `k3d + vcluster + etcd` resources. | None (best-effort) |
+| `make cluster-reset` | Rebuilds local cluster stack from scratch (`cluster-down` then `cluster-up`). | Same as `cluster-up` |
+| `make cluster-health` | Verifies cluster API, node readiness, etcd readiness, and vcluster namespace. | Reachable Kubernetes context |
+| `make build-local` | Builds local Smith binaries used by local deploy workflows. | Go toolchain |
+| `make deploy-local` | Installs/upgrades Helm release with local values profile (`SMITH_LOCAL_VALUES`). | Reachable Kubernetes cluster + Helm |
+| `make deploy-staging` | Installs/upgrades Helm release with staging profile (`SMITH_STAGING_VALUES`). | Reachable Kubernetes cluster + Helm + pre-created runtime secret |
+| `make deploy-prod` | Installs/upgrades Helm release with production profile (`SMITH_PROD_VALUES`). | Reachable Kubernetes cluster + Helm + pre-created runtime secret |
+| `make undeploy-local` | Removes local Helm release from namespace. | Reachable Kubernetes cluster + Helm |
 | `make deploy` | Installs/upgrades Helm release into namespace (`SMITH_NAMESPACE`, `SMITH_RELEASE`, `SMITH_VALUES`). | Reachable Kubernetes cluster + Helm |
 | `make test` (`make test-matrix`) | Runs local non-cluster matrix (fixtures, verification, e2e scripts). | Go toolchain + local repo dependencies |
 | `make test-integration` | Runs vCluster-backed integration workflow. | `cluster-up` completed |
+| `make test-observability-latency` | Measures journal-to-console propagation latency and reports p95/p99. | Running API + active test loop |
 | `make teardown` | Removes Helm release and tears down local cluster stack. | None; best-effort cleanup |
 
 Default configurable vars:
@@ -57,6 +66,21 @@ docker system prune -af
 ./scripts/integration/env-up.sh
 ```
 
+Or via make:
+
+```bash
+make cluster-up
+make cluster-health
+make build-local
+make deploy-local
+```
+
+Expected deploy-local output includes a Helm success line similar to:
+
+```text
+Release "smith" has been upgraded. Happy Helming!
+```
+
 Creates:
 
 - k3d host cluster: `smith-int`
@@ -73,6 +97,19 @@ Default etcd endpoint in-cluster:
 
 ```bash
 ./scripts/integration/env-down.sh
+```
+
+Or via make:
+
+```bash
+make undeploy-local
+make cluster-down
+```
+
+Expected undeploy-local output includes a Helm uninstall line similar to:
+
+```text
+release "smith" uninstalled
 ```
 
 ## Deterministic Test Runs
@@ -93,6 +130,18 @@ Run the vCluster watch/reconcile integration target directly:
 
 ```bash
 ./scripts/integration/test-watch-reconcile.sh
+```
+
+Run disaster-recovery backup/restore validation drill:
+
+```bash
+./scripts/integration/dr-restore-drill.sh
+```
+
+Run observability latency benchmark:
+
+```bash
+./scripts/integration/measure-observability-latency.sh
 ```
 
 ## Configuration Overrides

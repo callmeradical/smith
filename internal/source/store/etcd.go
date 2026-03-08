@@ -283,6 +283,31 @@ func (s *Store) AppendHandoff(ctx context.Context, handoff model.Handoff) error 
 	return err
 }
 
+func (s *Store) GetLatestHandoff(ctx context.Context, loopID string) (model.Handoff, bool, error) {
+	loopID = strings.TrimSpace(loopID)
+	if loopID == "" {
+		return model.Handoff{}, false, errors.New("loop id is required")
+	}
+	resp, err := s.cli.Get(
+		ctx,
+		model.HandoffPrefix(loopID)+"/",
+		clientv3.WithPrefix(),
+		clientv3.WithSort(clientv3.SortByKey, clientv3.SortDescend),
+		clientv3.WithLimit(1),
+	)
+	if err != nil {
+		return model.Handoff{}, false, err
+	}
+	if len(resp.Kvs) == 0 {
+		return model.Handoff{}, false, nil
+	}
+	var handoff model.Handoff
+	if err := json.Unmarshal(resp.Kvs[0].Value, &handoff); err != nil {
+		return model.Handoff{}, false, err
+	}
+	return handoff, true, nil
+}
+
 func (s *Store) AppendOverride(ctx context.Context, override model.OperatorOverride) error {
 	override.SchemaVersion = model.SchemaVersion
 	override.Timestamp = time.Now().UTC()

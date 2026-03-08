@@ -33,7 +33,7 @@ Sources:
 | NFR-001 Consistency and correctness | td-c60475, td-f92499, td-e10388, td-59d13e | Completion protocol, lock semantics, reconciliation, failure testing |
 | NFR-002 Scalability | td-8544d1, td-f92499, td-56f4e8, td-c38e55 | K8s job scaling, concurrency model, deploy profile support |
 | NFR-003 Traceability and auditability | td-036323, td-c6301e, td-ccc047, td-59f69d | Journaling, Git traceability, audited overrides |
-| NFR-004 Observability latency | td-113f99, td-433354 | Console streaming + latency instrumentation/benchmark |
+| NFR-004 Observability latency | td-113f99, td-433354 | Console streaming + watch-based fanout + latency p95 benchmark harness |
 | NFR-005 Resilience and recoverability | td-e0abfb, td-e10388, td-59d13e | Backup/restore, reconciliation recovery, chaos tests |
 | NFR-006 Security | td-ccc047, td-bcc114, td-be5578, td-e55c12 | RBAC/audit, PAT secret handling, deferred auth alternatives |
 | NFR-007 Cost visibility | td-dd0e4d, td-036323 | Token/cost reporting and underlying event stream |
