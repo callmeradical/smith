@@ -54,6 +54,7 @@ func main() {
 		ActorID:       hostnameOr("smith-replica"),
 		Message:       "replica execution started",
 		CorrelationID: correlationID,
+		Metadata:      executionImageMetadataFromEnv(),
 	})
 
 	time.Sleep(250 * time.Millisecond)
@@ -80,15 +81,20 @@ func main() {
 		log.Fatalf("failed to finalize state: %v", putErr)
 	}
 
+	handoffMetadata := map[string]string{
+		"executor": hostnameOr("smith-replica"),
+	}
+	for k, v := range executionImageMetadataFromEnv() {
+		handoffMetadata[k] = v
+	}
+
 	_ = storeClient.AppendHandoff(ctx, model.Handoff{
 		LoopID:           loopID,
 		FinalDiffSummary: "replica completed autonomous cycle",
 		ValidationState:  "passed",
 		NextSteps:        "operator review optional",
 		CorrelationID:    correlationID,
-		Metadata: map[string]string{
-			"executor": hostnameOr("smith-replica"),
-		},
+		Metadata:         handoffMetadata,
 	})
 
 	_ = storeClient.AppendJournal(ctx, model.JournalEntry{
@@ -131,4 +137,28 @@ func hostnameOr(fallback string) string {
 		return fallback
 	}
 	return h
+}
+
+func executionImageMetadataFromEnv() map[string]string {
+	out := map[string]string{}
+	ref := strings.TrimSpace(os.Getenv("SMITH_EXECUTION_IMAGE_REF"))
+	if ref != "" {
+		out["execution_image_ref"] = ref
+	}
+	source := strings.TrimSpace(os.Getenv("SMITH_EXECUTION_IMAGE_SOURCE"))
+	if source != "" {
+		out["execution_image_source"] = source
+	}
+	digest := strings.TrimSpace(os.Getenv("SMITH_EXECUTION_IMAGE_DIGEST"))
+	if digest != "" {
+		out["execution_image_digest"] = digest
+	}
+	pullPolicy := strings.TrimSpace(os.Getenv("SMITH_EXECUTION_IMAGE_PULL_POLICY"))
+	if pullPolicy != "" {
+		out["execution_image_pull_policy"] = pullPolicy
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

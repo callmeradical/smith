@@ -43,6 +43,13 @@ type config struct {
 	defaultPolicy     model.LoopPolicy
 }
 
+type executionImageSelection struct {
+	Ref        string
+	PullPolicy string
+	Source     string
+	Digest     string
+}
+
 type orchestrator struct {
 	store      *store.Store
 	locks      *locking.Manager
@@ -181,6 +188,15 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 	if !found || current.Record.State != model.LoopStateUnresolved {
 		return nil
 	}
+	anomaly, anomalyFound, err := o.store.GetAnomaly(ctx, intent.LoopID)
+	if err != nil {
+		return err
+	}
+	var anomalyPtr *model.Anomaly
+	if anomalyFound {
+		anomalyPtr = &anomaly
+	}
+	executionImage := resolveExecutionImageSelection(anomalyPtr, o.cfg)
 
 	jobName := replicaJobName(intent.LoopID)
 	next := current.Record
@@ -193,7 +209,7 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 		return putErr
 	}
 
-	if err := o.createReplicaJob(ctx, intent.LoopID, jobName, next.CorrelationID); err != nil {
+	if err := o.createReplicaJob(ctx, intent.LoopID, jobName, next.CorrelationID, executionImage); err != nil {
 		_, _ = o.store.PutStateFromCurrent(ctx, intent.LoopID, func(current model.StateRecord) (model.StateRecord, error) {
 			if current.State != model.LoopStateOverwriting {
 				return current, nil
@@ -227,14 +243,18 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 		Message:       "replica job scheduled",
 		CorrelationID: next.CorrelationID,
 		Metadata: map[string]string{
-			"job_name": jobName,
-			"state":    string(model.LoopStateOverwriting),
+			"job_name":                    jobName,
+			"state":                       string(model.LoopStateOverwriting),
+			"execution_image_ref":         executionImage.Ref,
+			"execution_image_source":      executionImage.Source,
+			"execution_image_digest":      executionImage.Digest,
+			"execution_image_pull_policy": executionImage.PullPolicy,
 		},
 	})
 	return nil
 }
 
-func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, correlationID string) error {
+func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, correlationID string, executionImage executionImageSelection) error {
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
@@ -262,12 +282,16 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 					Containers: []corev1.Container{
 						{
 							Name:            "replica",
-							Image:           o.cfg.replicaImage,
-							ImagePullPolicy: corev1.PullPolicy(o.cfg.replicaPullPolicy),
+							Image:           executionImage.Ref,
+							ImagePullPolicy: corev1.PullPolicy(executionImage.PullPolicy),
 							Env: []corev1.EnvVar{
 								{Name: "SMITH_LOOP_ID", Value: loopID},
 								{Name: "SMITH_CORRELATION_ID", Value: correlationID},
 								{Name: "SMITH_ETCD_ENDPOINTS", Value: strings.Join(o.cfg.etcdEndpoints, ",")},
+								{Name: "SMITH_EXECUTION_IMAGE_REF", Value: executionImage.Ref},
+								{Name: "SMITH_EXECUTION_IMAGE_SOURCE", Value: executionImage.Source},
+								{Name: "SMITH_EXECUTION_IMAGE_DIGEST", Value: executionImage.Digest},
+								{Name: "SMITH_EXECUTION_IMAGE_PULL_POLICY", Value: executionImage.PullPolicy},
 							},
 						},
 					},
@@ -278,6 +302,41 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 
 	_, err := o.kube.BatchV1().Jobs(o.cfg.namespace).Create(ctx, job, metav1.CreateOptions{})
 	return err
+}
+
+func resolveExecutionImageSelection(anomaly *model.Anomaly, cfg config) executionImageSelection {
+	ref := strings.TrimSpace(cfg.replicaImage)
+	pullPolicy := strings.TrimSpace(cfg.replicaPullPolicy)
+	source := "core_default"
+
+	if anomaly != nil && anomaly.Environment.ContainerImage != nil && strings.TrimSpace(anomaly.Environment.ContainerImage.Ref) != "" {
+		ref = strings.TrimSpace(anomaly.Environment.ContainerImage.Ref)
+		source = "loop_environment_container_image"
+		if strings.TrimSpace(anomaly.Environment.ContainerImage.PullPolicy) != "" {
+			pullPolicy = strings.TrimSpace(anomaly.Environment.ContainerImage.PullPolicy)
+		}
+	}
+	if pullPolicy == "" {
+		pullPolicy = string(corev1.PullIfNotPresent)
+	}
+	return executionImageSelection{
+		Ref:        ref,
+		PullPolicy: pullPolicy,
+		Source:     source,
+		Digest:     parseImageDigest(ref),
+	}
+}
+
+func parseImageDigest(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
+	}
+	parts := strings.SplitN(ref, "@", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
 }
 
 func loadConfig() (config, error) {
