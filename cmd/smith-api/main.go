@@ -394,6 +394,10 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
+	skills, err := model.NormalizeLoopSkills(req.Skills, selection.ProviderID)
+	if err != nil {
+		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
+	}
 
 	loopID := strings.TrimSpace(req.LoopID)
 	if loopID == "" {
