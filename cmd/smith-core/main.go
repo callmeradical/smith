@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,6 +26,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"smith/internal/source/core"
+	"smith/internal/source/gitpolicy"
+	"smith/internal/source/journalpolicy"
 	"smith/internal/source/locking"
 	"smith/internal/source/model"
 	"smith/internal/source/replica"
@@ -34,15 +40,21 @@ const (
 )
 
 type config struct {
-	port              int
-	etcdEndpoints     []string
-	etcdDialTimeout   time.Duration
-	namespace         string
-	holderID          string
-	replicaImage      string
-	replicaPullPolicy string
-	replicaSA         string
-	defaultPolicy     model.LoopPolicy
+	port                int
+	etcdEndpoints       []string
+	etcdDialTimeout     time.Duration
+	namespace           string
+	holderID            string
+	replicaImage        string
+	replicaPullPolicy   string
+	dockerfileRepo      string
+	dockerfileBuild     bool
+	gitPolicy           gitpolicy.Policy
+	gitPolicyConfig     bool
+	journalPolicy       journalpolicy.Policy
+	journalPolicyConfig bool
+	replicaSA           string
+	defaultPolicy       model.LoopPolicy
 }
 
 type executionImageSelection struct {
@@ -50,6 +62,7 @@ type executionImageSelection struct {
 	PullPolicy string
 	Source     string
 	Digest     string
+	BuildInfo  map[string]string
 }
 
 type orchestrator struct {
@@ -209,7 +222,30 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 	}
 	var anomalyPtr *model.Anomaly
 	anomalyPtr = &anomaly
-	executionImage := resolveExecutionImageSelection(anomalyPtr, o.cfg)
+	executionImage, err := resolveExecutionImageSelection(ctx, anomalyPtr, o.cfg, intent.LoopID)
+	if err != nil {
+		_, _ = o.store.PutStateFromCurrent(ctx, intent.LoopID, func(current model.StateRecord) (model.StateRecord, error) {
+			if current.State != model.LoopStateUnresolved {
+				return current, nil
+			}
+			current.State = model.LoopStateFlatline
+			current.Reason = "execution-image-resolution-failed"
+			return current, nil
+		})
+		_ = o.store.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        intent.LoopID,
+			Phase:         "core",
+			Level:         "error",
+			ActorType:     "core",
+			ActorID:       o.cfg.holderID,
+			Message:       "failed to resolve execution image",
+			CorrelationID: current.Record.CorrelationID,
+			Metadata: map[string]string{
+				"error": err.Error(),
+			},
+		})
+		return err
+	}
 	resolvedSkillMounts, resolvedSkillNames, err := resolveSkillMounts(anomalyPtr)
 	if err != nil {
 		return err
@@ -268,8 +304,22 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 			"execution_image_pull_policy": executionImage.PullPolicy,
 			"skill_mount_count":           strconv.Itoa(len(resolvedSkillMounts)),
 			"skill_mounts":                strings.Join(resolvedSkillNames, ","),
+			"journal_retention_mode":      string(o.cfg.journalPolicy.RetentionMode),
+			"journal_archive_mode":        string(o.cfg.journalPolicy.ArchiveMode),
 		},
 	})
+	if len(executionImage.BuildInfo) > 0 {
+		_ = o.store.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        intent.LoopID,
+			Phase:         "core",
+			Level:         "info",
+			ActorType:     "core",
+			ActorID:       o.cfg.holderID,
+			Message:       "dockerfile build metadata",
+			CorrelationID: next.CorrelationID,
+			Metadata:      copyMap(executionImage.BuildInfo),
+		})
+	}
 	return nil
 }
 
@@ -278,18 +328,22 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		return err
 	}
 	request := replica.JobRequest{
-		Namespace:               o.cfg.namespace,
-		LoopID:                  loopID,
-		CorrelationID:           correlationID,
-		ServiceAccountName:      o.cfg.replicaSA,
-		Image:                   executionImage.Ref,
-		ImagePullPolicy:         executionImage.PullPolicy,
-		Git:                     gitContextFor(anomaly),
-		SkillMounts:             skillMounts,
-		HandoffConfigMapName:    handoffConfigMapName(loopID),
-		BackoffLimit:            o.jobBackoff,
-		ActiveDeadlineSeconds:   int64(o.cfg.defaultPolicy.Timeout.Seconds()),
-		TTLSecondsAfterFinished: o.jobTTL,
+		Namespace:                 o.cfg.namespace,
+		LoopID:                    loopID,
+		CorrelationID:             correlationID,
+		ServiceAccountName:        o.cfg.replicaSA,
+		Image:                     executionImage.Ref,
+		ImagePullPolicy:           executionImage.PullPolicy,
+		Git:                       gitContextFor(anomaly),
+		SkillMounts:               skillMounts,
+		GitPolicy:                 gitPolicyPtr(o.cfg.gitPolicy, o.cfg.gitPolicyConfig),
+		EnableGitPolicyConfig:     o.cfg.gitPolicyConfig,
+		JournalPolicy:             journalPolicyPtr(o.cfg.journalPolicy, o.cfg.journalPolicyConfig),
+		EnableJournalPolicyConfig: o.cfg.journalPolicyConfig,
+		HandoffConfigMapName:      handoffConfigMapName(loopID),
+		BackoffLimit:              o.jobBackoff,
+		ActiveDeadlineSeconds:     int64(o.cfg.defaultPolicy.Timeout.Seconds()),
+		TTLSecondsAfterFinished:   o.jobTTL,
 	}
 	generator := replica.NewJobGenerator(kubeJobsAPI{
 		kube:      o.kube,
@@ -317,11 +371,14 @@ func (o *orchestrator) ensureSkillSourcesExist(ctx context.Context, mounts []rep
 	return nil
 }
 
-func resolveExecutionImageSelection(anomaly *model.Anomaly, cfg config) executionImageSelection {
+func resolveExecutionImageSelection(ctx context.Context, anomaly *model.Anomaly, cfg config, loopID string) (executionImageSelection, error) {
 	ref := strings.TrimSpace(cfg.replicaImage)
 	pullPolicy := strings.TrimSpace(cfg.replicaPullPolicy)
 	source := "core_default"
 
+	if anomaly != nil && anomaly.Environment.Dockerfile != nil {
+		return resolveDockerfileExecutionImage(ctx, cfg, *anomaly.Environment.Dockerfile, loopID)
+	}
 	if anomaly != nil && anomaly.Environment.ContainerImage != nil && strings.TrimSpace(anomaly.Environment.ContainerImage.Ref) != "" {
 		ref = strings.TrimSpace(anomaly.Environment.ContainerImage.Ref)
 		source = "loop_environment_container_image"
@@ -337,7 +394,54 @@ func resolveExecutionImageSelection(anomaly *model.Anomaly, cfg config) executio
 		PullPolicy: pullPolicy,
 		Source:     source,
 		Digest:     parseImageDigest(ref),
+	}, nil
+}
+
+func resolveDockerfileExecutionImage(ctx context.Context, cfg config, profile model.DockerfileProfile, loopID string) (executionImageSelection, error) {
+	if err := validateDockerfileBuildInputs(profile); err != nil {
+		return executionImageSelection{}, err
 	}
+	repo := strings.TrimSpace(cfg.dockerfileRepo)
+	if repo == "" {
+		repo = defaultDockerfileRepo(cfg.replicaImage)
+	}
+	tag := dockerfileBuildTag(loopID, profile)
+	ref := fmt.Sprintf("%s:%s", repo, tag)
+	pullPolicy := strings.TrimSpace(cfg.replicaPullPolicy)
+	if pullPolicy == "" {
+		pullPolicy = string(corev1.PullIfNotPresent)
+	}
+	buildInfo := map[string]string{
+		"build_mode":         "dockerfile",
+		"build_repo":         repo,
+		"build_tag":          tag,
+		"build_context_dir":  profile.ContextDir,
+		"build_dockerfile":   profile.DockerfilePath,
+		"build_target":       profile.Target,
+		"build_cache_status": "unknown",
+	}
+	if cfg.dockerfileBuild {
+		start := time.Now()
+		cacheHit, err := runDockerfileBuild(ctx, ref, profile)
+		buildInfo["build_duration_ms"] = strconv.FormatInt(time.Since(start).Milliseconds(), 10)
+		if cacheHit {
+			buildInfo["build_cache_status"] = "hit"
+		} else {
+			buildInfo["build_cache_status"] = "miss"
+		}
+		if err != nil {
+			return executionImageSelection{}, err
+		}
+	} else {
+		return executionImageSelection{}, errors.New("loop dockerfile build path is disabled; set SMITH_DOCKERFILE_BUILD_ENABLED=true")
+	}
+	return executionImageSelection{
+		Ref:        ref,
+		PullPolicy: pullPolicy,
+		Source:     "loop_environment_dockerfile",
+		Digest:     parseImageDigest(ref),
+		BuildInfo:  buildInfo,
+	}, nil
 }
 
 func parseImageDigest(ref string) string {
@@ -350,6 +454,91 @@ func parseImageDigest(ref string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
+}
+
+func validateDockerfileBuildInputs(profile model.DockerfileProfile) error {
+	if strings.TrimSpace(profile.ContextDir) == "" {
+		return errors.New("environment.dockerfile.context_dir is required")
+	}
+	if strings.TrimSpace(profile.DockerfilePath) == "" {
+		return errors.New("environment.dockerfile.dockerfile_path is required")
+	}
+	if pathIsUnsafe(profile.ContextDir) {
+		return fmt.Errorf("environment.dockerfile.context_dir is unsafe: %q", profile.ContextDir)
+	}
+	if pathIsUnsafe(profile.DockerfilePath) {
+		return fmt.Errorf("environment.dockerfile.dockerfile_path is unsafe: %q", profile.DockerfilePath)
+	}
+	return nil
+}
+
+func pathIsUnsafe(p string) bool {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return true
+	}
+	if strings.HasPrefix(p, "/") {
+		return true
+	}
+	parts := strings.Split(p, "/")
+	for _, part := range parts {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func runDockerfileBuild(ctx context.Context, ref string, profile model.DockerfileProfile) (bool, error) {
+	args := []string{"build", "-f", profile.DockerfilePath, "-t", ref}
+	if strings.TrimSpace(profile.Target) != "" {
+		args = append(args, "--target", strings.TrimSpace(profile.Target))
+	}
+	keys := make([]string, 0, len(profile.BuildArgs))
+	for key := range profile.BuildArgs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", key, profile.BuildArgs[key]))
+	}
+	args = append(args, profile.ContextDir)
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	output, err := cmd.CombinedOutput()
+	cacheHit := strings.Contains(string(output), "CACHED")
+	if err != nil {
+		return cacheHit, fmt.Errorf("dockerfile build failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return cacheHit, nil
+}
+
+func dockerfileBuildTag(loopID string, profile model.DockerfileProfile) string {
+	hashInput := strings.ToLower(strings.TrimSpace(loopID)) + "|" + strings.TrimSpace(profile.ContextDir) + "|" + strings.TrimSpace(profile.DockerfilePath) + "|" + strings.TrimSpace(profile.Target)
+	keys := make([]string, 0, len(profile.BuildArgs))
+	for key := range profile.BuildArgs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		hashInput += "|" + key + "=" + profile.BuildArgs[key]
+	}
+	digest := sha256.Sum256([]byte(hashInput))
+	return "loop-" + hex.EncodeToString(digest[:6])
+}
+
+func defaultDockerfileRepo(replicaImage string) string {
+	ref := strings.TrimSpace(replicaImage)
+	if ref == "" {
+		return "smith/replica-loop"
+	}
+	if idx := strings.IndexAny(ref, ":@"); idx >= 0 {
+		ref = ref[:idx]
+	}
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "smith/replica-loop"
+	}
+	return ref + "-loop"
 }
 
 func gitContextFor(anomaly model.Anomaly) replica.GitContext {
@@ -567,14 +756,20 @@ func loadConfig() (config, error) {
 	}
 
 	cfg := config{
-		port:              envInt("SMITH_CORE_PORT", defaultPort),
-		etcdEndpoints:     endpoints,
-		etcdDialTimeout:   envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
-		namespace:         envString("SMITH_NAMESPACE", "default"),
-		holderID:          holderID,
-		replicaImage:      envString("SMITH_REPLICA_IMAGE", "ghcr.io/smith/replica:v0.1.0"),
-		replicaPullPolicy: envString("SMITH_REPLICA_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
-		replicaSA:         envString("SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT", "default"),
+		port:                envInt("SMITH_CORE_PORT", defaultPort),
+		etcdEndpoints:       endpoints,
+		etcdDialTimeout:     envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
+		namespace:           envString("SMITH_NAMESPACE", "default"),
+		holderID:            holderID,
+		replicaImage:        envString("SMITH_REPLICA_IMAGE", "ghcr.io/smith/replica:v0.1.0"),
+		replicaPullPolicy:   envString("SMITH_REPLICA_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
+		dockerfileRepo:      strings.TrimSpace(os.Getenv("SMITH_DOCKERFILE_IMAGE_REPOSITORY")),
+		dockerfileBuild:     envBool("SMITH_DOCKERFILE_BUILD_ENABLED", false),
+		gitPolicy:           gitpolicy.DefaultPolicy(),
+		gitPolicyConfig:     envBool("SMITH_GIT_POLICY_CONFIG_ENABLED", false),
+		journalPolicy:       journalpolicy.DefaultPolicy(),
+		journalPolicyConfig: envBool("SMITH_JOURNAL_POLICY_CONFIG_ENABLED", false),
+		replicaSA:           envString("SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT", "default"),
 		defaultPolicy: model.LoopPolicy{
 			MaxAttempts:      envInt("SMITH_LOOP_POLICY_MAX_ATTEMPTS", 3),
 			BackoffInitial:   envDuration("SMITH_LOOP_POLICY_BACKOFF_INITIAL", 5*time.Second),
@@ -583,7 +778,44 @@ func loadConfig() (config, error) {
 			TerminateOnError: envBool("SMITH_LOOP_POLICY_TERMINATE_ON_ERROR", false),
 		},
 	}
+	if cfg.gitPolicyConfig {
+		cfg.gitPolicy.BranchCleanup = gitpolicy.BranchCleanupPolicy(envString("SMITH_GIT_POLICY_BRANCH_CLEANUP", string(cfg.gitPolicy.BranchCleanup)))
+		cfg.gitPolicy.ConflictPolicy = gitpolicy.ConflictPolicy(envString("SMITH_GIT_POLICY_CONFLICT_POLICY", string(cfg.gitPolicy.ConflictPolicy)))
+		cfg.gitPolicy.DeleteBranchOnMerge = envBool("SMITH_GIT_POLICY_DELETE_BRANCH_ON_MERGE", cfg.gitPolicy.DeleteBranchOnMerge)
+	}
+	if err := cfg.gitPolicy.Validate(); err != nil {
+		return config{}, fmt.Errorf("invalid git policy configuration: %w", err)
+	}
+	if cfg.journalPolicyConfig {
+		cfg.journalPolicy.RetentionMode = journalpolicy.RetentionMode(envString("SMITH_JOURNAL_RETENTION_MODE", string(cfg.journalPolicy.RetentionMode)))
+		retentionTTLFallback := ""
+		if cfg.journalPolicy.RetentionTTL > 0 {
+			retentionTTLFallback = cfg.journalPolicy.RetentionTTL.String()
+		}
+		cfg.journalPolicy.RetentionTTL = envDurationAllowZero("SMITH_JOURNAL_RETENTION_TTL", retentionTTLFallback, cfg.journalPolicy.RetentionTTL)
+		cfg.journalPolicy.ArchiveMode = journalpolicy.ArchiveMode(envString("SMITH_JOURNAL_ARCHIVE_MODE", string(cfg.journalPolicy.ArchiveMode)))
+		cfg.journalPolicy.ArchiveBucket = strings.TrimSpace(os.Getenv("SMITH_JOURNAL_ARCHIVE_BUCKET"))
+	}
+	if err := cfg.journalPolicy.Validate(); err != nil {
+		return config{}, fmt.Errorf("invalid journal policy configuration: %w", err)
+	}
 	return cfg, nil
+}
+
+func gitPolicyPtr(policy gitpolicy.Policy, enabled bool) *gitpolicy.Policy {
+	if !enabled {
+		return nil
+	}
+	p := policy
+	return &p
+}
+
+func journalPolicyPtr(policy journalpolicy.Policy, enabled bool) *journalpolicy.Policy {
+	if !enabled {
+		return nil
+	}
+	p := policy
+	return &p
 }
 
 func kubeClient() (*kubernetes.Clientset, error) {
@@ -643,6 +875,21 @@ func envDuration(name string, fallback time.Duration) time.Duration {
 	}
 	d, err := time.ParseDuration(value)
 	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
+}
+
+func envDurationAllowZero(name, fallbackRaw string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		value = strings.TrimSpace(fallbackRaw)
+	}
+	if value == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil {
 		return fallback
 	}
 	return d

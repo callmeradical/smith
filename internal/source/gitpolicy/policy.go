@@ -19,6 +19,20 @@ const (
 	MergeMethodMerge  MergeMethod = "merge"
 )
 
+type BranchCleanupPolicy string
+
+const (
+	BranchCleanupOnMerge BranchCleanupPolicy = "on_merge"
+	BranchCleanupNever   BranchCleanupPolicy = "never"
+)
+
+type ConflictPolicy string
+
+const (
+	ConflictPolicyManualReview ConflictPolicy = "manual_review"
+	ConflictPolicyFailFast     ConflictPolicy = "fail_fast"
+)
+
 type Policy struct {
 	BranchPrefix        string
 	AllowCheckpointPush bool
@@ -27,6 +41,8 @@ type Policy struct {
 	FinalCommitScope    string
 	MergeMethod         MergeMethod
 	DeleteBranchOnMerge bool
+	BranchCleanup       BranchCleanupPolicy
+	ConflictPolicy      ConflictPolicy
 }
 
 type BranchContext struct {
@@ -57,6 +73,8 @@ func DefaultPolicy() Policy {
 		FinalCommitScope:    "loop",
 		MergeMethod:         MergeMethodSquash,
 		DeleteBranchOnMerge: true,
+		BranchCleanup:       BranchCleanupOnMerge,
+		ConflictPolicy:      ConflictPolicyManualReview,
 	}
 }
 
@@ -77,6 +95,22 @@ func (p Policy) Validate() error {
 	case MergeMethodSquash, MergeMethodRebase, MergeMethodMerge:
 	default:
 		return fmt.Errorf("%w: unsupported merge method %q", ErrInvalidPolicy, p.MergeMethod)
+	}
+	switch p.BranchCleanup {
+	case BranchCleanupOnMerge, BranchCleanupNever:
+	default:
+		return fmt.Errorf("%w: unsupported branch cleanup policy %q", ErrInvalidPolicy, p.BranchCleanup)
+	}
+	switch p.ConflictPolicy {
+	case ConflictPolicyManualReview, ConflictPolicyFailFast:
+	default:
+		return fmt.Errorf("%w: unsupported conflict policy %q", ErrInvalidPolicy, p.ConflictPolicy)
+	}
+	if p.DeleteBranchOnMerge && p.BranchCleanup != BranchCleanupOnMerge {
+		return fmt.Errorf("%w: delete branch on merge requires branch cleanup policy on_merge", ErrInvalidPolicy)
+	}
+	if !p.DeleteBranchOnMerge && p.BranchCleanup == BranchCleanupOnMerge {
+		return fmt.Errorf("%w: branch cleanup policy on_merge requires delete branch on merge", ErrInvalidPolicy)
 	}
 	return nil
 }

@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"smith/internal/source/gitpolicy"
+	"smith/internal/source/journalpolicy"
 )
 
 var (
@@ -52,21 +55,25 @@ type SSHAuth struct {
 }
 
 type JobRequest struct {
-	Namespace               string
-	LoopID                  string
-	CorrelationID           string
-	ServiceAccountName      string
-	Image                   string
-	ImagePullPolicy         string
-	Git                     GitContext
-	SkillMounts             []SkillMount
-	GitAuth                 *GitAuthConfig
-	HandoffConfigMapName    string
-	RuntimeSecretName       string
-	RuntimeCredentialsKey   string
-	BackoffLimit            int32
-	ActiveDeadlineSeconds   int64
-	TTLSecondsAfterFinished int32
+	Namespace                 string
+	LoopID                    string
+	CorrelationID             string
+	ServiceAccountName        string
+	Image                     string
+	ImagePullPolicy           string
+	Git                       GitContext
+	SkillMounts               []SkillMount
+	GitPolicy                 *gitpolicy.Policy
+	EnableGitPolicyConfig     bool
+	JournalPolicy             *journalpolicy.Policy
+	EnableJournalPolicyConfig bool
+	GitAuth                   *GitAuthConfig
+	HandoffConfigMapName      string
+	RuntimeSecretName         string
+	RuntimeCredentialsKey     string
+	BackoffLimit              int32
+	ActiveDeadlineSeconds     int64
+	TTLSecondsAfterFinished   int32
 }
 
 type JobManifest struct {
@@ -187,6 +194,23 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 				Key:  req.RuntimeCredentialsKey,
 			},
 		})
+	}
+	if req.GitPolicy != nil {
+		env = append(env,
+			EnvVar{Name: "SMITH_GIT_POLICY_BRANCH_CLEANUP", Value: string(req.GitPolicy.BranchCleanup)},
+			EnvVar{Name: "SMITH_GIT_POLICY_CONFLICT_POLICY", Value: string(req.GitPolicy.ConflictPolicy)},
+			EnvVar{Name: "SMITH_GIT_POLICY_DELETE_BRANCH_ON_MERGE", Value: fmt.Sprintf("%t", req.GitPolicy.DeleteBranchOnMerge)},
+		)
+	}
+	if req.JournalPolicy != nil {
+		env = append(env,
+			EnvVar{Name: "SMITH_JOURNAL_RETENTION_MODE", Value: string(req.JournalPolicy.RetentionMode)},
+			EnvVar{Name: "SMITH_JOURNAL_RETENTION_TTL", Value: req.JournalPolicy.RetentionTTL.String()},
+			EnvVar{Name: "SMITH_JOURNAL_ARCHIVE_MODE", Value: string(req.JournalPolicy.ArchiveMode)},
+		)
+		if strings.TrimSpace(req.JournalPolicy.ArchiveBucket) != "" {
+			env = append(env, EnvVar{Name: "SMITH_JOURNAL_ARCHIVE_BUCKET", Value: req.JournalPolicy.ArchiveBucket})
+		}
 	}
 	if req.GitAuth != nil {
 		env = append(env, EnvVar{Name: "SMITH_GIT_AUTH_PROVIDER", Value: string(req.GitAuth.Provider)})
@@ -368,6 +392,22 @@ func validateRequest(req JobRequest) error {
 	}
 	if req.RuntimeSecretName != "" && strings.TrimSpace(req.RuntimeCredentialsKey) == "" {
 		return fmt.Errorf("%w: runtime credentials key is required when runtime secret is set", ErrInvalidJobRequest)
+	}
+	if req.GitPolicy != nil {
+		if !req.EnableGitPolicyConfig {
+			return fmt.Errorf("%w: git policy overrides are feature-flagged; set EnableGitPolicyConfig to true", ErrInvalidJobRequest)
+		}
+		if err := req.GitPolicy.Validate(); err != nil {
+			return fmt.Errorf("%w: invalid git policy: %v", ErrInvalidJobRequest, err)
+		}
+	}
+	if req.JournalPolicy != nil {
+		if !req.EnableJournalPolicyConfig {
+			return fmt.Errorf("%w: journal policy overrides are feature-flagged; set EnableJournalPolicyConfig to true", ErrInvalidJobRequest)
+		}
+		if err := req.JournalPolicy.Validate(); err != nil {
+			return fmt.Errorf("%w: invalid journal policy: %v", ErrInvalidJobRequest, err)
+		}
 	}
 	if req.GitAuth == nil {
 		return nil

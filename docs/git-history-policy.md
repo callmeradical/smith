@@ -34,3 +34,16 @@
 - If loop fails before finalization, checkpoints may remain on the attempt branch for forensic replay.
 - Completion saga is responsible for pushing final commit and synchronizing etcd state.
 - Reconciliation and branch cleanup policy should remove stale attempt branches once state reaches terminal outcomes.
+
+## Operator Configuration (Feature-Gated)
+
+- Default behavior remains:
+  - `branch_cleanup = on_merge`
+  - `conflict_policy = manual_review`
+  - `delete_branch_on_merge = true`
+- Override support is behind `SMITH_GIT_POLICY_CONFIG_ENABLED=true` on `smith-core`.
+- Supported overrides:
+  - `SMITH_GIT_POLICY_BRANCH_CLEANUP`: `on_merge` or `never`
+  - `SMITH_GIT_POLICY_CONFLICT_POLICY`: `manual_review` or `fail_fast`
+  - `SMITH_GIT_POLICY_DELETE_BRANCH_ON_MERGE`: `true` or `false`
+- Validation rejects incompatible combinations (for example `branch_cleanup=on_merge` with `delete_branch_on_merge=false`).
