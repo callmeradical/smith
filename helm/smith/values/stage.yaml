@@ -1,0 +1,26 @@
+global:
+  environment: stage
+
+secrets:
+  existingSecret: smith-stage-runtime
+
+core:
+  replicaCount: 2
+  loopPolicy:
+    maxAttempts: 3
+    backoffInitial: 5s
+    backoffMax: 90s
+    timeout: 30m
+  replicaTemplate:
+    serviceAccountName: smith-stage-replica
+    nodeSelector:
+      workload-tier: batch
+    tolerations:
+      - key: workload-tier
+        operator: Equal
+        value: batch
+        effect: NoSchedule
+api:
+  replicaCount: 2
+console:
+  replicaCount: 1

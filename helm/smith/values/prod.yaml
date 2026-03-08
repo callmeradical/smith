@@ -1,0 +1,62 @@
+global:
+  environment: prod
+  featureFlags:
+    interactiveAttach: false
+
+secrets:
+  existingSecret: smith-prod-runtime
+
+core:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 30
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 600
+  loopPolicy:
+    maxAttempts: 5
+    backoffInitial: 10s
+    backoffMax: 2m
+    timeout: 45m
+  replicaTemplate:
+    serviceAccountName: smith-prod-replica
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+    nodeSelector:
+      workload-tier: replica
+    tolerations:
+      - key: workload-tier
+        operator: Equal
+        value: replica
+        effect: NoSchedule
+    env:
+      - name: SMITH_REPLICA_LOG_LEVEL
+        value: info
+api:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 40
+    targetCPUUtilizationPercentage: 55
+    targetMemoryUtilizationPercentage: 65
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
+console:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
