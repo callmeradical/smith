@@ -15,7 +15,7 @@ The quality-check script validates local markdown links first, then runs `zensic
 
 ## Base URL and Path Configuration
 
-- CI derives `site_url` as a project-site URL (`https://<owner>.github.io/<repo>/`) from the active repository and rewrites `zensical.toml` during the workflow run.
+- CI pins `site_url` to `https://callmeradical.github.io/smith/` and rewrites `zensical.toml` during the workflow run.
 - For local builds, set `site_url` in `zensical.toml` to your target URL and keep the trailing slash.
 
 ## CI + Deployment
