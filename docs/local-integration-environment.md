@@ -2,6 +2,8 @@
 
 This environment provides a reproducible local target for Smith integration/e2e tests.
 
+For a copy/paste deployment walkthrough, use `docs/make-local-quickstart.md`.
+
 ## Make-First Workflow (Standard)
 
 Use `make` as the primary local workflow entrypoint:

@@ -46,6 +46,7 @@ type server struct {
 	auth        *provider.AuthManager
 	presets     *presetCatalog
 	skillPolicy model.SkillPolicy
+	term        *terminalSessionStore
 }
 
 type overrideRequest struct {
@@ -72,6 +73,20 @@ type authStartRequest struct {
 type authCompleteRequest struct {
 	Actor      string `json:"actor"`
 	DeviceCode string `json:"device_code"`
+}
+
+type terminalAttachRequest struct {
+	Actor    string `json:"actor"`
+	Terminal string `json:"terminal"`
+}
+
+type terminalDetachRequest struct {
+	Actor string `json:"actor"`
+}
+
+type terminalCommandRequest struct {
+	Actor   string `json:"actor"`
+	Command string `json:"command"`
 }
 
 type loopCreateRequest struct {
@@ -125,6 +140,17 @@ type ingressResult struct {
 	Message   string `json:"message,omitempty"`
 }
 
+type loopTraceResponse struct {
+	LoopID      string                   `json:"loop_id"`
+	State       model.StateRecord        `json:"state"`
+	Anomaly     *model.Anomaly           `json:"anomaly,omitempty"`
+	Environment model.LoopEnvironment    `json:"environment,omitempty"`
+	Journal     []model.JournalEntry     `json:"journal"`
+	Handoffs    []model.Handoff          `json:"handoffs"`
+	Overrides   []model.OperatorOverride `json:"overrides"`
+	Audit       []store.AuditRecord      `json:"audit"`
+}
+
 type presetCatalog struct {
 	mu            sync.RWMutex
 	defaultPreset string
@@ -133,6 +159,56 @@ type presetCatalog struct {
 
 type presetCreateRequest struct {
 	Name string `json:"name"`
+}
+
+type terminalSessionStore struct {
+	mu       sync.Mutex
+	attached map[string]map[string]struct{}
+}
+
+func newTerminalSessionStore() *terminalSessionStore {
+	return &terminalSessionStore{
+		attached: map[string]map[string]struct{}{},
+	}
+}
+
+func (t *terminalSessionStore) Attach(loopID, actor string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.attached[loopID] == nil {
+		t.attached[loopID] = map[string]struct{}{}
+	}
+	t.attached[loopID][actor] = struct{}{}
+	return len(t.attached[loopID])
+}
+
+func (t *terminalSessionStore) Detach(loopID, actor string) (bool, int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	actors, ok := t.attached[loopID]
+	if !ok {
+		return false, 0
+	}
+	if _, found := actors[actor]; !found {
+		return false, len(actors)
+	}
+	delete(actors, actor)
+	if len(actors) == 0 {
+		delete(t.attached, loopID)
+		return true, 0
+	}
+	return true, len(actors)
+}
+
+func (t *terminalSessionStore) IsAttached(loopID, actor string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	actors, ok := t.attached[loopID]
+	if !ok {
+		return false
+	}
+	_, found := actors[actor]
+	return found
 }
 
 func main() {
@@ -163,6 +239,7 @@ func main() {
 		auth:        authManager,
 		presets:     newPresetCatalog(cfg.defaultPreset),
 		skillPolicy: cfg.skillPolicy,
+		term:        newTerminalSessionStore(),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -174,6 +251,7 @@ func main() {
 	mux.HandleFunc("/v1/ingress/github/issues", s.handleIngressGitHubIssues)
 	mux.HandleFunc("/v1/ingress/prd", s.handleIngressPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
+	mux.HandleFunc("/v1/audit", s.handleAudit)
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
 	mux.HandleFunc("/v1/auth/codex/connect/start", s.handleCodexAuthStart)
 	mux.HandleFunc("/v1/auth/codex/connect/complete", s.handleCodexAuthComplete)
@@ -587,6 +665,55 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, journal)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "control" {
+		switch parts[2] {
+		case "attach":
+			s.handleLoopAttach(w, r, loopID)
+			return
+		case "detach":
+			s.handleLoopDetach(w, r, loopID)
+			return
+		case "command":
+			s.handleLoopControlCommand(w, r, loopID)
+			return
+		}
+	}
+	if len(parts) == 2 && parts[1] == "handoffs" {
+		if r.Method != http.MethodGet {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		limit := int64(parseIntDefault(r.URL.Query().Get("limit"), 100))
+		handoffs, err := s.store.ListHandoffs(r.Context(), loopID, limit)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, handoffs)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "overrides" {
+		if r.Method != http.MethodGet {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		limit := int64(parseIntDefault(r.URL.Query().Get("limit"), 100))
+		overrides, err := s.store.ListOverrides(r.Context(), loopID, limit)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, overrides)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "trace" {
+		if r.Method != http.MethodGet {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		s.handleLoopTrace(w, r, loopID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "journal" && parts[2] == "stream" {
 		if r.Method != http.MethodGet {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -597,6 +724,267 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeErr(w, http.StatusNotFound, "endpoint not found")
+}
+
+func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID string) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	state, found, err := s.store.GetState(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "loop not found")
+		return
+	}
+	if !isActiveLoopState(state.Record.State) {
+		writeErr(w, http.StatusConflict, "loop is not active")
+		return
+	}
+
+	var req terminalAttachRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+	terminal := strings.TrimSpace(req.Terminal)
+	if terminal == "" {
+		terminal = "unknown"
+	}
+	attachCount := s.term.Attach(loopID, actor)
+
+	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
+		Actor:         actor,
+		Action:        "attach-terminal",
+		TargetLoopID:  loopID,
+		CorrelationID: state.Record.CorrelationID,
+		Metadata: map[string]string{
+			"terminal":     terminal,
+			"attach_count": strconv.Itoa(attachCount),
+		},
+	})
+	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
+		LoopID:        loopID,
+		Phase:         "operator",
+		Level:         "info",
+		ActorType:     "operator",
+		ActorID:       actor,
+		Message:       "terminal attached",
+		CorrelationID: state.Record.CorrelationID,
+		Metadata: map[string]string{
+			"terminal":     terminal,
+			"attach_count": strconv.Itoa(attachCount),
+		},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"loop_id":      loopID,
+		"status":       "attached",
+		"actor":        actor,
+		"attach_count": attachCount,
+	})
+}
+
+func (s *server) handleLoopDetach(w http.ResponseWriter, r *http.Request, loopID string) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	state, found, err := s.store.GetState(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "loop not found")
+		return
+	}
+
+	var req terminalDetachRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+
+	detached, attachCount := s.term.Detach(loopID, actor)
+	if !detached {
+		writeErr(w, http.StatusConflict, "actor is not attached")
+		return
+	}
+
+	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
+		Actor:         actor,
+		Action:        "detach-terminal",
+		TargetLoopID:  loopID,
+		CorrelationID: state.Record.CorrelationID,
+		Metadata: map[string]string{
+			"attach_count": strconv.Itoa(attachCount),
+		},
+	})
+	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
+		LoopID:        loopID,
+		Phase:         "operator",
+		Level:         "info",
+		ActorType:     "operator",
+		ActorID:       actor,
+		Message:       "terminal detached",
+		CorrelationID: state.Record.CorrelationID,
+		Metadata: map[string]string{
+			"attach_count": strconv.Itoa(attachCount),
+		},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"loop_id":      loopID,
+		"status":       "detached",
+		"actor":        actor,
+		"attach_count": attachCount,
+	})
+}
+
+func (s *server) handleLoopControlCommand(w http.ResponseWriter, r *http.Request, loopID string) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	state, found, err := s.store.GetState(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "loop not found")
+		return
+	}
+	if !isActiveLoopState(state.Record.State) {
+		writeErr(w, http.StatusConflict, "loop is not active")
+		return
+	}
+	var req terminalCommandRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+	command := strings.TrimSpace(req.Command)
+	if command == "" {
+		writeErr(w, http.StatusBadRequest, "command is required")
+		return
+	}
+	if !s.term.IsAttached(loopID, actor) {
+		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
+		return
+	}
+	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
+		Actor:         actor,
+		Action:        "terminal-command",
+		TargetLoopID:  loopID,
+		CorrelationID: state.Record.CorrelationID,
+		Metadata: map[string]string{
+			"command": command,
+		},
+	})
+	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
+		LoopID:        loopID,
+		Phase:         "operator",
+		Level:         "warn",
+		ActorType:     "operator",
+		ActorID:       actor,
+		Message:       "terminal command issued",
+		CorrelationID: state.Record.CorrelationID,
+		Metadata: map[string]string{
+			"command": command,
+		},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"loop_id":   loopID,
+		"status":    "accepted",
+		"actor":     actor,
+		"command":   command,
+		"delivered": false,
+	})
+}
+
+func isActiveLoopState(state model.LoopState) bool {
+	switch state {
+	case model.LoopStateUnresolved, model.LoopStateOverwriting:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *server) handleLoopTrace(w http.ResponseWriter, r *http.Request, loopID string) {
+	limit := int64(parseIntDefault(r.URL.Query().Get("limit"), 500))
+	state, found, err := s.store.GetState(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "loop not found")
+		return
+	}
+
+	out := loopTraceResponse{
+		LoopID:    loopID,
+		State:     state.Record,
+		Journal:   []model.JournalEntry{},
+		Handoffs:  []model.Handoff{},
+		Overrides: []model.OperatorOverride{},
+		Audit:     []store.AuditRecord{},
+	}
+
+	anomaly, anomalyFound, err := s.store.GetAnomaly(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if anomalyFound {
+		out.Anomaly = &anomaly
+		out.Environment = anomaly.Environment
+	}
+
+	out.Journal, err = s.store.ListJournal(r.Context(), loopID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out.Handoffs, err = s.store.ListHandoffs(r.Context(), loopID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out.Overrides, err = s.store.ListOverrides(r.Context(), loopID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out.Audit, err = s.store.ListAudit(r.Context(), loopID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *server) handleJournalStream(w http.ResponseWriter, r *http.Request, loopID string) {
@@ -840,6 +1228,25 @@ func (s *server) handleCost(w http.ResponseWriter, r *http.Request) {
 		out.TotalCostUSD += parseFloatDefault(entry.Metadata["cost_usd"], 0)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *server) handleAudit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	loopID := strings.TrimSpace(r.URL.Query().Get("loop_id"))
+	limit := int64(parseIntDefault(r.URL.Query().Get("limit"), 500))
+	records, err := s.store.ListAudit(r.Context(), loopID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, records)
 }
 
 func (s *server) handleCodexAuthStart(w http.ResponseWriter, r *http.Request) {

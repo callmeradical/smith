@@ -308,6 +308,26 @@ func (s *Store) GetLatestHandoff(ctx context.Context, loopID string) (model.Hand
 	return handoff, true, nil
 }
 
+func (s *Store) ListHandoffs(ctx context.Context, loopID string, limit int64) ([]model.Handoff, error) {
+	opts := []clientv3.OpOption{clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend)}
+	if limit > 0 {
+		opts = append(opts, clientv3.WithLimit(limit))
+	}
+	resp, err := s.cli.Get(ctx, model.HandoffPrefix(loopID)+"/", opts...)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.Handoff, 0, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		var handoff model.Handoff
+		if err := json.Unmarshal(kv.Value, &handoff); err != nil {
+			continue
+		}
+		out = append(out, handoff)
+	}
+	return out, nil
+}
+
 func (s *Store) AppendOverride(ctx context.Context, override model.OperatorOverride) error {
 	override.SchemaVersion = model.SchemaVersion
 	override.Timestamp = time.Now().UTC()
@@ -326,6 +346,26 @@ func (s *Store) AppendOverride(ctx context.Context, override model.OperatorOverr
 	return err
 }
 
+func (s *Store) ListOverrides(ctx context.Context, loopID string, limit int64) ([]model.OperatorOverride, error) {
+	opts := []clientv3.OpOption{clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend)}
+	if limit > 0 {
+		opts = append(opts, clientv3.WithLimit(limit))
+	}
+	resp, err := s.cli.Get(ctx, model.OverridePrefix(loopID)+"/", opts...)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.OperatorOverride, 0, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		var override model.OperatorOverride
+		if err := json.Unmarshal(kv.Value, &override); err != nil {
+			continue
+		}
+		out = append(out, override)
+	}
+	return out, nil
+}
+
 func (s *Store) AppendAudit(ctx context.Context, rec AuditRecord) error {
 	if rec.EventID == "" {
 		rec.EventID = fmt.Sprintf("%d", time.Now().UTC().UnixNano())
@@ -339,6 +379,32 @@ func (s *Store) AppendAudit(ctx context.Context, rec AuditRecord) error {
 	}
 	_, err = s.cli.Put(ctx, key, string(payload))
 	return err
+}
+
+func (s *Store) ListAudit(ctx context.Context, loopID string, limit int64) ([]AuditRecord, error) {
+	opts := []clientv3.OpOption{
+		clientv3.WithPrefix(),
+		clientv3.WithSort(clientv3.SortByKey, clientv3.SortDescend),
+	}
+	resp, err := s.cli.Get(ctx, model.PrefixAudit+"/", opts...)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]AuditRecord, 0, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		var rec AuditRecord
+		if err := json.Unmarshal(kv.Value, &rec); err != nil {
+			continue
+		}
+		if loopID != "" && rec.TargetLoopID != loopID {
+			continue
+		}
+		records = append(records, rec)
+		if limit > 0 && int64(len(records)) >= limit {
+			break
+		}
+	}
+	return records, nil
 }
 
 func (s *Store) WatchState(ctx context.Context) <-chan Event {

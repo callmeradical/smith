@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  matrix:
+  unit-and-fixture-matrix:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -23,7 +23,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run test matrix
+      - name: Run unit and fixture matrix
         env:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts
           SMITH_FIXTURE_DIR: /tmp/smith-test-repo
@@ -36,3 +36,89 @@ jobs:
         with:
           name: smith-test-matrix-artifacts
           path: /tmp/smith-test-artifacts
+
+  e2e-loop-scenarios:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - id: single-loop
+            script: ./scripts/test/e2e-single-loop.sh
+            artifact: e2e-single-loop-report.json
+          - id: multi-loop
+            script: ./scripts/test/e2e-concurrent-loops.sh
+            artifact: e2e-concurrent-summary.txt
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run loop e2e scenario (${{ matrix.scenario.id }})
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-e2e-artifacts/${{ matrix.scenario.id }}
+          SMITH_FIXTURE_DIR: /tmp/smith-test-repo-${{ matrix.scenario.id }}
+          SMITH_ENABLE_CLUSTER_TESTS: "false"
+        run: ${{ matrix.scenario.script }}
+
+      - name: Upload scenario artifacts (${{ matrix.scenario.id }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-e2e-${{ matrix.scenario.id }}-artifacts
+          path: /tmp/smith-e2e-artifacts/${{ matrix.scenario.id }}
+
+  e2e-ingress-environment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run ingress and environment mode e2e
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-e2e-artifacts/ingress
+          SMITH_ENABLE_CLUSTER_TESTS: "false"
+        run: |
+          ./scripts/test/e2e-ingress-modes.sh
+          ./scripts/test/e2e-environment-modes.sh
+          ./scripts/test/e2e-skill-mounts.sh
+
+      - name: Upload ingress/environment e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-e2e-ingress-environment-artifacts
+          path: /tmp/smith-e2e-artifacts/ingress
+
+  e2e-summary:
+    runs-on: ubuntu-latest
+    needs:
+      - e2e-loop-scenarios
+      - e2e-ingress-environment
+    if: always()
+    steps:
+      - name: Publish scenario trace summary
+        run: |
+          {
+            echo "## Smith E2E Scenario Matrix"
+            echo ""
+            echo "- Single-loop scenario: artifact \`smith-e2e-single-loop-artifacts\`"
+            echo "- Multi-loop scenario: artifact \`smith-e2e-multi-loop-artifacts\`"
+            echo "- Ingress + environment scenarios: artifact \`smith-e2e-ingress-environment-artifacts\`"
+            echo ""
+            echo "Trace evidence files:"
+            echo "- \`e2e-single-loop-report.json\`"
+            echo "- \`e2e-concurrent-summary.txt\`"
+            echo "- \`e2e-ingress-summary.txt\`"
+            echo "- \`e2e-environment-summary.txt\`"
+            echo "- \`e2e-skill-mounts-summary.txt\`"
+          } >> "$GITHUB_STEP_SUMMARY"

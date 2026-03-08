@@ -18,6 +18,8 @@ This matrix defines the minimum runnable suite for reliability gating across uni
 | M-007 | E2E | Single loop unresolved -> synced | `./scripts/test/e2e-single-loop.sh` | Single-loop completion report includes commit/handoff integrity; optional cluster mode runs lifecycle integration path |
 | M-008 | E2E | Concurrent loop safety (no split-brain writer) | `./scripts/test/e2e-concurrent-loops.sh` | N concurrent loop workers preserve per-loop isolation and completion verification for concurrent fixture branches |
 | M-009 | E2E | Ingress mode coverage (GitHub, PRD, interactive) | `./scripts/test/e2e-ingress-modes.sh` | `smithctl` ingress commands create loops and each created loop resolves to synced state with source traceability (`source_type`, `source_ref`) |
+| M-010 | E2E | Environment mode coverage (preset, mise, image, dockerfile) | `./scripts/test/e2e-environment-modes.sh` | `smithctl loop create` environment flags map to deterministic resolved mode metadata |
+| M-011 | E2E | Skill mount behavior (explicit/default/failure) | `./scripts/test/e2e-skill-mounts.sh` | Skill mounts respect explicit/default paths, fail on invalid sources, and emit journal metadata |
 
 ## Failure-Injection Cases
 
@@ -61,3 +63,15 @@ Current policy: any failure in repeated runs fails the gate.
 Workflow: `.github/workflows/ephemeral-integration-env.yml`
 
 This workflow provisions an ephemeral `k3d + vCluster + etcd` stack per run, executes integration tests, uploads diagnostics/artifacts, and always tears down the environment.
+
+## CI Loop Scenario Matrix
+
+Workflow: `.github/workflows/test-matrix.yml`
+
+- Runs dedicated PR e2e scenarios for:
+  - single-loop completion (`scripts/test/e2e-single-loop.sh`)
+  - multi-loop concurrency safety (`scripts/test/e2e-concurrent-loops.sh`)
+  - ingress modes (`scripts/test/e2e-ingress-modes.sh`)
+  - environment modes (`scripts/test/e2e-environment-modes.sh`)
+  - skill mount modes (`scripts/test/e2e-skill-mounts.sh`)
+- Uploads per-scenario artifacts and publishes evidence file names in `GITHUB_STEP_SUMMARY`.

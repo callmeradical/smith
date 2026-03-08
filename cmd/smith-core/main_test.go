@@ -1,14 +1,21 @@
 package main
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"smith/internal/source/gitpolicy"
+	"smith/internal/source/journalpolicy"
 	"smith/internal/source/model"
 )
 
 func TestResolveExecutionImageSelectionDefaults(t *testing.T) {
 	cfg := config{replicaImage: "ghcr.io/smith/replica:v1", replicaPullPolicy: "IfNotPresent"}
-	got := resolveExecutionImageSelection(nil, cfg)
+	got, err := resolveExecutionImageSelection(context.Background(), nil, cfg, "loop-1")
+	if err != nil {
+		t.Fatalf("resolveExecutionImageSelection error: %v", err)
+	}
 
 	if got.Ref != "ghcr.io/smith/replica:v1" {
 		t.Fatalf("ref: got %q", got.Ref)
@@ -34,7 +41,10 @@ func TestResolveExecutionImageSelectionFromLoopEnvironment(t *testing.T) {
 			},
 		},
 	}
-	got := resolveExecutionImageSelection(anomaly, cfg)
+	got, err := resolveExecutionImageSelection(context.Background(), anomaly, cfg, "loop-1")
+	if err != nil {
+		t.Fatalf("resolveExecutionImageSelection error: %v", err)
+	}
 
 	if got.Ref != "ghcr.io/custom/replica@sha256:deadbeef" {
 		t.Fatalf("ref: got %q", got.Ref)
@@ -57,9 +67,48 @@ func TestResolveExecutionImageSelectionOverrideUsesDefaultPullPolicyWhenUnset(t 
 			ContainerImage: &model.ContainerImageProfile{Ref: "ghcr.io/custom/replica:v2"},
 		},
 	}
-	got := resolveExecutionImageSelection(anomaly, cfg)
+	got, err := resolveExecutionImageSelection(context.Background(), anomaly, cfg, "loop-1")
+	if err != nil {
+		t.Fatalf("resolveExecutionImageSelection error: %v", err)
+	}
 	if got.PullPolicy != "IfNotPresent" {
 		t.Fatalf("pull policy: got %q", got.PullPolicy)
+	}
+}
+
+func TestResolveExecutionImageSelectionDockerfileDisabled(t *testing.T) {
+	cfg := config{
+		replicaImage:      "ghcr.io/smith/replica:v1",
+		replicaPullPolicy: "IfNotPresent",
+		dockerfileBuild:   false,
+	}
+	anomaly := &model.Anomaly{
+		Environment: model.LoopEnvironment{
+			Dockerfile: &model.DockerfileProfile{
+				ContextDir:     "workspace",
+				DockerfilePath: "Dockerfile",
+			},
+		},
+	}
+	_, err := resolveExecutionImageSelection(context.Background(), anomaly, cfg, "loop-1")
+	if err == nil {
+		t.Fatal("expected dockerfile resolution error when build path disabled")
+	}
+}
+
+func TestDockerfileBuildTagStable(t *testing.T) {
+	profile := model.DockerfileProfile{
+		ContextDir:     "workspace",
+		DockerfilePath: "Dockerfile",
+		BuildArgs: map[string]string{
+			"GO_VERSION": "1.22",
+			"TARGETOS":   "linux",
+		},
+	}
+	a := dockerfileBuildTag("loop-abc", profile)
+	b := dockerfileBuildTag("loop-abc", profile)
+	if a != b {
+		t.Fatalf("expected stable tag, got %q vs %q", a, b)
 	}
 }
 
@@ -133,5 +182,111 @@ func TestSkillSourceConfigMapName(t *testing.T) {
 	}
 	if got := skillSourceConfigMapName("http://example.com/skill"); got != "" {
 		t.Fatalf("expected unsupported source to return empty name, got %q", got)
+	}
+}
+
+func TestLoadConfigGitPolicyDefaults(t *testing.T) {
+	t.Setenv("SMITH_GIT_POLICY_CONFIG_ENABLED", "")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if cfg.gitPolicyConfig {
+		t.Fatal("expected git policy config flag to default false")
+	}
+	def := gitpolicy.DefaultPolicy()
+	if cfg.gitPolicy.BranchCleanup != def.BranchCleanup {
+		t.Fatalf("expected default branch cleanup %q got %q", def.BranchCleanup, cfg.gitPolicy.BranchCleanup)
+	}
+	if cfg.gitPolicy.ConflictPolicy != def.ConflictPolicy {
+		t.Fatalf("expected default conflict policy %q got %q", def.ConflictPolicy, cfg.gitPolicy.ConflictPolicy)
+	}
+}
+
+func TestLoadConfigGitPolicyOverrides(t *testing.T) {
+	t.Setenv("SMITH_GIT_POLICY_CONFIG_ENABLED", "true")
+	t.Setenv("SMITH_GIT_POLICY_BRANCH_CLEANUP", "never")
+	t.Setenv("SMITH_GIT_POLICY_CONFLICT_POLICY", "fail_fast")
+	t.Setenv("SMITH_GIT_POLICY_DELETE_BRANCH_ON_MERGE", "false")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if !cfg.gitPolicyConfig {
+		t.Fatal("expected git policy config flag true")
+	}
+	if cfg.gitPolicy.BranchCleanup != gitpolicy.BranchCleanupNever {
+		t.Fatalf("unexpected branch cleanup %q", cfg.gitPolicy.BranchCleanup)
+	}
+	if cfg.gitPolicy.ConflictPolicy != gitpolicy.ConflictPolicyFailFast {
+		t.Fatalf("unexpected conflict policy %q", cfg.gitPolicy.ConflictPolicy)
+	}
+	if cfg.gitPolicy.DeleteBranchOnMerge {
+		t.Fatal("expected delete branch on merge false")
+	}
+}
+
+func TestLoadConfigRejectsInvalidGitPolicyOverrides(t *testing.T) {
+	t.Setenv("SMITH_GIT_POLICY_CONFIG_ENABLED", "true")
+	t.Setenv("SMITH_GIT_POLICY_BRANCH_CLEANUP", "on_merge")
+	t.Setenv("SMITH_GIT_POLICY_DELETE_BRANCH_ON_MERGE", "false")
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("expected invalid git policy config error")
+	}
+}
+
+func TestLoadConfigJournalPolicyDefaults(t *testing.T) {
+	t.Setenv("SMITH_JOURNAL_POLICY_CONFIG_ENABLED", "")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if cfg.journalPolicyConfig {
+		t.Fatal("expected journal policy config flag to default false")
+	}
+	def := journalpolicy.DefaultPolicy()
+	if cfg.journalPolicy.RetentionMode != def.RetentionMode {
+		t.Fatalf("expected default retention mode %q got %q", def.RetentionMode, cfg.journalPolicy.RetentionMode)
+	}
+	if cfg.journalPolicy.ArchiveMode != def.ArchiveMode {
+		t.Fatalf("expected default archive mode %q got %q", def.ArchiveMode, cfg.journalPolicy.ArchiveMode)
+	}
+}
+
+func TestLoadConfigJournalPolicyOverrides(t *testing.T) {
+	t.Setenv("SMITH_JOURNAL_POLICY_CONFIG_ENABLED", "true")
+	t.Setenv("SMITH_JOURNAL_RETENTION_MODE", "ttl")
+	t.Setenv("SMITH_JOURNAL_RETENTION_TTL", "168h")
+	t.Setenv("SMITH_JOURNAL_ARCHIVE_MODE", "s3")
+	t.Setenv("SMITH_JOURNAL_ARCHIVE_BUCKET", "smith-journal-archive")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if !cfg.journalPolicyConfig {
+		t.Fatal("expected journal policy config flag true")
+	}
+	if cfg.journalPolicy.RetentionMode != journalpolicy.RetentionTTL {
+		t.Fatalf("unexpected retention mode %q", cfg.journalPolicy.RetentionMode)
+	}
+	if cfg.journalPolicy.RetentionTTL != 168*time.Hour {
+		t.Fatalf("unexpected retention ttl %s", cfg.journalPolicy.RetentionTTL)
+	}
+	if cfg.journalPolicy.ArchiveMode != journalpolicy.ArchiveS3 {
+		t.Fatalf("unexpected archive mode %q", cfg.journalPolicy.ArchiveMode)
+	}
+	if cfg.journalPolicy.ArchiveBucket != "smith-journal-archive" {
+		t.Fatalf("unexpected archive bucket %q", cfg.journalPolicy.ArchiveBucket)
+	}
+}
+
+func TestLoadConfigRejectsInvalidJournalPolicyOverrides(t *testing.T) {
+	t.Setenv("SMITH_JOURNAL_POLICY_CONFIG_ENABLED", "true")
+	t.Setenv("SMITH_JOURNAL_RETENTION_MODE", "ttl")
+	t.Setenv("SMITH_JOURNAL_RETENTION_TTL", "")
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("expected invalid journal policy config error")
 	}
 }

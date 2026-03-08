@@ -41,8 +41,9 @@
 - Release workflow publishes:
   - semver tags (`v*`)
 - Pipeline file: `.github/workflows/images-build-publish.yml`
-- Published repositories: `ghcr.io/<org>/smith-core`, `ghcr.io/<org>/smith-replica`, `ghcr.io/<org>/smith-console`
+- Published repositories: `ghcr.io/callmeradical/smith-core`, `ghcr.io/callmeradical/smith-replica`, `ghcr.io/callmeradical/smith-console`
 - Trivy vulnerability scanning runs before publish and blocks on high/critical findings.
+- Publish step emits a multi-arch manifest list for `linux/amd64` and `linux/arm64`.
 
 ## Build Targets
 

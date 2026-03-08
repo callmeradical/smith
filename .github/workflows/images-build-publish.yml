@@ -17,6 +17,8 @@ permissions:
 jobs:
   build-scan-publish:
     runs-on: ubuntu-latest
+    env:
+      IMAGE_PLATFORMS: linux/amd64,linux/arm64
     strategy:
       fail-fast: false
       matrix:
@@ -61,6 +63,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
           load: true
           tags: smith-${{ matrix.image }}:ci
 
@@ -91,6 +94,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          platforms: ${{ env.IMAGE_PLATFORMS }}
           push: true
           provenance: true
           sbom: true

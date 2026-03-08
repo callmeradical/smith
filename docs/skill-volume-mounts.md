@@ -49,6 +49,26 @@ Precedence:
 - Mount skills as read-only volumes by default.
 - Journal resolved skill list and versions in loop metadata/handoff.
 
+## smithctl Skill Flags
+
+`smithctl loop create` supports repeatable `--skill` entries:
+
+```bash
+smithctl loop create \
+  --title "Skill run" \
+  --source-type interactive \
+  --source-ref terminal/session-02 \
+  --skill name=commit,source=local://skills/commit
+```
+
+Supported `--skill` fields:
+
+- `name` (required)
+- `source` (required)
+- `version` (optional)
+- `mount_path` (optional; if omitted, Codex default `/smith/skills/<name>` is applied server-side)
+- `read_only` (optional `true|false`; policy-gated)
+
 ## Runtime Integration
 
 - Agent Core resolves requested skills before Replica job creation.
@@ -74,3 +94,5 @@ Current validation rules:
 
 - Multi-agent dynamic mount translation beyond Codex default.
 - Arbitrary privileged volume mounts.
+
+Post-MVP multi-provider design: `docs/multi-provider-skill-mount-abstraction.md`.

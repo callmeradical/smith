@@ -50,6 +50,76 @@ type apiClient struct {
 	http    *http.Client
 }
 
+type stringMapFlag map[string]string
+
+func (s *stringMapFlag) String() string {
+	if s == nil || len(*s) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(*s))
+	for k, v := range *s {
+		parts = append(parts, k+"="+v)
+	}
+	return strings.Join(parts, ",")
+}
+
+func (s *stringMapFlag) Set(value string) error {
+	parts := strings.SplitN(strings.TrimSpace(value), "=", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+		return fmt.Errorf("expected key=value")
+	}
+	if *s == nil {
+		*s = map[string]string{}
+	}
+	(*s)[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+	return nil
+}
+
+type skillFlag []map[string]any
+
+func (s *skillFlag) String() string {
+	return ""
+}
+
+func (s *skillFlag) Set(value string) error {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return fmt.Errorf("skill spec is required")
+	}
+	spec := map[string]any{}
+	for _, part := range strings.Split(raw, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			return fmt.Errorf("invalid skill field %q (expected key=value)", strings.TrimSpace(part))
+		}
+		key := strings.ToLower(strings.TrimSpace(kv[0]))
+		val := strings.TrimSpace(kv[1])
+		switch key {
+		case "name", "source", "version", "mount_path":
+			if val == "" {
+				return fmt.Errorf("skill %s is required", key)
+			}
+			spec[key] = val
+		case "read_only":
+			parsed, err := strconv.ParseBool(val)
+			if err != nil {
+				return fmt.Errorf("skill read_only must be true|false")
+			}
+			spec[key] = parsed
+		default:
+			return fmt.Errorf("unsupported skill field %q", key)
+		}
+	}
+	if _, ok := spec["name"]; !ok {
+		return fmt.Errorf("skill name is required")
+	}
+	if _, ok := spec["source"]; !ok {
+		return fmt.Errorf("skill source is required")
+	}
+	*s = append(*s, spec)
+	return nil
+}
+
 func main() {
 	code := run(os.Args[1:], os.Stdout, os.Stderr)
 	os.Exit(code)
@@ -185,12 +255,18 @@ func runLoop(client *apiClient, output string, args []string, stdout, stderr io.
 		return cmdLoopList(client, output, stdout, stderr)
 	case "get":
 		return cmdLoopGet(client, output, args[1:], stdout, stderr)
+	case "trace":
+		return cmdLoopTrace(client, output, args[1:], stdout, stderr)
 	case "create":
 		return cmdLoopCreate(client, output, args[1:], stdout, stderr)
 	case "logs":
 		return cmdLoopLogs(client, output, args[1:], stdout, stderr)
 	case "attach":
 		return cmdLoopAttach(client, output, args[1:], stdout, stderr)
+	case "detach":
+		return cmdLoopDetach(client, output, args[1:], stdout, stderr)
+	case "command":
+		return cmdLoopCommand(client, output, args[1:], stdout, stderr)
 	case "cancel":
 		return cmdLoopCancel(client, output, args[1:], stdout, stderr)
 	case "ingest-github":
@@ -200,6 +276,60 @@ func runLoop(client *apiClient, output string, args []string, stdout, stderr io.
 		printLoopHelp(stderr)
 		return 2
 	}
+}
+
+func cmdLoopTrace(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("loop trace", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		filePath string
+		limit    int
+	)
+	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
+	fs.IntVar(&limit, "limit", 500, "Maximum entries per trace section")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	loopIDs, err := collectLoopIDs(filePath, fs.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "loop trace failed: %v\n", err)
+		return 1
+	}
+	if len(loopIDs) == 0 {
+		fmt.Fprintln(stderr, "usage: smithctl loop trace <loop-id> [<loop-id>...] [--limit N] [--file ids.json]")
+		return 2
+	}
+	results := make([]map[string]any, 0, len(loopIDs))
+	failed := false
+	for _, loopID := range loopIDs {
+		var trace any
+		path := "/v1/loops/" + loopID + "/trace?limit=" + strconv.Itoa(limit)
+		if err := client.doJSON(http.MethodGet, path, nil, &trace); err != nil {
+			results = append(results, map[string]any{
+				"loop_id": loopID,
+				"status":  "error",
+				"error":   err.Error(),
+			})
+			failed = true
+			continue
+		}
+		results = append(results, map[string]any{
+			"loop_id": loopID,
+			"status":  "ok",
+			"trace":   trace,
+		})
+	}
+	if len(loopIDs) == 1 && !failed {
+		printOutput(stdout, output, results[0]["trace"])
+		return 0
+	}
+	printOutput(stdout, output, map[string]any{"results": results})
+	if failed {
+		return 1
+	}
+	return 0
 }
 
 func runPRD(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
@@ -282,17 +412,27 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	fs := flag.NewFlagSet("loop create", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
-		filePath       string
-		title          string
-		description    string
-		sourceType     string
-		sourceRef      string
-		idempotencyKey string
-		batchFile      string
-		fromGitHub     string
-		fromPRD        string
-		format         string
+		filePath        string
+		title           string
+		description     string
+		sourceType      string
+		sourceRef       string
+		idempotencyKey  string
+		batchFile       string
+		fromGitHub      string
+		fromPRD         string
+		format          string
+		envPreset       string
+		envMiseFile     string
+		envImageRef     string
+		envImagePull    string
+		envDockerCtx    string
+		envDockerFile   string
+		envDockerTarget string
 	)
+	var envTools stringMapFlag
+	var envBuildArgs stringMapFlag
+	var skills skillFlag
 	fs.StringVar(&filePath, "file", "", "JSON payload file for /v1/loops")
 	fs.StringVar(&filePath, "f", "", "JSON payload file for /v1/loops")
 	fs.StringVar(&title, "title", "", "Loop title")
@@ -305,6 +445,16 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	fs.StringVar(&fromGitHub, "from-github", "", "JSON file for /v1/ingress/github/issues")
 	fs.StringVar(&fromPRD, "from-prd", "", "PRD file path (markdown or json)")
 	fs.StringVar(&format, "format", "", "PRD format override: markdown|json")
+	fs.StringVar(&envPreset, "env-preset", "", "Environment preset name (standard|secure|performance|minimal)")
+	fs.StringVar(&envMiseFile, "env-mise-file", "", "mise tool versions file path")
+	fs.Var(&envTools, "env-tool", "mise tool pin in key=value format (repeatable)")
+	fs.StringVar(&envImageRef, "env-image-ref", "", "Environment container image reference")
+	fs.StringVar(&envImagePull, "env-image-pull-policy", "", "Environment image pull policy: Always|IfNotPresent|Never")
+	fs.StringVar(&envDockerCtx, "env-docker-context", "", "Environment docker build context directory")
+	fs.StringVar(&envDockerFile, "env-dockerfile", "", "Environment dockerfile path")
+	fs.StringVar(&envDockerTarget, "env-docker-target", "", "Environment docker build target stage")
+	fs.Var(&envBuildArgs, "env-build-arg", "Docker build arg in key=value format (repeatable)")
+	fs.Var(&skills, "skill", "Skill mount spec: name=...,source=...[,version=...][,mount_path=/...][,read_only=true|false] (repeatable). If mount_path is omitted, Codex defaults to /smith/skills/<name>.")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
@@ -317,6 +467,25 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	}
 	if selectedModes > 1 {
 		fmt.Fprintln(stderr, "loop create flags are mutually exclusive: --file, --batch, --from-github, --from-prd")
+		return 2
+	}
+	hasEnvironmentFlags := strings.TrimSpace(envPreset) != "" ||
+		strings.TrimSpace(envMiseFile) != "" ||
+		len(envTools) > 0 ||
+		strings.TrimSpace(envImageRef) != "" ||
+		strings.TrimSpace(envImagePull) != "" ||
+		strings.TrimSpace(envDockerCtx) != "" ||
+		strings.TrimSpace(envDockerFile) != "" ||
+		strings.TrimSpace(envDockerTarget) != "" ||
+		len(envBuildArgs) > 0
+	if selectedModes > 0 && (hasEnvironmentFlags || len(skills) > 0) {
+		fmt.Fprintln(stderr, "environment/skill flags are only supported with direct loop create (not --file/--batch/--from-github/--from-prd)")
+		return 2
+	}
+
+	environment, envErr := buildEnvironmentPayload(envPreset, envMiseFile, envTools, envImageRef, envImagePull, envDockerCtx, envDockerFile, envDockerTarget, envBuildArgs)
+	if envErr != nil {
+		fmt.Fprintf(stderr, "loop create failed: %v\n", envErr)
 		return 2
 	}
 	if strings.TrimSpace(fromGitHub) != "" {
@@ -416,6 +585,12 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 			"source_ref":      sourceRef,
 			"idempotency_key": idempotencyKey,
 		}
+		if environment != nil {
+			payload.(map[string]any)["environment"] = environment
+		}
+		if len(skills) > 0 {
+			payload.(map[string]any)["skills"] = []map[string]any(skills)
+		}
 	}
 	var out any
 	if err := client.doJSON(http.MethodPost, "/v1/loops", payload, &out); err != nil {
@@ -424,6 +599,88 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	}
 	printOutput(stdout, output, out)
 	return 0
+}
+
+func buildEnvironmentPayload(
+	preset string,
+	miseFile string,
+	tools stringMapFlag,
+	imageRef string,
+	imagePull string,
+	dockerContext string,
+	dockerfilePath string,
+	dockerTarget string,
+	buildArgs stringMapFlag,
+) (map[string]any, error) {
+	preset = strings.TrimSpace(preset)
+	miseFile = strings.TrimSpace(miseFile)
+	imageRef = strings.TrimSpace(imageRef)
+	imagePull = strings.TrimSpace(imagePull)
+	dockerContext = strings.TrimSpace(dockerContext)
+	dockerfilePath = strings.TrimSpace(dockerfilePath)
+	dockerTarget = strings.TrimSpace(dockerTarget)
+
+	hasMise := miseFile != "" || len(tools) > 0
+	hasImage := imageRef != ""
+	hasDocker := dockerContext != "" || dockerfilePath != "" || dockerTarget != "" || len(buildArgs) > 0
+	modeCount := 0
+	if hasMise {
+		modeCount++
+	}
+	if hasImage {
+		modeCount++
+	}
+	if hasDocker {
+		modeCount++
+	}
+	if modeCount > 1 {
+		return nil, fmt.Errorf("environment source conflict: specify only one of mise, container_image, or dockerfile")
+	}
+	if imagePull != "" && !hasImage {
+		return nil, fmt.Errorf("--env-image-pull-policy requires --env-image-ref")
+	}
+	if (dockerContext == "") != (dockerfilePath == "") {
+		return nil, fmt.Errorf("dockerfile mode requires both --env-docker-context and --env-dockerfile")
+	}
+
+	environment := map[string]any{}
+	if preset != "" {
+		environment["preset"] = preset
+	}
+	if hasMise {
+		mise := map[string]any{}
+		if miseFile != "" {
+			mise["tool_versions_file"] = miseFile
+		}
+		if len(tools) > 0 {
+			mise["tools"] = map[string]string(tools)
+		}
+		environment["mise"] = mise
+	}
+	if hasImage {
+		image := map[string]any{"ref": imageRef}
+		if imagePull != "" {
+			image["pull_policy"] = imagePull
+		}
+		environment["container_image"] = image
+	}
+	if hasDocker {
+		dockerfile := map[string]any{
+			"context_dir":     dockerContext,
+			"dockerfile_path": dockerfilePath,
+		}
+		if dockerTarget != "" {
+			dockerfile["target"] = dockerTarget
+		}
+		if len(buildArgs) > 0 {
+			dockerfile["build_args"] = map[string]string(buildArgs)
+		}
+		environment["dockerfile"] = dockerfile
+	}
+	if len(environment) == 0 {
+		return nil, nil
+	}
+	return environment, nil
 }
 
 func cmdLoopLogs(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
@@ -623,6 +880,109 @@ func cmdLoopCancel(client *apiClient, output string, args []string, stdout, stde
 	if failed {
 		return 1
 	}
+	return 0
+}
+
+func cmdLoopDetach(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("loop detach", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		filePath string
+		actor    string
+	)
+	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&actor, "actor", "operator", "Detach actor identifier")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	loopIDs, err := collectLoopIDs(filePath, fs.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "loop detach failed: %v\n", err)
+		return 1
+	}
+	if len(loopIDs) == 0 {
+		fmt.Fprintln(stderr, "usage: smithctl loop detach <loop-id> [<loop-id>...] [--file ids.json]")
+		return 2
+	}
+	results := make([]map[string]any, 0, len(loopIDs))
+	failed := false
+	for _, loopID := range loopIDs {
+		payload := map[string]any{"actor": actor}
+		var out any
+		err := client.doJSON(http.MethodPost, "/v1/loops/"+loopID+"/control/detach", payload, &out)
+		if err != nil {
+			results = append(results, map[string]any{
+				"loop_id": loopID,
+				"status":  "error",
+				"error":   err.Error(),
+			})
+			failed = true
+			continue
+		}
+		results = append(results, map[string]any{
+			"loop_id": loopID,
+			"status":  "ok",
+			"result":  out,
+		})
+	}
+	if len(loopIDs) == 1 && !failed {
+		printOutput(stdout, output, results[0]["result"])
+		return 0
+	}
+	printOutput(stdout, output, map[string]any{"results": results})
+	if failed {
+		return 1
+	}
+	return 0
+}
+
+func cmdLoopCommand(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+	loopIDArg := ""
+	parseArgs := args
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		loopIDArg = strings.TrimSpace(args[0])
+		parseArgs = args[1:]
+	}
+	fs := flag.NewFlagSet("loop command", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		actor   string
+		command string
+	)
+	fs.StringVar(&actor, "actor", "operator", "Actor issuing command")
+	fs.StringVar(&command, "command", "", "Command payload")
+	if err := fs.Parse(parseArgs); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	loopID := loopIDArg
+	if loopID == "" {
+		if len(fs.Args()) != 1 {
+			fmt.Fprintln(stderr, "usage: smithctl loop command <loop-id> --command \"pause|resume|...\"")
+			return 2
+		}
+		loopID = strings.TrimSpace(fs.Args()[0])
+	}
+	if loopID == "" {
+		fmt.Fprintln(stderr, "usage: smithctl loop command <loop-id> --command \"pause|resume|...\"")
+		return 2
+	}
+	if strings.TrimSpace(command) == "" {
+		fmt.Fprintln(stderr, "--command is required")
+		return 2
+	}
+	var out any
+	payload := map[string]any{
+		"actor":   actor,
+		"command": command,
+	}
+	if err := client.doJSON(http.MethodPost, "/v1/loops/"+loopID+"/control/command", payload, &out); err != nil {
+		fmt.Fprintf(stderr, "loop command failed: %v\n", err)
+		return 1
+	}
+	printOutput(stdout, output, out)
 	return 0
 }
 
@@ -1056,13 +1416,19 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Examples:")
 	fmt.Fprintln(w, "  smithctl loop list")
 	fmt.Fprintln(w, "  smithctl loop get loop-abc123")
+	fmt.Fprintln(w, "  smithctl loop trace loop-abc123 --limit 100")
 	fmt.Fprintln(w, "  smithctl loop get loop-abc123 loop-def456")
 	fmt.Fprintln(w, "  smithctl loop create --title \"Fix drift\" --source-type github_issue --source-ref org/repo#1")
+	fmt.Fprintln(w, "  smithctl loop create --title \"Env test\" --source-type interactive --source-ref terminal/session-01 --env-image-ref ghcr.io/acme/replica:v2")
+	fmt.Fprintln(w, "  smithctl loop create --title \"Dockerfile run\" --source-type prd_task --source-ref docs/prd.md#1 --env-docker-context . --env-dockerfile Dockerfile --env-build-arg GO_VERSION=1.22")
+	fmt.Fprintln(w, "  smithctl loop create --title \"Skill run\" --source-type interactive --source-ref terminal/session-02 --skill name=commit,source=local://skills/commit")
 	fmt.Fprintln(w, "  smithctl loop create --batch loops.json")
 	fmt.Fprintln(w, "  smithctl loop create --from-github issues.json")
 	fmt.Fprintln(w, "  smithctl loop create --from-prd docs/prd1.md --source-ref prd:docs/prd1.md")
 	fmt.Fprintln(w, "  smithctl loop logs loop-abc123 --follow")
 	fmt.Fprintln(w, "  smithctl loop attach loop-abc123")
+	fmt.Fprintln(w, "  smithctl loop command loop-abc123 --command \"pause\"")
+	fmt.Fprintln(w, "  smithctl loop detach loop-abc123")
 	fmt.Fprintln(w, "  smithctl loop cancel loop-abc123 --reason \"operator request\"")
 	fmt.Fprintln(w, "  smithctl loop ingest-github --file issues.json")
 	fmt.Fprintln(w, "  smithctl prd create \"Auth Flow\" --template feature --out docs/prd-auth.md")
@@ -1071,7 +1437,7 @@ func printHelp(w io.Writer) {
 
 func printLoopHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: smithctl loop <command>")
-	fmt.Fprintln(w, "Commands: list, get, create, logs, attach, cancel, ingest-github")
+	fmt.Fprintln(w, "Commands: list, get, trace, create, logs, attach, detach, command, cancel, ingest-github")
 }
 
 func printPRDHelp(w io.Writer) {

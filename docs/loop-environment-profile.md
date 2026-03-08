@@ -91,3 +91,9 @@ Invalid environment payloads are rejected with HTTP `400` and actionable error m
 
 Loop creation validates `environment.preset` against this catalog, and applies
 the project default preset when `environment` is omitted.
+
+## Dockerfile Build Runtime Flags
+
+- `SMITH_DOCKERFILE_BUILD_ENABLED=true` enables Dockerfile-based loop image builds in `smith-core`.
+- `SMITH_DOCKERFILE_IMAGE_REPOSITORY` overrides target image repository for Dockerfile builds.
+- Build metadata (`build_tag`, `build_cache_status`, `build_duration_ms`) is journaled for auditability.

@@ -28,6 +28,8 @@ Define how loops are created and controlled for single and multi-loop execution.
 - `GET /v1/loops/{id}` loop status/details
 - `GET /v1/loops/{id}/journal/stream` live journal stream
 - `POST /v1/loops/{id}/control/attach` attach interactive terminal session
+- `POST /v1/loops/{id}/control/command` issue interactive terminal command (attach required)
+- `POST /v1/loops/{id}/control/detach` detach interactive terminal session
 - `POST /v1/ingress/github/issues` ingest one or more GitHub issues
 - `POST /v1/ingress/prd` ingest PRD and emit loop specs
 
@@ -40,9 +42,14 @@ Example command surface:
 - `smith loop create --from-github 123`
 - `smith loop create --from-prd docs/prd1.md`
 - `smith loop create --batch issues.yaml`
+- `smithctl loop create ... --env-preset standard`
+- `smithctl loop create ... --env-image-ref ghcr.io/acme/replica:v2 --env-image-pull-policy Always`
+- `smithctl loop create ... --env-docker-context . --env-dockerfile Dockerfile --env-build-arg GO_VERSION=1.22`
 - `smith loop get <id>`
 - `smith loop logs <id> --follow`
 - `smith loop attach <id>`
+- `smith loop command <id> --command "pause|resume|..."` (attach required)
+- `smith loop detach <id>`
 - `smith loop cancel <id>`
 - `smith prd create <name> --template <tpl>`
 - `smith prd submit <file>`

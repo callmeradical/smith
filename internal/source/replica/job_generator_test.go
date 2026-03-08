@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
+
+	"smith/internal/source/gitpolicy"
+	"smith/internal/source/journalpolicy"
 )
 
 func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
@@ -83,6 +87,101 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	}
 	if mounts["skill-1-lint"].MountPath != "/smith/skills/lint" || mounts["skill-1-lint"].ReadOnly {
 		t.Fatalf("unexpected lint mount: %+v", mounts["skill-1-lint"])
+	}
+}
+
+func TestBuildReplicaJobWithGitPolicyOverrides(t *testing.T) {
+	req := validRequest()
+	policy := gitpolicy.DefaultPolicy()
+	policy.BranchCleanup = gitpolicy.BranchCleanupNever
+	policy.DeleteBranchOnMerge = false
+	policy.ConflictPolicy = gitpolicy.ConflictPolicyFailFast
+	req.GitPolicy = &policy
+	req.EnableGitPolicyConfig = true
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	if env["SMITH_GIT_POLICY_BRANCH_CLEANUP"].Value != "never" {
+		t.Fatalf("unexpected branch cleanup env: %+v", env["SMITH_GIT_POLICY_BRANCH_CLEANUP"])
+	}
+	if env["SMITH_GIT_POLICY_CONFLICT_POLICY"].Value != "fail_fast" {
+		t.Fatalf("unexpected conflict policy env: %+v", env["SMITH_GIT_POLICY_CONFLICT_POLICY"])
+	}
+	if env["SMITH_GIT_POLICY_DELETE_BRANCH_ON_MERGE"].Value != "false" {
+		t.Fatalf("unexpected delete policy env: %+v", env["SMITH_GIT_POLICY_DELETE_BRANCH_ON_MERGE"])
+	}
+}
+
+func TestBuildReplicaJobRejectsGitPolicyOverrideWhenFeatureDisabled(t *testing.T) {
+	req := validRequest()
+	policy := gitpolicy.DefaultPolicy()
+	req.GitPolicy = &policy
+	req.EnableGitPolicyConfig = false
+	_, err := BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
+	}
+}
+
+func TestBuildReplicaJobWithJournalPolicyOverrides(t *testing.T) {
+	req := validRequest()
+	policy := journalpolicy.Policy{
+		RetentionMode: journalpolicy.RetentionTTL,
+		RetentionTTL:  14 * 24 * time.Hour,
+		ArchiveMode:   journalpolicy.ArchiveS3,
+		ArchiveBucket: "smith-journal-archive",
+	}
+	req.JournalPolicy = &policy
+	req.EnableJournalPolicyConfig = true
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	if env["SMITH_JOURNAL_RETENTION_MODE"].Value != "ttl" {
+		t.Fatalf("unexpected retention mode env: %+v", env["SMITH_JOURNAL_RETENTION_MODE"])
+	}
+	if env["SMITH_JOURNAL_RETENTION_TTL"].Value != "336h0m0s" {
+		t.Fatalf("unexpected retention ttl env: %+v", env["SMITH_JOURNAL_RETENTION_TTL"])
+	}
+	if env["SMITH_JOURNAL_ARCHIVE_MODE"].Value != "s3" {
+		t.Fatalf("unexpected archive mode env: %+v", env["SMITH_JOURNAL_ARCHIVE_MODE"])
+	}
+	if env["SMITH_JOURNAL_ARCHIVE_BUCKET"].Value != "smith-journal-archive" {
+		t.Fatalf("unexpected archive bucket env: %+v", env["SMITH_JOURNAL_ARCHIVE_BUCKET"])
+	}
+}
+
+func TestBuildReplicaJobRejectsJournalPolicyOverrideWhenFeatureDisabled(t *testing.T) {
+	req := validRequest()
+	policy := journalpolicy.Policy{
+		RetentionMode: journalpolicy.RetentionTTL,
+		RetentionTTL:  time.Hour,
+		ArchiveMode:   journalpolicy.ArchiveNone,
+	}
+	req.JournalPolicy = &policy
+	req.EnableJournalPolicyConfig = false
+	_, err := BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
 	}
 }
 

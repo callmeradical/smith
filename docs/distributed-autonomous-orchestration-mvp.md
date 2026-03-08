@@ -89,6 +89,13 @@ Helm chart requirements:
 - Configure etcd endpoint/TLS and auth secrets.
 - Support local/stage/prod values overlays.
 
+## Operator Evidence Queries
+
+- `GET /v1/loops/{id}/trace?limit=500` returns state, anomaly, journal, handoffs, overrides, and loop-scoped audit records.
+- `GET /v1/loops/{id}/handoffs` returns append-only handoff chain for replica resumability analysis.
+- `GET /v1/loops/{id}/overrides` returns append-only operator override history.
+- `GET /v1/audit?loop_id={id}` returns immutable audit records scoped to a loop (auth required).
+
 ## MVP Exit Criteria
 
 - Core watcher processes unresolved loops end-to-end.

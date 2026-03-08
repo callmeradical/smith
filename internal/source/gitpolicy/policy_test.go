@@ -78,3 +78,28 @@ func TestValidateRejectsInvalidMergeMethod(t *testing.T) {
 		t.Fatal("expected invalid merge method error")
 	}
 }
+
+func TestValidateRejectsInvalidBranchCleanupPolicy(t *testing.T) {
+	p := DefaultPolicy()
+	p.BranchCleanup = "after_archive"
+	if err := p.Validate(); err == nil {
+		t.Fatal("expected invalid branch cleanup policy error")
+	}
+}
+
+func TestValidateRejectsInvalidConflictPolicy(t *testing.T) {
+	p := DefaultPolicy()
+	p.ConflictPolicy = "favor_ours"
+	if err := p.Validate(); err == nil {
+		t.Fatal("expected invalid conflict policy error")
+	}
+}
+
+func TestValidateRejectsCleanupDeleteMismatch(t *testing.T) {
+	p := DefaultPolicy()
+	p.BranchCleanup = BranchCleanupNever
+	p.DeleteBranchOnMerge = true
+	if err := p.Validate(); err == nil {
+		t.Fatal("expected cleanup/delete mismatch error")
+	}
+}

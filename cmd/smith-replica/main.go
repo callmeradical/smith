@@ -212,6 +212,22 @@ func runtimeMetadataFromEnv() map[string]string {
 	if pullPolicy != "" {
 		out["execution_image_pull_policy"] = pullPolicy
 	}
+	journalRetentionMode := strings.TrimSpace(os.Getenv("SMITH_JOURNAL_RETENTION_MODE"))
+	if journalRetentionMode != "" {
+		out["journal_retention_mode"] = journalRetentionMode
+	}
+	journalRetentionTTL := strings.TrimSpace(os.Getenv("SMITH_JOURNAL_RETENTION_TTL"))
+	if journalRetentionTTL != "" {
+		out["journal_retention_ttl"] = journalRetentionTTL
+	}
+	journalArchiveMode := strings.TrimSpace(os.Getenv("SMITH_JOURNAL_ARCHIVE_MODE"))
+	if journalArchiveMode != "" {
+		out["journal_archive_mode"] = journalArchiveMode
+	}
+	journalArchiveBucket := strings.TrimSpace(os.Getenv("SMITH_JOURNAL_ARCHIVE_BUCKET"))
+	if journalArchiveBucket != "" {
+		out["journal_archive_bucket"] = journalArchiveBucket
+	}
 	skillCount := strings.TrimSpace(os.Getenv("SMITH_SKILL_MOUNT_COUNT"))
 	if skillCount != "" {
 		out["skill_mount_count"] = skillCount

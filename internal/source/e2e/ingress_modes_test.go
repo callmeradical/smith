@@ -323,24 +323,37 @@ func writeJSONResponse(t *testing.T, w http.ResponseWriter, status int, payload 
 
 func runSmithctl(t *testing.T, serverURL string, args ...string) []byte {
 	t.Helper()
+	stdout, stderr, code := runSmithctlWithExitCode(serverURL, args...)
+	if code != 0 {
+		fullArgs := append([]string{"run", "./cmd/smithctl", "--server", serverURL}, args...)
+		t.Fatalf("smithctl failed: code=%d\nargs: %v\nstderr:\n%s\nstdout:\n%s", code, fullArgs, stderr, string(stdout))
+	}
+	return stdout
+}
+
+func runSmithctlWithExitCode(serverURL string, args ...string) ([]byte, string, int) {
 	fullArgs := append([]string{"run", "./cmd/smithctl", "--server", serverURL}, args...)
 	cmd := exec.Command("go", fullArgs...)
-	cmd.Dir = repoRoot(t)
+	cmd.Dir = filepath.Clean(filepath.Join(filepath.Dir(mustCallerFile()), "../../.."))
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	code := 0
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("smithctl failed: %v\nargs: %v\nstderr:\n%s\nstdout:\n%s", err, fullArgs, stderr.String(), stdout.String())
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
+		} else {
+			code = 1
+		}
 	}
-	return stdout.Bytes()
+	return stdout.Bytes(), stderr.String(), code
 }
 
-func repoRoot(t *testing.T) string {
-	t.Helper()
+func mustCallerFile() string {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatalf("unable to resolve caller")
+		panic("unable to resolve caller")
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "../../.."))
+	return file
 }

@@ -1,10 +1,10 @@
 [project]
 site_name = "Smith Docs"
 site_description = "Smith distributed autonomous orchestration documentation"
-site_url = "https://<org-or-user>.github.io/<repo>/"
+site_url = "https://callmeradical.github.io/smith/"
 docs_dir = "docs"
 site_dir = "site"
-repo_url = "https://github.com/<org-or-user>/<repo>"
+repo_url = "https://github.com/callmeradical/smith"
 repo_name = "GitHub"
 extra_css = ["stylesheets/sidecar-smith.css"]
 extra_javascript = ["javascripts/sidecar-smith.js"]

@@ -12,6 +12,7 @@ K3D_PORT_HTTPS="${SMITH_K3D_PORT_HTTPS:-8443:443@loadbalancer}"
 VCLUSTER_NAME="${SMITH_VCLUSTER_NAME:-smith-vc}"
 VCLUSTER_NAMESPACE="${SMITH_VCLUSTER_NAMESPACE:-smith-vcluster}"
 VCLUSTER_CONNECT="${SMITH_VCLUSTER_CONNECT:-true}"
+USE_VCLUSTER="${SMITH_USE_VCLUSTER:-true}"
 
 ETCD_NAMESPACE="${SMITH_ETCD_NAMESPACE:-smith-system}"
 ETCD_RELEASE_NAME="${SMITH_ETCD_RELEASE_NAME:-smith-etcd}"
@@ -36,7 +37,9 @@ need_cmd() {
 need_cmd kubectl
 need_cmd helm
 need_cmd k3d
-need_cmd vcluster
+if [[ "$USE_VCLUSTER" == "true" ]]; then
+  need_cmd vcluster
+fi
 
 if ! k3d cluster list | awk 'NR>1 {print $1}' | grep -q "^${K3D_CLUSTER_NAME}$"; then
   info "creating k3d cluster ${K3D_CLUSTER_NAME}"
@@ -59,20 +62,24 @@ if kubectl get nodes -o jsonpath='{range .items[*].spec.taints[*]}{.key}{"\n"}{e
   fail "cluster nodes still report disk-pressure taints; free Docker disk space and retry"
 fi
 
-kubectl create namespace "$VCLUSTER_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-if ! kubectl -n "$VCLUSTER_NAMESPACE" get statefulset "$VCLUSTER_NAME" >/dev/null 2>&1 \
-  && ! kubectl -n "$VCLUSTER_NAMESPACE" get statefulset "vc-${VCLUSTER_NAME}" >/dev/null 2>&1; then
-  info "creating vcluster ${VCLUSTER_NAME}"
-  vcluster create "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --connect=false
-else
-  info "vcluster ${VCLUSTER_NAME} already exists"
-fi
+if [[ "$USE_VCLUSTER" == "true" ]]; then
+  kubectl create namespace "$VCLUSTER_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  if ! kubectl -n "$VCLUSTER_NAMESPACE" get statefulset "$VCLUSTER_NAME" >/dev/null 2>&1 \
+    && ! kubectl -n "$VCLUSTER_NAMESPACE" get statefulset "vc-${VCLUSTER_NAME}" >/dev/null 2>&1; then
+    info "creating vcluster ${VCLUSTER_NAME}"
+    vcluster create "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --connect=false
+  else
+    info "vcluster ${VCLUSTER_NAME} already exists"
+  fi
 
-if [[ "$VCLUSTER_CONNECT" == "true" ]]; then
-  info "connecting kubectl context to vcluster"
-  export SMITH_VCLUSTER_KUBECONFIG="${SMITH_VCLUSTER_KUBECONFIG:-/tmp/${VCLUSTER_NAME}-kubeconfig.yaml}"
-  vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --print > "$SMITH_VCLUSTER_KUBECONFIG"
-  export KUBECONFIG="$SMITH_VCLUSTER_KUBECONFIG"
+  if [[ "$VCLUSTER_CONNECT" == "true" ]]; then
+    info "connecting kubectl context to vcluster"
+    export SMITH_VCLUSTER_KUBECONFIG="${SMITH_VCLUSTER_KUBECONFIG:-/tmp/${VCLUSTER_NAME}-kubeconfig.yaml}"
+    vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --print > "$SMITH_VCLUSTER_KUBECONFIG"
+    export KUBECONFIG="$SMITH_VCLUSTER_KUBECONFIG"
+  fi
+else
+  info "SMITH_USE_VCLUSTER=false; using direct k3d namespace deployment profile"
 fi
 
 kubectl create namespace "$ETCD_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -195,5 +202,9 @@ fi
 
 info "environment ready"
 info "k3d cluster: ${K3D_CLUSTER_NAME}"
-info "vcluster: ${VCLUSTER_NAME} (${VCLUSTER_NAMESPACE})"
+if [[ "$USE_VCLUSTER" == "true" ]]; then
+  info "vcluster: ${VCLUSTER_NAME} (${VCLUSTER_NAMESPACE})"
+else
+  info "vcluster: disabled (direct k3d profile)"
+fi
 info "etcd endpoint (inside cluster): http://${ETCD_RELEASE_NAME}.${ETCD_NAMESPACE}.svc.cluster.local:2379"

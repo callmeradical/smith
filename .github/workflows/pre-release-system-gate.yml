@@ -1,0 +1,148 @@
+name: Pre-Release System Gate
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  vcluster-system-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install integration prerequisites
+        run: ./scripts/integration/prereqs.sh
+
+      - name: Provision k3d + vCluster + etcd
+        timeout-minutes: 20
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_VCLUSTER_NAME: smith-pre-release-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
+          SMITH_ETCD_NAMESPACE: smith-pre-release-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
+          SMITH_ETCD_MODE: simple
+          SMITH_VCLUSTER_CONNECT: "true"
+        run: ./scripts/integration/env-up.sh
+
+      - name: Run vCluster pre-release gate
+        timeout-minutes: 20
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/vcluster
+          SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/vcluster
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_VCLUSTER_NAME: smith-pre-release-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
+          SMITH_ETCD_NAMESPACE: smith-pre-release-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
+        run: ./scripts/release/pre-release-system-gate.sh vcluster
+
+      - name: Upload vCluster gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-pre-release-vcluster-artifacts
+          path: /tmp/smith-pre-release-artifacts/vcluster
+
+      - name: Tear down pre-release environment
+        if: always()
+        timeout-minutes: 15
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_VCLUSTER_NAME: smith-pre-release-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
+          SMITH_ETCD_NAMESPACE: smith-pre-release-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
+        run: ./scripts/integration/env-down.sh
+
+  non-vcluster-parity-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run non-vCluster parity pre-release gate
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/parity
+          SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/parity
+        run: ./scripts/release/pre-release-system-gate.sh parity
+
+      - name: Upload parity gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-pre-release-parity-artifacts
+          path: /tmp/smith-pre-release-artifacts/parity
+
+  non-vcluster-k3s-direct-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install integration prerequisites
+        run: ./scripts/integration/prereqs.sh
+
+      - name: Provision k3d + etcd (direct namespace, no vCluster)
+        timeout-minutes: 20
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release-direct
+          SMITH_USE_VCLUSTER: "false"
+          SMITH_ETCD_NAMESPACE: smith-pre-release-direct-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-direct-etcd
+          SMITH_ETCD_MODE: simple
+        run: ./scripts/integration/env-up.sh
+
+      - name: Run direct k3s non-vCluster parity gate
+        timeout-minutes: 20
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/parity-direct-k3s
+          SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/parity-direct-k3s
+          SMITH_ENABLE_CLUSTER_TESTS: "true"
+        run: ./scripts/release/pre-release-system-gate.sh parity
+
+      - name: Upload direct k3s parity artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-pre-release-parity-direct-k3s-artifacts
+          path: /tmp/smith-pre-release-artifacts/parity-direct-k3s
+
+      - name: Tear down direct k3s environment
+        if: always()
+        timeout-minutes: 15
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release-direct
+          SMITH_USE_VCLUSTER: "false"
+          SMITH_ETCD_NAMESPACE: smith-pre-release-direct-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-direct-etcd
+        run: ./scripts/integration/env-down.sh
