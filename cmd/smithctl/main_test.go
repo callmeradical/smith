@@ -1,0 +1,253 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"smith/internal/source/model"
+)
+
+func TestResolveConfigFromFileAndOverrides(t *testing.T) {
+	t.Setenv("SMITH_API_URL", "")
+	t.Setenv("SMITH_OPERATOR_TOKEN", "")
+	t.Setenv("SMITH_CONTEXT", "")
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"dev","contexts":{"dev":{"server":"http://dev.local:8080","token":"dev-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	resolved, err := resolveConfig(rootFlags{Config: cfgPath, Output: "json"})
+	if err != nil {
+		t.Fatalf("resolve config: %v", err)
+	}
+	if resolved.Server != "http://dev.local:8080" {
+		t.Fatalf("unexpected server: %s", resolved.Server)
+	}
+	if resolved.Token != "dev-token" {
+		t.Fatalf("unexpected token: %s", resolved.Token)
+	}
+}
+
+func TestResolveConfigEnvAndFlagPrecedence(t *testing.T) {
+	t.Setenv("SMITH_API_URL", "http://env.local:8080")
+	t.Setenv("SMITH_OPERATOR_TOKEN", "env-token")
+
+	resolved, err := resolveConfig(rootFlags{Server: "http://flag.local:8080", Token: "flag-token", Output: "text"})
+	if err != nil {
+		t.Fatalf("resolve config: %v", err)
+	}
+	if resolved.Server != "http://flag.local:8080" {
+		t.Fatalf("unexpected server: %s", resolved.Server)
+	}
+	if resolved.Token != "flag-token" {
+		t.Fatalf("unexpected token: %s", resolved.Token)
+	}
+}
+
+func TestLoopCreateBatchArrayFile(t *testing.T) {
+	var received map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/loops" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &received)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "loops.json")
+	content := `[{"title":"A","source_type":"github_issue","source_ref":"org/repo#1"}]`
+	if err := os.WriteFile(filePath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--server", srv.URL, "--output", "json", "loop", "create", "--batch", filePath}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if _, ok := received["loops"]; !ok {
+		t.Fatalf("expected loops wrapper payload, got %#v", received)
+	}
+}
+
+func TestLoopGetBatchIDs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if !strings.HasPrefix(r.URL.Path, "/v1/loops/") {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/v1/loops/")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"state": map[string]any{
+				"loop_id": id,
+				"state":   "unresolved",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--server", srv.URL, "--output", "json", "loop", "get", "loop-a", "loop-b"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	results, ok := out["results"].([]any)
+	if !ok || len(results) != 2 {
+		t.Fatalf("unexpected results: %#v", out)
+	}
+}
+
+func TestLoopCancelBatchPostsOverride(t *testing.T) {
+	var calls []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/control/override" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		calls = append(calls, payload)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "cancel",
+		"--reason", "test-reason", "--actor", "test-actor", "loop-a", "loop-b",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(calls))
+	}
+	for _, payload := range calls {
+		if payload["target_state"] != "cancelled" {
+			t.Fatalf("expected target_state=cancelled, got %#v", payload)
+		}
+		if payload["reason"] != "test-reason" {
+			t.Fatalf("expected reason, got %#v", payload)
+		}
+	}
+}
+
+func TestLoopAttachFallsBackWhenEndpointMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/control/attach"):
+			http.Error(w, "endpoint not found", http.StatusNotFound)
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/journal"):
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"sequence": 1, "message": "entry"},
+			})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/loops/"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"state": map[string]any{"state": string(model.LoopStateCancelled)},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "attach",
+		"--interval", (10 * time.Millisecond).String(), "--follow=false", "loop-a",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "not_supported") {
+		t.Fatalf("expected attach fallback output, got %s", stdout.String())
+	}
+}
+
+func TestPRDCreateTemplateToFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "prd.md")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--output", "json", "prd", "create", "Auth Flow", "--template", "feature", "--out", path,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read output file: %v", err)
+	}
+	if !strings.Contains(string(content), "## Goal") {
+		t.Fatalf("expected feature template content, got: %s", string(content))
+	}
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out["template"] != "feature" {
+		t.Fatalf("expected feature template metadata, got %#v", out)
+	}
+}
+
+func TestPRDSubmitIncludesLoopIDsAndValidationErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/ingress/prd" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{"item_index": 0, "loop_id": "loop-1", "status": "unresolved", "created": true},
+				{"item_index": 1, "status": "error", "message": "task title is required", "source_ref": "prd:doc#x"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	prdPath := filepath.Join(dir, "prd.md")
+	if err := os.WriteFile(prdPath, []byte("# Test PRD\n- [ ] One task"), 0o600); err != nil {
+		t.Fatalf("write prd file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "prd", "submit", "--file", prdPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	loopIDs, ok := out["loop_ids"].([]any)
+	if !ok || len(loopIDs) != 1 || loopIDs[0] != "loop-1" {
+		t.Fatalf("expected loop_ids [loop-1], got %#v", out["loop_ids"])
+	}
+	errs, ok := out["validation_errors"].([]any)
+	if !ok || len(errs) != 1 {
+		t.Fatalf("expected one validation error, got %#v", out["validation_errors"])
+	}
+}

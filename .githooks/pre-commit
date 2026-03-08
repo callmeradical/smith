@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${SKIP_GIT_HOOKS:-}" == "1" ]]; then
+  exit 0
+fi
+
+make hooks-run-pre-commit

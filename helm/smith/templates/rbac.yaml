@@ -1,0 +1,29 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "smith.fullname" . }}-core
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "smith.fullname" . }}-core
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "smith.serviceAccountName" (dict "component" "core" "root" .) }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "smith.fullname" . }}-core
+{{- end }}
