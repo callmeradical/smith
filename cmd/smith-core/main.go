@@ -97,7 +97,12 @@ func main() {
 	}
 
 	watcher := core.NewUnresolvedWatcher(&intentQueue{orch: orch})
-	go runWatcher(ctx, es, watcher, cfg)
+	controller := core.NewUnresolvedController(coreStateSource{store: es}, watcher, cfg.defaultPolicy)
+	go func() {
+		if runErr := controller.Run(ctx); runErr != nil {
+			log.Printf("unresolved controller exited with error: %v", runErr)
+		}
+	}()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -134,39 +139,44 @@ func main() {
 	}
 }
 
-func runWatcher(ctx context.Context, es *store.Store, watcher *core.UnresolvedWatcher, cfg config) {
-	states, err := es.ListStates(ctx)
-	if err == nil {
-		for _, state := range states {
-			if state.Record.State != model.LoopStateUnresolved {
-				continue
-			}
-			event := core.UnresolvedEvent{
-				LoopID:   state.Record.LoopID,
-				State:    state.Record.State,
-				Revision: state.Revision,
-				Policy:   cfg.defaultPolicy,
-			}
-			if handleErr := watcher.Handle(ctx, event); handleErr != nil {
-				log.Printf("initial unresolved handle failed loop=%s: %v", state.Record.LoopID, handleErr)
-			}
-		}
-	}
+type coreStateSource struct {
+	store *store.Store
+}
 
-	for event := range es.WatchState(ctx) {
-		if event.State.State != model.LoopStateUnresolved {
-			continue
-		}
-		handleErr := watcher.Handle(ctx, core.UnresolvedEvent{
-			LoopID:   event.LoopID,
-			State:    event.State.State,
-			Revision: event.Revision,
-			Policy:   cfg.defaultPolicy,
-		})
-		if handleErr != nil {
-			log.Printf("watch unresolved handle failed loop=%s: %v", event.LoopID, handleErr)
-		}
+func (s coreStateSource) ListStates(ctx context.Context) ([]core.StateSnapshot, error) {
+	states, err := s.store.ListStates(ctx)
+	if err != nil {
+		return nil, err
 	}
+	out := make([]core.StateSnapshot, 0, len(states))
+	for _, state := range states {
+		out = append(out, core.StateSnapshot{
+			LoopID:   state.Record.LoopID,
+			State:    state.Record.State,
+			Revision: state.Revision,
+		})
+	}
+	return out, nil
+}
+
+func (s coreStateSource) WatchStates(ctx context.Context) <-chan core.StateSnapshot {
+	storeEvents := s.store.WatchState(ctx)
+	out := make(chan core.StateSnapshot)
+	go func() {
+		defer close(out)
+		for event := range storeEvents {
+			select {
+			case <-ctx.Done():
+				return
+			case out <- core.StateSnapshot{
+				LoopID:   event.LoopID,
+				State:    event.State.State,
+				Revision: event.Revision,
+			}:
+			}
+		}
+	}()
+	return out
 }
 
 func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIntent) error {
