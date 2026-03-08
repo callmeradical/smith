@@ -5,4 +5,8 @@ if [[ "${SKIP_GIT_HOOKS:-}" == "1" ]]; then
   exit 0
 fi
 
-make hooks-run-pre-commit
+if [[ "${SMITH_HOOKS_IN_DOCKER:-1}" == "1" ]]; then
+  "$(dirname "$0")/run-in-docker.sh" hooks-run-pre-commit
+else
+  make hooks-run-pre-commit
+fi

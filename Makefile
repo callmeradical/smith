@@ -102,7 +102,7 @@ ci-local: ## Run local CI-equivalent checks
 
 hooks-install: ## Install repository git hooks from .githooks
 	git config core.hooksPath .githooks
-	chmod +x .githooks/pre-commit .githooks/pre-push
+	chmod +x .githooks/pre-commit .githooks/pre-push .githooks/run-in-docker.sh
 	@echo "Installed git hooks from .githooks"
 
 hooks-run-pre-commit: ## Run pre-commit checks manually

@@ -7,3 +7,4 @@
 .sidecar-base
 .td-root
 site/
+.cache/

@@ -5,5 +5,8 @@ if [[ "${SKIP_GIT_HOOKS:-}" == "1" ]]; then
   exit 0
 fi
 
-echo "[pre-push] skipped (disabled)"
-exit 0
+if [[ "${SMITH_HOOKS_IN_DOCKER:-1}" == "1" ]]; then
+  "$(dirname "$0")/run-in-docker.sh" hooks-run-pre-push
+else
+  make hooks-run-pre-push
+fi
