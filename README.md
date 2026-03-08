@@ -13,6 +13,18 @@ Smith coordinates autonomous execution loops as a state machine stored in etcd. 
 
 In this repository, the focus is the MVP control plane, deployment assets, and verification/test harnesses.
 
+## Philosophy
+
+Smith intentionally does not personify agents.
+
+- Agents are modeled as homogeneous and omnicapable execution units, not distinct personalities.
+- Anthropomorphizing agents is treated as an implementation constraint that reduces operational flexibility and performance.
+- The target model is uniform replication: many equivalent workers, same contract, same capabilities, horizontally scalable.
+- The system design favors role-neutral orchestration primitives (state, locks, jobs, handoffs) over persona-specific behavior.
+- The platform direction is informed by Ralph, `marcus/sidecar`, `marcus/td`, and related projects, but is engineered to scale beyond a single developer machine.
+
+Smith also moves beyond a single-machine file-system model by using etcd + Kubernetes as the control substrate, so execution can scale across distributed compute while preserving deterministic state and traceability.
+
 ## Architecture Summary
 
 Smith is split into control-plane and data-plane components.

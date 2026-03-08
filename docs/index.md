@@ -2,6 +2,13 @@
 
 Smith is an etcd-backed, Kubernetes-native autonomous orchestration platform.
 
+## Philosophy
+
+- Smith intentionally avoids anthropomorphized agent personas.
+- Workers are homogeneous and omnicapable, designed for uniform replication.
+- The platform extends beyond a local file-system execution model by using etcd + Kubernetes for distributed orchestration and traceable state.
+- The design is influenced by Ralph, `marcus/sidecar`, `marcus/td`, and related work, while targeting scale beyond a single developer machine.
+
 ## Getting Started
 
 - [Distributed Autonomous Orchestration MVP](distributed-autonomous-orchestration-mvp.md)

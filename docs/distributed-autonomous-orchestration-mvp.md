@@ -8,6 +8,18 @@ Deliver Smith as an etcd-backed, Kubernetes-native autonomous orchestration plat
 - Replica workers execute in Kubernetes Jobs.
 - Operator Console and CLI provide control, visibility, and audited intervention.
 
+## Philosophy
+
+Smith does not use persona-specific agents.
+
+- Execution units are intentionally homogeneous and omnicapable.
+- Anthropomorphic "agent personalities" are treated as constraints that reduce scheduling flexibility and system-level throughput.
+- Scale comes from replicating the same worker contract many times, not from assigning different identities or personas.
+- Orchestration is built from neutral primitives: state transitions, leases/locks, jobs, journals, and handoffs.
+- The implementation is influenced by Ralph, `marcus/sidecar`, `marcus/td`, and similar projects, with an explicit goal of operating beyond single-machine constraints.
+
+Smith also intentionally moves beyond a single-machine local file-system model. etcd + Kubernetes provide a distributed control substrate so loops can run across broad compute while preserving deterministic state, auditability, and resumability.
+
 ## Architecture
 
 ### Control Plane Components
