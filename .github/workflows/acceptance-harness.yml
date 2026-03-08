@@ -2,19 +2,58 @@ name: Acceptance Harness
 
 on:
   pull_request:
-    branches:
-      - acceptance-tests
+    paths:
+      - 'test/acceptance/**'
+      - 'internal/testharness/**'
+      - 'docs/test-harness-strategy.md'
+      - 'Makefile'
+      - '.github/workflows/acceptance-harness.yml'
   workflow_dispatch:
 
 jobs:
-  validate-acceptance:
+  acceptance-smoke:
     runs-on: ubuntu-latest
+    env:
+      SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts/acceptance-harness
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
-      - name: Run acceptance harness
-        run: ./scripts/validate-acceptance.sh
+      - name: Run acceptance smoke stage
+        run: make test-acceptance-smoke
+
+      - name: Upload acceptance smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-acceptance-smoke-artifacts
+          path: /tmp/smith-test-artifacts/acceptance-harness
+
+  acceptance-bdd:
+    runs-on: ubuntu-latest
+    needs: acceptance-smoke
+    env:
+      SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts/acceptance-harness
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run acceptance BDD stage
+        run: make test-acceptance-bdd
+
+      - name: Upload acceptance BDD artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-acceptance-bdd-artifacts
+          path: /tmp/smith-test-artifacts/acceptance-harness

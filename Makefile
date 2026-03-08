@@ -12,6 +12,7 @@ SMITH_FIXTURE_DIR ?= /tmp/smith-test-repo
 	cluster cluster-up cluster-down \
 	deploy undeploy \
 	test test-unit test-matrix test-integration test-e2e test-bdd \
+	test-acceptance-smoke test-acceptance-bdd test-acceptance \
 	teardown \
 	build docs-check ci-local hooks-install hooks-run-pre-commit hooks-run-pre-push
 
@@ -73,6 +74,18 @@ test-e2e: ## Run local e2e scripts directly
 test-bdd: ## Run godog-based BDD acceptance suite
 	go test ./test/acceptance -run TestFeatures -count=1
 
+test-acceptance-smoke: ## Run acceptance smoke suite with JSON artifact output
+	@set -euo pipefail; \
+	mkdir -p "$(SMITH_TEST_ARTIFACTS_DIR)"; \
+	go test ./test/acceptance -run TestHarnessSmoke -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-smoke.jsonl"
+
+test-acceptance-bdd: ## Run acceptance BDD suite with JSON artifact output
+	@set -euo pipefail; \
+	mkdir -p "$(SMITH_TEST_ARTIFACTS_DIR)"; \
+	go test ./test/acceptance -run TestFeatures -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-bdd.jsonl"
+
+test-acceptance: test-acceptance-smoke test-acceptance-bdd ## Run all Go-native acceptance harness suites
+
 teardown: undeploy cluster-down ## Teardown local deploy and cluster environment
 
 build: ## Build all Go binaries
@@ -84,7 +97,7 @@ docs-check: ## Run docs quality checks
 ci-local: ## Run local CI-equivalent checks
 	$(MAKE) build
 	$(MAKE) test-unit
-	$(MAKE) test-bdd
+	$(MAKE) test-acceptance
 	$(MAKE) docs-check
 
 hooks-install: ## Install repository git hooks from .githooks

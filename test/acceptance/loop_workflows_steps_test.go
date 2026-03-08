@@ -2,7 +2,9 @@ package acceptance
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +22,13 @@ type bddSuite struct {
 	store       *bddLeaseStore
 	singleState model.LoopState
 	isolated    bool
+	contended   map[string]loopContentionResult
+}
+
+type loopContentionResult struct {
+	successHolders []string
+	errors         []error
+	attempts       int
 }
 
 func newBDDSuite(t *testing.T) *bddSuite {
@@ -37,6 +46,7 @@ func (s *bddSuite) resetFixture() error {
 	s.mgr = locking.NewManager(s.store, 3*time.Minute)
 	s.singleState = model.LoopStateUnresolved
 	s.isolated = false
+	s.contended = map[string]loopContentionResult{}
 	return nil
 }
 
@@ -61,11 +71,12 @@ func (s *bddSuite) assertSingleLoopSynced() error {
 
 func (s *bddSuite) runConcurrentSafetyFlow() error {
 	loops := []string{"concurrent-safe-a", "concurrent-safe-b", "concurrent-safe-c"}
-	owners := make(map[string]string)
+	contention := make(map[string]loopContentionResult, len(loops))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
 	for _, loopID := range loops {
+		contention[loopID] = loopContentionResult{}
 		for i := 0; i < 12; i++ {
 			wg.Add(1)
 			holder := fmt.Sprintf("%s-worker-%d", loopID, i)
@@ -73,13 +84,17 @@ func (s *bddSuite) runConcurrentSafetyFlow() error {
 			go func(loopID, holder string, leaseID int64) {
 				defer wg.Done()
 				lock, err := s.mgr.Acquire(context.Background(), loopID, holder, leaseID)
+				mu.Lock()
+				result := contention[loopID]
+				result.attempts++
 				if err != nil {
+					result.errors = append(result.errors, err)
+					contention[loopID] = result
+					mu.Unlock()
 					return
 				}
-				mu.Lock()
-				if _, ok := owners[loopID]; !ok {
-					owners[loopID] = lock.Holder
-				}
+				result.successHolders = append(result.successHolders, lock.Holder)
+				contention[loopID] = result
 				mu.Unlock()
 			}(loopID, holder, leaseID)
 		}
@@ -87,10 +102,23 @@ func (s *bddSuite) runConcurrentSafetyFlow() error {
 	wg.Wait()
 
 	for _, loopID := range loops {
-		if owners[loopID] == "" {
-			return fmt.Errorf("missing owner for %s", loopID)
+		result := contention[loopID]
+		if result.attempts != 12 {
+			return fmt.Errorf("expected 12 lock attempts for %s, got %d", loopID, result.attempts)
+		}
+		if len(result.successHolders) != 1 {
+			return fmt.Errorf("expected exactly 1 lock holder for %s, got %d", loopID, len(result.successHolders))
+		}
+		if !strings.HasPrefix(result.successHolders[0], loopID+"-worker-") {
+			return fmt.Errorf("lock holder %s did not belong to loop %s", result.successHolders[0], loopID)
+		}
+		for _, err := range result.errors {
+			if !errors.Is(err, locking.ErrLockHeld) {
+				return fmt.Errorf("unexpected lock error for %s: %v", loopID, err)
+			}
 		}
 	}
+	s.contended = contention
 	s.isolated = true
 	return nil
 }
