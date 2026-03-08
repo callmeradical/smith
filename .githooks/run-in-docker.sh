@@ -15,15 +15,17 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "${repo_root}/.cache/go-build" "${repo_root}/.cache/go-mod"
-
-exec docker run --rm \
-  --user "$(id -u):$(id -g)" \
+container_id="$(docker create \
   --workdir /workspace \
-  --volume "${repo_root}:/workspace" \
   --env HOME=/tmp \
-  --env GOCACHE=/workspace/.cache/go-build \
-  --env GOMODCACHE=/workspace/.cache/go-mod \
   --env SKIP_GIT_HOOKS=1 \
   "${image}" \
-  /bin/bash -lc "make ${target}"
+  /bin/bash -lc "make ${target}")"
+
+cleanup() {
+  docker rm -f "${container_id}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+docker cp "${repo_root}/." "${container_id}:/workspace"
+docker start -a "${container_id}"
