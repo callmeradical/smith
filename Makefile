@@ -7,8 +7,18 @@ SMITH_VALUES ?= helm/smith/values/local.yaml
 SMITH_LOCAL_VALUES ?= helm/smith/values/local.yaml
 SMITH_STAGING_VALUES ?= helm/smith/values/staging.yaml
 SMITH_PROD_VALUES ?= helm/smith/values/prod.yaml
+SMITH_K3D_CLUSTER_NAME ?= smith-int
+SMITH_CORE_IMAGE ?= ghcr.io/smith/core:v0.1.0
+SMITH_API_IMAGE ?= ghcr.io/smith/api:v0.1.0
+SMITH_REPLICA_IMAGE ?= ghcr.io/smith/replica:v0.1.0
+SMITH_CONSOLE_IMAGE ?= ghcr.io/smith/console:v0.1.0
 SMITH_TEST_ARTIFACTS_DIR ?= /tmp/smith-test-artifacts
 SMITH_FIXTURE_DIR ?= /tmp/smith-test-repo
+SMITH_K3D_CLUSTER_NAME ?= smith-int
+SMITH_LOCAL_CORE_IMAGE ?= smith-core:local
+SMITH_LOCAL_API_IMAGE ?= smith-api:local
+SMITH_LOCAL_REPLICA_IMAGE ?= smith-replica:local
+SMITH_LOCAL_CONSOLE_IMAGE ?= smith-console:local
 SMITH_MIN_GO_VERSION ?= 1.22.0
 SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
 SMITH_MIN_HELM_VERSION ?= 3.13.0
@@ -16,7 +26,7 @@ SMITH_MIN_HELM_VERSION ?= 3.13.0
 .PHONY: help \
 	doctor bootstrap \
 	cluster cluster-up cluster-down cluster-reset cluster-health \
-	build build-local deploy deploy-local deploy-staging deploy-prod undeploy undeploy-local \
+	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod undeploy undeploy-local \
 	test test-unit test-frontend test-matrix test-integration test-e2e test-bdd \
 	test-observability-latency \
 	test-acceptance-smoke test-acceptance-bdd test-acceptance \
@@ -144,6 +154,7 @@ deploy: ## Deploy Smith with Helm using SMITH_VALUES profile
 	  -f "$(SMITH_VALUES)"
 
 deploy-local: ## Deploy Smith via Helm using local values profile
+	$(MAKE) --no-print-directory images-local
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
@@ -218,7 +229,38 @@ build: ## Build all Go binaries
 	go build ./...
 
 build-local: ## Build local binaries for deploy-local workflow
-	go build ./cmd/smith-core ./cmd/smith-api ./cmd/smith-replica ./cmd/smithctl
+	go build ./cmd/smith ./cmd/smith-core ./cmd/smith-api ./cmd/smith-replica ./cmd/smithctl
+	docker build -f docker/core.Dockerfile -t "$(SMITH_LOCAL_CORE_IMAGE)" .
+	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
+	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
+	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
+	@set -euo pipefail; \
+	if k3d cluster list | awk 'NR>1 {print $$1}' | grep -q "^$(SMITH_K3D_CLUSTER_NAME)$$"; then \
+	  echo "build-local: importing local images into k3d cluster $(SMITH_K3D_CLUSTER_NAME)"; \
+	  k3d image import \
+	    "$(SMITH_LOCAL_CORE_IMAGE)" \
+	    "$(SMITH_LOCAL_API_IMAGE)" \
+	    "$(SMITH_LOCAL_REPLICA_IMAGE)" \
+	    "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
+	    -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+	else \
+	  echo "build-local: k3d cluster $(SMITH_K3D_CLUSTER_NAME) not found; skipped k3d image import"; \
+	fi
+
+image-build-local: ## Build local Smith container images with deploy-local tags
+	docker build -f docker/core.Dockerfile -t "$(SMITH_CORE_IMAGE)" .
+	docker build -f docker/api.Dockerfile -t "$(SMITH_API_IMAGE)" .
+	docker build -f docker/replica.Dockerfile -t "$(SMITH_REPLICA_IMAGE)" .
+	docker build -f docker/console.Dockerfile -t "$(SMITH_CONSOLE_IMAGE)" .
+
+image-load-local: ## Import local Smith container images into the k3d cluster
+	k3d image import -c "$(SMITH_K3D_CLUSTER_NAME)" \
+	  "$(SMITH_CORE_IMAGE)" \
+	  "$(SMITH_API_IMAGE)" \
+	  "$(SMITH_REPLICA_IMAGE)" \
+	  "$(SMITH_CONSOLE_IMAGE)"
+
+images-local: image-build-local image-load-local ## Build and load local Smith images for deploy-local
 
 docs-check: ## Run docs quality checks
 	./scripts/docs/quality-check.sh

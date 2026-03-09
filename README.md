@@ -34,6 +34,7 @@ Smith is split into control-plane and data-plane components.
 - `smith-api` (`cmd/smith-api`): HTTP API for loop create/list/get, GitHub + PRD ingress, operator override actions, provider auth lifecycle, and cost reporting.
 - `smith-core` (`cmd/smith-core`): watches unresolved loop state in etcd, acquires per-loop locks, transitions loop state, and schedules replica Jobs in Kubernetes.
 - `smithctl` (`cmd/smithctl`): kubectl-style operator CLI for `loop` and `prd` resources with context/config support and scriptable JSON output.
+- `smith` (`cmd/smith`): PRD launcher CLI (`smith --prd`) for interactive PRD generation before build loops.
 - `smith-console` (`console/` + Helm deployment): operator UI/runtime assets.
 - etcd: authoritative source of truth for anomalies, loop lifecycle state, locks, journal events, handoffs, overrides, and audit records.
 
@@ -185,14 +186,18 @@ Implemented today:
 - `POST /v1/ingress/github/issues` ingest one or more GitHub issues into loop specs.
 - `POST /v1/ingress/prd` ingest markdown/json PRD inputs into loop specs.
 - `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
+- `GET /v1/loops/{id}/runtime` to resolve namespace/pod/container attachability for console terminal control.
+- `POST /v1/loops/{id}/control/attach`, `/command`, and `/detach` for authenticated operator interactive terminal control.
 - `POST /v1/control/override` for operator state overrides with reason/audit trail.
 - `POST /v1/auth/codex/connect/start|complete`, `GET /v1/auth/codex/status`, and `POST /v1/auth/codex/disconnect` for provider auth lifecycle.
 - `GET /v1/reporting/cost?loop_id={id}` for loop token/cost aggregation from journal metadata.
 
 Aspirational (planned, not implemented yet):
 - `GET /v1/loops/{id}/handoffs`, `GET /v1/loops/{id}/overrides`, and `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
-- `POST /v1/loops/{id}/control/attach`, `/detach`, and `/command` for authenticated operator interactive control actions.
 - `GET /v1/audit?loop_id={id}` for immutable operator/auth action audit records.
+
+Terminal control API contracts, required auth/RBAC permissions, and troubleshooting are documented in:
+- [`docs/loop-ingress-and-cli.md`](docs/loop-ingress-and-cli.md)
 
 ## Local Git Hooks
 
@@ -245,3 +250,13 @@ See the dedicated documentation page for:
 - acknowledgments and inspiration credits, including [marcus/td](https://github.com/marcus/td), [marcus/sidecar](https://github.com/marcus/sidecar), and [Ralph](https://github.com/snarktank/ralph).
 
 Reference: [docs/technology-stack-and-thanks.md](docs/technology-stack-and-thanks.md)
+
+## PRD-First Loop Workflow
+
+Generate a PRD JSON (interactive agent session):
+
+```bash
+smith --prd "Build issue-driven loop execution with terminal attach support" --out .agents/tasks/prd.json
+```
+
+If a PRD already exists at `.agents/tasks/prd.json`, replica issue/prompt workflows skip PRD generation and move straight to iterative build.

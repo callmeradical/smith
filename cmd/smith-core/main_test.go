@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,6 +152,64 @@ func TestHandoffConfigMapNameSanitizesAndBounds(t *testing.T) {
 	}
 }
 
+func TestWorkspacePRDConfigMapNameSanitizesAndBounds(t *testing.T) {
+	got := workspacePRDConfigMapName("LOOP/With Spaces.and_extra_chars___abcdefghijklmnopqrstuvwxyz")
+	if got == "" {
+		t.Fatal("expected non-empty configmap name")
+	}
+	if len(got) > 58 {
+		t.Fatalf("expected bounded configmap name, got len=%d (%q)", len(got), got)
+	}
+	if !strings.HasPrefix(got, "workspace-prd-") {
+		t.Fatalf("expected workspace-prd prefix, got %q", got)
+	}
+}
+
+func TestWorkspacePRDPayload(t *testing.T) {
+	payload, ok, err := workspacePRDPayload(map[string]string{
+		"workspace_prd_json": `{"stories":[{"id":"US-001","status":"open"}],"meta":{"x":1}}`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected payload to be present")
+	}
+	if !strings.Contains(payload, `"stories"`) {
+		t.Fatalf("expected serialized payload with stories, got %s", payload)
+	}
+}
+
+func TestWorkspacePRDPayloadRejectsInvalid(t *testing.T) {
+	_, _, err := workspacePRDPayload(map[string]string{
+		"workspace_prd_json": `{"stories":`,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for invalid json")
+	}
+	_, _, err = workspacePRDPayload(map[string]string{
+		"workspace_prd_json": `{"stories":[]}`,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for empty stories")
+	}
+}
+
+func TestWorkspacePRDPathFor(t *testing.T) {
+	if got := workspacePRDPathFor(nil); got != defaultWorkspacePRDPath {
+		t.Fatalf("expected default prd path %q, got %q", defaultWorkspacePRDPath, got)
+	}
+	if got := workspacePRDPathFor(map[string]string{"workspace_prd_path": ".agents/tasks/prd-custom.json"}); got != ".agents/tasks/prd-custom.json" {
+		t.Fatalf("unexpected prd path %q", got)
+	}
+	if got := workspacePRDPathFor(map[string]string{"workspace_prd_path": "../secrets/prd.json"}); got != defaultWorkspacePRDPath {
+		t.Fatalf("expected unsafe path fallback, got %q", got)
+	}
+	if got := workspacePRDPathFor(map[string]string{"workspace_prd_path": "/tmp/prd.json"}); got != defaultWorkspacePRDPath {
+		t.Fatalf("expected absolute path fallback, got %q", got)
+	}
+}
+
 func TestResolveSkillMountsFromAnomaly(t *testing.T) {
 	readOnly := true
 	anomaly := &model.Anomaly{
@@ -182,6 +241,68 @@ func TestSkillSourceConfigMapName(t *testing.T) {
 	}
 	if got := skillSourceConfigMapName("http://example.com/skill"); got != "" {
 		t.Fatalf("expected unsupported source to return empty name, got %q", got)
+	}
+}
+
+func TestLoopInvocationMethodFor(t *testing.T) {
+	if got := loopInvocationMethodFor(model.Anomaly{
+		SourceType: "manual",
+		Metadata: map[string]string{
+			"invocation_method": "console_issue",
+			"ingress_mode":      "prd",
+		},
+	}); got != "console_issue" {
+		t.Fatalf("expected invocation_method override, got %q", got)
+	}
+
+	if got := loopInvocationMethodFor(model.Anomaly{
+		SourceType: "github_issue",
+		Metadata: map[string]string{
+			"ingress_mode": "prd",
+		},
+	}); got != "prd" {
+		t.Fatalf("expected ingress_mode fallback, got %q", got)
+	}
+
+	if got := loopInvocationMethodFor(model.Anomaly{SourceType: "github_issue"}); got != "github_issue" {
+		t.Fatalf("expected source type fallback, got %q", got)
+	}
+
+	if got := loopInvocationMethodFor(model.Anomaly{}); got != "unknown" {
+		t.Fatalf("expected unknown fallback, got %q", got)
+	}
+}
+
+func TestLoopProviderFor(t *testing.T) {
+	if got := loopProviderFor(model.Anomaly{
+		ProviderID: "codex",
+		Metadata: map[string]string{
+			"workspace_provider": "claude",
+			"workspace_agent":    "droid",
+		},
+	}); got != "codex" {
+		t.Fatalf("expected provider_id precedence, got %q", got)
+	}
+
+	if got := loopProviderFor(model.Anomaly{
+		Metadata: map[string]string{
+			"workspace_provider": "claude",
+			"workspace_agent":    "droid",
+		},
+	}); got != "claude" {
+		t.Fatalf("expected workspace_provider fallback, got %q", got)
+	}
+
+	if got := loopProviderFor(model.Anomaly{
+		Metadata: map[string]string{
+			"workspace_agent": "droid",
+		},
+	}); got != "droid" {
+		t.Fatalf("expected workspace_agent fallback, got %q", got)
+	}
+
+	if got := loopProviderFor(model.Anomaly{}); got != model.DefaultProviderID {
+		t.Fatalf("expected default provider %q, got %q", model.DefaultProviderID, got)
 	}
 }
 

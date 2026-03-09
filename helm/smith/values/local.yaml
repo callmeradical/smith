@@ -5,6 +5,7 @@ global:
 
 etcd:
   endpoints:
+    - http://smith-etcd.smith-system.svc.cluster.local:2379
     - http://smith-etcd-x-smith-system-x-smith-vc.smith-vcluster.svc.cluster.local:2379
 
 secrets:
@@ -15,6 +16,14 @@ secrets:
 
 core:
   replicaCount: 1
+  image:
+    repository: smith-core
+    tag: local
+    pullPolicy: Never
+  replicaImage:
+    repository: smith-replica
+    tag: local
+    pullPolicy: Never
   loopPolicy:
     maxAttempts: 2
     backoffInitial: 2s
@@ -27,5 +36,13 @@ core:
         value: debug
 api:
   replicaCount: 1
+  image:
+    repository: smith-api
+    tag: local
+    pullPolicy: Never
 console:
   replicaCount: 1
+  image:
+    repository: smith-console
+    tag: local
+    pullPolicy: Never

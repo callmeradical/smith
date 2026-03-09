@@ -128,3 +128,164 @@ Payload (batch):
 - Loop ID is derived deterministically from idempotency key/source when `loop_id` is not supplied.
 - Repeated submissions return existing loop with `created=false`.
 - Batch responses return per-item status in `results[]`.
+
+## Console Terminal Control API Contract
+
+The interactive terminal flow used by the pods page and pod detail view is:
+`GET runtime` -> `POST attach` -> `POST command` (repeat) -> `POST detach`.
+
+### Runtime Target Resolution
+
+`GET /v1/loops/{id}/runtime`
+
+Response:
+
+```json
+{
+  "loop_id": "loop-alpha",
+  "namespace": "smith-system",
+  "pod_name": "smith-replica-loop-alpha-12345-abc",
+  "container_name": "replica",
+  "pod_phase": "Running",
+  "attachable": true,
+  "reason": ""
+}
+```
+
+When not attachable, `attachable=false` and `reason` is populated (for example `loop not active`, `runtime pod not found`, or `runtime pod not running`).
+
+### Attach
+
+`POST /v1/loops/{id}/control/attach`
+
+Request:
+
+```json
+{
+  "actor": "alice",
+  "terminal": "console-pods"
+}
+```
+
+Success response:
+
+```json
+{
+  "loop_id": "loop-alpha",
+  "status": "attached",
+  "actor": "alice",
+  "attach_count": 1,
+  "active_attach_count": 1,
+  "runtime_target_ref": "smith-system/smith-replica-loop-alpha-12345-abc:replica"
+}
+```
+
+### Command
+
+`POST /v1/loops/{id}/control/command`
+
+Request:
+
+```json
+{
+  "actor": "alice",
+  "command": "echo ok"
+}
+```
+
+Success response:
+
+```json
+{
+  "loop_id": "loop-alpha",
+  "status": "completed",
+  "actor": "alice",
+  "command": "echo ok",
+  "delivered": true,
+  "result": "success",
+  "exit_code": 0,
+  "stdout": "ok\n",
+  "stderr": "",
+  "runtime_target_ref": "smith-system/smith-replica-loop-alpha-12345-abc:replica"
+}
+```
+
+`result` is `success`, `failed`, or `error`:
+- `success`: command exited with `0`.
+- `failed`: command executed and returned non-zero exit code.
+- `error`: runtime exec transport failed; response includes `error` and `exit_code=-1`.
+
+### Detach
+
+`POST /v1/loops/{id}/control/detach`
+
+Request:
+
+```json
+{
+  "actor": "alice"
+}
+```
+
+Success response:
+
+```json
+{
+  "loop_id": "loop-alpha",
+  "status": "detached",
+  "actor": "alice",
+  "attach_count": 1,
+  "active_attach_count": 0,
+  "runtime_target_ref": "smith-system/smith-replica-loop-alpha-12345-abc:replica"
+}
+```
+
+### Error Codes and Limits
+
+- `terminal_unauthorized` (`401`): missing/invalid bearer token when `SMITH_OPERATOR_TOKEN` is configured.
+- `terminal_invalid_json` (`400`): command payload could not be decoded.
+- `terminal_command_required` (`400`): command is empty.
+- `terminal_command_too_long` (`400`): command exceeds max length (`2048`).
+- `terminal_actor_not_attached` (`409`): actor has not attached for the loop.
+- `terminal_command_rate_limited` (`429`): per-session command burst exceeded; `Retry-After` header is returned.
+- Attach-specific non-attachable runtime errors return `409` with `error` text (for example `runtime pod not running`).
+
+## Required Permissions
+
+### API Authorization
+
+- Terminal control endpoints are bearer-token protected when `SMITH_OPERATOR_TOKEN` is set.
+- If `SMITH_OPERATOR_TOKEN` is empty, terminal endpoints are open within network perimeter; production should set the token.
+
+### Kubernetes RBAC (smith-api ServiceAccount)
+
+- `get,list` on core `pods` to resolve runtime targets.
+- `create` on core subresource `pods/exec` to execute `control/command`.
+
+## Troubleshooting
+
+### `runtime pod not found`
+
+- API surface: attach returns `409` with `error: runtime pod not found`.
+- Console surface: attach/run controls stay disabled and pod detail message shows runtime target not attachable.
+- Checks:
+  - confirm loop is still in an active state (`unresolved` or `overwriting`);
+  - verify worker Job and Pod exist in the expected namespace;
+  - check label `job-name=<worker job>` resolves at least one pod.
+
+### `runtime pod not running`
+
+- API surface: attach returns `409` with `error: runtime pod not running`.
+- Console surface: pod detail message reflects the same reason until phase becomes `Running`.
+- Checks:
+  - `kubectl get pod <pod> -n <namespace> -o wide`;
+  - inspect events for image pull, scheduling, or crash-loop failures;
+  - retry attach after pod reaches `Running`.
+
+### `actor must attach before issuing commands`
+
+- API surface: command returns `409`.
+- Console surface: command input remains disabled until attach succeeds.
+- Checks:
+  - attach first from the same actor identity;
+  - if session expired/stale, detach then re-attach.

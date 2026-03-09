@@ -3,6 +3,7 @@ package replica
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,8 +31,15 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	if job.Spec.Template.Spec.ServiceAccountName != "smith-replica" {
 		t.Fatalf("unexpected service account: %q", job.Spec.Template.Spec.ServiceAccountName)
 	}
-	if len(job.Spec.Template.Spec.Volumes) == 0 || job.Spec.Template.Spec.Volumes[0].ConfigMapName != "handoff-loop-123" {
-		t.Fatalf("expected handoff volume wired from configmap, got %+v", job.Spec.Template.Spec.Volumes)
+	volumes := map[string]Volume{}
+	for _, v := range job.Spec.Template.Spec.Volumes {
+		volumes[v.Name] = v
+	}
+	if !volumes["workspace"].EmptyDir {
+		t.Fatalf("expected workspace EmptyDir volume, got %+v", volumes["workspace"])
+	}
+	if volumes["handoff"].ConfigMapName != "handoff-loop-123" {
+		t.Fatalf("expected handoff volume wired from configmap, got %+v", volumes["handoff"])
 	}
 
 	env := map[string]EnvVar{}
@@ -43,6 +51,11 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 		"STORY_ID",
 		"SMITH_LOOP_ID",
 		"SMITH_CORRELATION_ID",
+		"SMITH_ETCD_ENDPOINTS",
+		"SMITH_LOOP_PROVIDER",
+		"SMITH_LOOP_INVOCATION_METHOD",
+		"SMITH_LOOP_SOURCE_TYPE",
+		"SMITH_LOOP_SOURCE_REF",
 		"SMITH_GIT_REPOSITORY",
 		"SMITH_GIT_BRANCH",
 		"SMITH_GIT_COMMIT_SHA",
@@ -58,6 +71,21 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	if env["STORY_ID"].Value != "loop-123" {
 		t.Fatalf("expected STORY_ID=loop-123, got %q", env["STORY_ID"].Value)
 	}
+	if env["SMITH_ETCD_ENDPOINTS"].Value != "http://etcd:2379" {
+		t.Fatalf("expected SMITH_ETCD_ENDPOINTS=http://etcd:2379, got %q", env["SMITH_ETCD_ENDPOINTS"].Value)
+	}
+	if env["SMITH_LOOP_PROVIDER"].Value != "codex" {
+		t.Fatalf("expected SMITH_LOOP_PROVIDER=codex, got %q", env["SMITH_LOOP_PROVIDER"].Value)
+	}
+	if env["SMITH_LOOP_INVOCATION_METHOD"].Value != "github_issue" {
+		t.Fatalf("expected SMITH_LOOP_INVOCATION_METHOD=github_issue, got %q", env["SMITH_LOOP_INVOCATION_METHOD"].Value)
+	}
+	if env["SMITH_LOOP_SOURCE_TYPE"].Value != "github_issue" {
+		t.Fatalf("expected SMITH_LOOP_SOURCE_TYPE=github_issue, got %q", env["SMITH_LOOP_SOURCE_TYPE"].Value)
+	}
+	if env["SMITH_LOOP_SOURCE_REF"].Value != "acme/repo#123" {
+		t.Fatalf("expected SMITH_LOOP_SOURCE_REF=acme/repo#123, got %q", env["SMITH_LOOP_SOURCE_REF"].Value)
+	}
 	secretEnv, ok := env["SMITH_RUNTIME_CREDENTIALS"]
 	if !ok || secretEnv.SecretKeyRef == nil {
 		t.Fatalf("expected SMITH_RUNTIME_CREDENTIALS secret key ref, got %+v", secretEnv)
@@ -65,15 +93,18 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	if secretEnv.SecretKeyRef.Name != "smith-runtime" || secretEnv.SecretKeyRef.Key != "runtime_credentials" {
 		t.Fatalf("unexpected secret ref %+v", secretEnv.SecretKeyRef)
 	}
+	openAIEnv, ok := env["OPENAI_API_KEY"]
+	if !ok || openAIEnv.SecretKeyRef == nil {
+		t.Fatalf("expected OPENAI_API_KEY secret key ref, got %+v", openAIEnv)
+	}
+	if openAIEnv.SecretKeyRef.Name != "smith-runtime" || openAIEnv.SecretKeyRef.Key != "runtime_credentials" {
+		t.Fatalf("unexpected OPENAI_API_KEY secret ref %+v", openAIEnv.SecretKeyRef)
+	}
 	if env["SMITH_SKILL_MOUNT_COUNT"].Value != "2" {
 		t.Fatalf("expected SMITH_SKILL_MOUNT_COUNT=2, got %q", env["SMITH_SKILL_MOUNT_COUNT"].Value)
 	}
 	if env["SMITH_SKILL_MOUNTS"].Value != "commit,lint" {
 		t.Fatalf("expected resolved skill names, got %q", env["SMITH_SKILL_MOUNTS"].Value)
-	}
-	volumes := map[string]Volume{}
-	for _, v := range job.Spec.Template.Spec.Volumes {
-		volumes[v.Name] = v
 	}
 	if volumes["skill-0-commit"].ConfigMapName != "skill-commit" {
 		t.Fatalf("unexpected configmap for commit skill: %+v", volumes["skill-0-commit"])
@@ -84,6 +115,9 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	mounts := map[string]VolumeMount{}
 	for _, m := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
 		mounts[m.Name] = m
+	}
+	if mounts["workspace"].MountPath != "/workspace" || mounts["workspace"].ReadOnly {
+		t.Fatalf("unexpected workspace mount: %+v", mounts["workspace"])
 	}
 	if mounts["skill-0-commit"].MountPath != "/smith/skills/commit" || !mounts["skill-0-commit"].ReadOnly {
 		t.Fatalf("unexpected commit mount: %+v", mounts["skill-0-commit"])
@@ -122,6 +156,116 @@ func TestBuildReplicaJobSanitizesLabelsAndRespectsCustomJobName(t *testing.T) {
 	}
 	if got := job.Metadata.Labels["smith.io/custom"]; got != "unknown" {
 		t.Fatalf("unexpected custom label %q", got)
+	}
+}
+
+func TestBuildReplicaJobUsesInlineRuntimeCredentialValue(t *testing.T) {
+	req := validRequest()
+	req.RuntimeSecretName = ""
+	req.RuntimeCredentialsKey = ""
+	req.RuntimeCredentialsValue = "sk-test-inline"
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	if env["SMITH_RUNTIME_CREDENTIALS"].Value != "sk-test-inline" || env["SMITH_RUNTIME_CREDENTIALS"].SecretKeyRef != nil {
+		t.Fatalf("expected inline SMITH_RUNTIME_CREDENTIALS, got %+v", env["SMITH_RUNTIME_CREDENTIALS"])
+	}
+	if env["OPENAI_API_KEY"].Value != "sk-test-inline" || env["OPENAI_API_KEY"].SecretKeyRef != nil {
+		t.Fatalf("expected inline OPENAI_API_KEY, got %+v", env["OPENAI_API_KEY"])
+	}
+}
+
+func TestBuildReplicaJobIncludesWorkspaceSeedInitContainer(t *testing.T) {
+	req := validRequest()
+	req.WorkspaceSeedImage = "ghcr.io/acme/workspace-seed:latest"
+	req.WorkspaceSeedPullPolicy = "Always"
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+	if len(job.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected one init container, got %d", len(job.Spec.Template.Spec.InitContainers))
+	}
+	seed := job.Spec.Template.Spec.InitContainers[0]
+	if seed.Name != "workspace-seed" {
+		t.Fatalf("unexpected init container name %q", seed.Name)
+	}
+	if seed.Image != "ghcr.io/acme/workspace-seed:latest" {
+		t.Fatalf("unexpected init container image %q", seed.Image)
+	}
+	if seed.ImagePullPolicy != "Always" {
+		t.Fatalf("unexpected init image pull policy %q", seed.ImagePullPolicy)
+	}
+	if len(seed.Command) == 0 {
+		t.Fatal("expected seed init command")
+	}
+	hasWorkspaceMount := false
+	for _, mount := range seed.VolumeMounts {
+		if mount.Name == "workspace" && mount.MountPath == "/workspace" && !mount.ReadOnly {
+			hasWorkspaceMount = true
+			break
+		}
+	}
+	if !hasWorkspaceMount {
+		t.Fatalf("expected init container workspace mount, got %+v", seed.VolumeMounts)
+	}
+}
+
+func TestBuildReplicaJobMountsWorkspacePRDConfigMap(t *testing.T) {
+	req := validRequest()
+	req.PRDConfigMapName = "workspace-prd-loop-123"
+	req.PRDConfigMapKey = "prd.json"
+	req.WorkspacePRDPath = ".agents/tasks/prd.json"
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	volumes := map[string]Volume{}
+	for _, v := range job.Spec.Template.Spec.Volumes {
+		volumes[v.Name] = v
+	}
+	if volumes["workspace-prd"].ConfigMapName != "workspace-prd-loop-123" {
+		t.Fatalf("expected workspace-prd volume configmap, got %+v", volumes["workspace-prd"])
+	}
+
+	if len(job.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected one init container, got %d", len(job.Spec.Template.Spec.InitContainers))
+	}
+	init := job.Spec.Template.Spec.InitContainers[0]
+	if init.Name != "workspace-prd" {
+		t.Fatalf("unexpected init container name %q", init.Name)
+	}
+	if len(init.Command) != 3 {
+		t.Fatalf("unexpected init command shape: %+v", init.Command)
+	}
+	if init.Command[0] != "sh" || init.Command[1] != "-lc" {
+		t.Fatalf("unexpected init command wrapper: %+v", init.Command)
+	}
+	if !strings.Contains(init.Command[2], "cp '/smith/prd/prd.json' '/workspace/.agents/tasks/prd.json'") {
+		t.Fatalf("expected init command to copy PRD into workspace, got %q", init.Command[2])
+	}
+
+	hasWorkspace := false
+	hasPRD := false
+	for _, mount := range init.VolumeMounts {
+		if mount.Name == "workspace" && mount.MountPath == "/workspace" && !mount.ReadOnly {
+			hasWorkspace = true
+		}
+		if mount.Name == "workspace-prd" && mount.MountPath == "/smith/prd" && mount.ReadOnly {
+			hasPRD = true
+		}
+	}
+	if !hasWorkspace || !hasPRD {
+		t.Fatalf("expected workspace and workspace-prd mounts, got %+v", init.VolumeMounts)
 	}
 }
 
@@ -345,6 +489,28 @@ func TestBuildReplicaJobValidation(t *testing.T) {
 	if !errors.Is(err, ErrInvalidJobRequest) {
 		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
 	}
+
+	req = validRequest()
+	req.EtcdEndpoints = nil
+	_, err = BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error for missing etcd endpoints")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
+	}
+
+	req = validRequest()
+	req.PRDConfigMapName = "workspace-prd-loop-123"
+	req.PRDConfigMapKey = "prd.json"
+	req.WorkspacePRDPath = "../escape/prd.json"
+	_, err = BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error for unsafe workspace prd path")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
+	}
 }
 
 func TestSubmitSurfacesClientFailure(t *testing.T) {
@@ -400,8 +566,13 @@ func TestSubmitAndDeleteSuccess(t *testing.T) {
 func validRequest() JobRequest {
 	return JobRequest{
 		Namespace:          "smith-system",
+		EtcdEndpoints:      []string{"http://etcd:2379"},
 		LoopID:             "loop-123",
 		CorrelationID:      "corr-123",
+		ProviderID:         "codex",
+		InvocationMethod:   "github_issue",
+		SourceType:         "github_issue",
+		SourceRef:          "acme/repo#123",
 		ServiceAccountName: "smith-replica",
 		Image:              "ghcr.io/smith/replica:latest",
 		ImagePullPolicy:    "IfNotPresent",

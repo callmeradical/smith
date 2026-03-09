@@ -23,7 +23,7 @@ Target matrix:
 | `make cluster-reset` | Rebuilds local cluster stack from scratch (`cluster-down` then `cluster-up`). | Same as `cluster-up` |
 | `make cluster-health` | Verifies cluster API, node readiness, etcd readiness, and vcluster namespace. | Reachable Kubernetes context |
 | `make build-local` | Builds local Smith binaries used by local deploy workflows. | Go toolchain |
-| `make deploy-local` | Installs/upgrades Helm release with local values profile (`SMITH_LOCAL_VALUES`). | Reachable Kubernetes cluster + Helm |
+| `make deploy-local` | Builds and imports local Smith images into k3d, then installs/upgrades the Helm release with the local values profile (`SMITH_LOCAL_VALUES`). | Reachable Kubernetes cluster + Helm + Docker + k3d |
 | `make deploy-staging` | Installs/upgrades Helm release with staging profile (`SMITH_STAGING_VALUES`). | Reachable Kubernetes cluster + Helm + pre-created runtime secret |
 | `make deploy-prod` | Installs/upgrades Helm release with production profile (`SMITH_PROD_VALUES`). | Reachable Kubernetes cluster + Helm + pre-created runtime secret |
 | `make undeploy-local` | Removes local Helm release from namespace. | Reachable Kubernetes cluster + Helm |
@@ -76,6 +76,8 @@ make cluster-health
 make build-local
 make deploy-local
 ```
+
+`make deploy-local` builds `ghcr.io/smith/{core,api,replica,console}:v0.1.0` locally and imports those images into the `smith-int` k3d cluster by default. Override `SMITH_K3D_CLUSTER_NAME` or individual `SMITH_*_IMAGE` refs if your local cluster or tags differ.
 
 Optional: enable Kubernetes Secret encryption at rest in local `k3d`:
 

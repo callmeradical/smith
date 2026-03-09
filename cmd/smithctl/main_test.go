@@ -175,6 +175,87 @@ func TestLoopCreateWithSkillFlags(t *testing.T) {
 	}
 }
 
+func TestLoopCreateWithWorkspacePRDFile(t *testing.T) {
+	var received map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/loops" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &received)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	prdPath := filepath.Join(dir, "prd.json")
+	if err := os.WriteFile(prdPath, []byte(`{"stories":[{"id":"US-001","status":"open"}]}`), 0o600); err != nil {
+		t.Fatalf("write prd file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "create",
+		"--workspace-prd-file", prdPath, "--workspace-prompt", "refine PRD then build",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if received["source_type"] != "prompt" {
+		t.Fatalf("expected source_type=prompt, got %#v", received["source_type"])
+	}
+	metadata, ok := received["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected metadata map, got %#v", received["metadata"])
+	}
+	if metadata["workspace_prd_json"] == "" {
+		t.Fatalf("expected workspace_prd_json to be set, got %#v", metadata)
+	}
+	if metadata["workspace_prd_path"] != ".agents/tasks/prd.json" {
+		t.Fatalf("unexpected workspace_prd_path: %#v", metadata["workspace_prd_path"])
+	}
+}
+
+func TestLoopCreateWithProviderID(t *testing.T) {
+	var received map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/loops" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &received)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "create",
+		"--title", "Provider", "--description", "Test", "--source-type", "prompt", "--source-ref", "prompt:provider-test",
+		"--provider-id", "CoDeX",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if got, _ := received["provider_id"].(string); got != "codex" {
+		t.Fatalf("expected provider_id codex, got %#v", received["provider_id"])
+	}
+}
+
+func TestLoopCreateRejectsInvalidWorkspacePRDJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--output", "json", "loop", "create",
+		"--workspace-prd-json", `{"stories":`,
+	}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected code=2 for invalid json, got %d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "must be valid json") {
+		t.Fatalf("expected invalid json error, got stderr=%s", stderr.String())
+	}
+}
+
 func TestLoopCreateEnvironmentSourceConflict(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{

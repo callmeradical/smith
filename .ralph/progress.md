@@ -1,327 +1,238 @@
 # Progress Log
-Started: Mon Mar  9 04:36:24 EDT 2026
+Started: Mon Mar  9 04:32:36 EDT 2026
 
 ## Codebase Patterns
 - (add reusable patterns here)
 
 ---
-## [2026-03-09 04:44:08 EDT] - US-001: Define Alpine-based base image skeleton and runtime user
-Thread: 
-Run: 20260309-043624-64079 (iteration 1)
-Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-1.log
-Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-1.md
+## [2026-03-09 04:41:52 EDT] - US-001: Resolve runtime pod/container for a loop
+Thread: ses_e20a4f
+Run: 20260309-043236-60668 (iteration 1)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-1.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-1.md
 - Guardrails reviewed: yes
 - No-commit run: false
-- Commit: 08004be chore(progress): sync run log after execution
+- Commit: 2ccd8bb feat(api): add loop runtime resolution endpoint
+- Post-commit status: `.ralph/progress.md` modified (pending progress commit)
+- Verification:
+  - Command: make build -> PASS
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
+- Files changed:
+  - cmd/smith-api/main.go
+  - cmd/smith-api/main_test.go
+  - helm/smith/templates/rbac.yaml
+  - .ralph/progress.md
+- What was implemented
+  - Added runtime resolution for loop IDs using active loop state plus `worker_job_name` to discover runtime pods in Kubernetes.
+  - Exposed `GET /v1/loops/{id}/runtime` returning namespace/pod/container/pod phase with `attachable` and `reason`.
+  - Implemented negative reasons including exact `loop not active` and `runtime pod not found`, plus non-running/container-missing reasons.
+  - Added unit tests for running, pending, terminal, and missing-runtime scenarios and route parsing for `/runtime`.
+  - Updated API RBAC to allow pod `get`/`list` for runtime lookup.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - `StateRecord.WorkerJobName` is the stable key for mapping loop state to runtime pod discovery via `job-name` label.
+  - Gotchas encountered
+  - API runtime namespace must default to the same namespace used by the auth store deployment env; relying on `POD_NAMESPACE` alone is not sufficient.
+  - Useful context
+  - Pre-commit hooks in this repo run `go test ./cmd/...` and can pull dependencies on first invocation.
+---
+## [2026-03-09 04:53:07 EDT] - US-002: Attach and detach terminal sessions against runtime target
+Thread: ses_89ea7b
+Run: 20260309-043236-60668 (iteration 2)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-2.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-2.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 242c58f feat(api): bind terminal attach to runtime target
+- Post-commit status: .ralph/runs/run-20260309-043236-60668-iter-2.log modified by post-commit hooks
+- Verification:
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: make build -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
+- Files changed:
+  - cmd/smith-api/main.go
+  - cmd/smith-api/main_test.go
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260309-043236-60668-iter-2.log
+- What was implemented
+  - Updated `POST /v1/loops/{id}/control/attach` to require resolved runtime target attachability before session attach, returning HTTP 409 when runtime pod is not Running.
+  - Reworked terminal session tracking to persist actor session metadata (terminal source, status, runtime target reference, runtime identity fields, actor attach count).
+  - Updated attach/detach audit and journal metadata to include actor, terminal source, and runtime target identity.
+  - Updated `POST /v1/loops/{id}/control/detach` to detach only the specified attached actor while preserving other actor attachments.
+  - Added API tests covering: runtime non-running attach conflict with no session creation, actor attach count increments, detach behavior, and attach/detach metadata assertions.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Handler-level dependency hooks (`getStateFn`, `appendAuditFn`, `appendJournalFn`) enable focused HTTP behavior tests without full etcd wiring.
+  - Gotchas encountered
+  - Pre-commit hooks can mutate iteration run logs after commit; check `git status --porcelain` immediately and include follow-up commit if needed.
+  - Useful context
+  - Runtime resolution helper already provides phase/reason fidelity, so attach conflict handling can reuse it directly for consistent API errors.
+---
+## [2026-03-09 05:05:28 EDT] - US-003: Execute line commands inside active loop container
+Thread: 
+Run: 20260309-043236-60668 (iteration 3)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-3.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-3.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 8d75f5f feat(api): execute commands in loop container
+- Post-commit status: `.ralph/runs/run-20260309-043236-60668-iter-3.log` modified after commit hooks
+- Verification:
+  - Command: make build -> PASS
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
+- Files changed:
+  - cmd/smith-api/main.go
+  - cmd/smith-api/main_test.go
+  - go.mod
+  - go.sum
+  - .ralph/activity.log
+  - .ralph/progress.md
+- What was implemented
+  - Implemented Kubernetes pod exec integration in `smith-api` using `k8s.io/client-go/tools/remotecommand` and shell wrapping with `/bin/sh -lc`.
+  - Updated `POST /v1/loops/{id}/control/command` to execute against the actor's attached runtime target, capture stdout/stderr, parse exit status, and return `delivered=true` with result metadata.
+  - Added journal streaming for command lifecycle (`started`, output lines, `completed`) so outputs like `echo hello` are persisted in loop journal entries.
+  - Added command max-size validation (`terminalCommandMaxSize`) returning HTTP 400 plus `terminal-command-rejected` audit entries tagged with `result=rejected`.
+  - Added tests for successful command execution and output journaling, attach-required 409 behavior with zero exec calls, and oversize-command rejection with rejected audit metadata.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Runtime-aware terminal execution can reuse attach session metadata (namespace/pod/container) to avoid re-resolving pod targets for every command.
+  - Gotchas encountered
+  - Importing `remotecommand` required additional transitive go.sum entries (`gorilla/websocket`, `spdystream`, `go-flowrate`) before tests would run.
+  - Useful context
+  - Pre-commit hooks run `go test ./cmd/...` and may continue appending to iteration run logs after commits; check and commit log tails explicitly.
+---
+## [2026-03-09 05:29:53 EDT] - US-004: Add interactive command controls to pod detail UI
+Thread: 
+Run: 20260309-043236-60668 (iteration 4)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-4.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-4.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: a2db662 feat(console): add pod detail terminal controls
 - Post-commit status: clean
 - Verification:
-  - Command: docker build -t loop-base:local . -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
-  - Command: docker build -f <temp-non-alpine-dockerfile> -t loop-base:nonalpine-test . -> PASS (expected failure with explicit Alpine message)
-  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> FAIL (codex missing; out of scope for US-001)
-  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
-  - Command: hadolint Dockerfile -> PASS
-  - Command: shellcheck scripts/*.sh -> PASS
-  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
-  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
+  - Command: make build -> PASS
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
+  - Command: dev-browser scripted pod-view verification -> PASS
 - Files changed:
-  - Dockerfile
-  - README.md
-  - .agents/tasks/prd-base-container.json
-  - .ralph/.tmp/prd-prompt-20260309-043224-59608.md
-  - .ralph/.tmp/prompt-20260309-043624-64079-1.md
-  - .ralph/.tmp/story-20260309-043624-64079-1.json
-  - .ralph/.tmp/story-20260309-043624-64079-1.md
+  - console/index.html
+  - test/playwright/console.spec.js
+  - .agents/tasks/prd-console-terminal-attach.json
   - .ralph/activity.log
   - .ralph/errors.log
-  - .ralph/guardrails.md
+  - .ralph/runs/run-20260309-043236-60668-iter-3.log
+  - .ralph/runs/run-20260309-043236-60668-iter-3.md
+  - .ralph/runs/run-20260309-043236-60668-iter-4.log
+  - .ralph/.tmp/prompt-20260309-043236-60668-4.md
+  - .ralph/.tmp/story-20260309-043236-60668-4.json
+  - .ralph/.tmp/story-20260309-043236-60668-4.md
   - .ralph/progress.md
-  - .ralph/runs/run-20260309-043624-64079-iter-1.log
-  - artifacts/sbom-loop-base.spdx.json
 - What was implemented
-  - Added a new repo-root Alpine-based Dockerfile skeleton pinned to alpine:3.21.
-  - Added an explicit in-build Alpine enforcement check that fails with a clear error if base OS is not Alpine.
-  - Added non-root runtime user `dev` (uid/gid 1000) with stable home `/home/dev`.
-  - Set default loop runtime environment to `WORKDIR /workspace`, `SHELL /bin/sh`, and `USER dev`.
-  - Documented the base image tag and rationale in README.
+  - Added explicit pod detail terminal controls (attach, detach, command input, run button), runtime target summary, and terminal status indicator.
+  - Implemented pod-view UI state machine (`idle`, `attaching`, `attached`, `executing`, `detaching`, `error`) with control locking and status messaging.
+  - Wired runtime resolution calls to `/v1/loops/{id}/runtime` and surfaced non-attachable reason text for inactive loops.
+  - Added command execution behavior for Enter and Run button; controls lock while executing; command input clears only after successful execution.
+  - Added Playwright coverage for success and failure control paths, including disabled controls and runtime reason on non-active loops.
+  - Completed required browser verification via `dev-browser` with screenshot: `/Users/lars/.codex/skills/dev-browser/tmp/us004-pod-view-controls.png`.
 - **Learnings for future iterations:**
   - Patterns discovered
-  - Runtime OS validation in Dockerfile is an effective guard against accidental base-image drift.
+  - Pod-view terminal UX can stay deterministic by deriving enable/disable rules from one centralized sync function.
   - Gotchas encountered
-  - Global smoke gate currently expects Codex/toolchain binaries not yet added in US-001 scope.
+  - Mocked journal events must use strictly increasing sequence numbers or the UI will drop entries as out-of-order.
   - Useful context
-  - Homebrew installs for local gate tooling (`hadolint`, `shellcheck`, `trivy`, `syft`) were required to run all non-containerized checks.
+  - The frontend Playwright suite already uses an extensible API mock helper, so adding control endpoint behaviors there keeps scenario tests stable.
 ---
-## [2026-03-09 04:53:37 EDT] - US-002: Install Codex CLI in runtime image
-Thread: 
-Run: 20260309-043624-64079 (iteration 2)
-Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.log
-Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.md
+## [2026-03-09 05:43:52 EDT] - US-005: Harden security and operational limits for web terminal control
+Thread: codex_43878
+Run: 20260309-043236-60668 (iteration 5)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-5.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-5.md
 - Guardrails reviewed: yes
 - No-commit run: false
-- Commit: ce2d1f3 feat(container): install codex cli in runtime image
-- Post-commit status: clean
+- Commit: e348d88 security(api): harden terminal control limits
+- Post-commit status: `.ralph/runs/run-20260309-043236-60668-iter-5.log` modified by post-commit hooks
 - Verification:
-  - Command: docker build -t loop-base:local . -> PASS
-  - Command: docker run --rm loop-base:local codex --version -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'command -v codex >/dev/null' -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> FAIL (git missing; expected until US-003)
-  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
-  - Command: hadolint Dockerfile -> PASS
-  - Command: shellcheck scripts/*.sh -> PASS
-  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
-  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+  - Command: make build -> PASS
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
 - Files changed:
-  - Dockerfile
-  - .agents/tasks/prd-base-container.json
-  - .ralph/.tmp/prompt-20260309-043624-64079-2.md
-  - .ralph/.tmp/story-20260309-043624-64079-2.json
-  - .ralph/.tmp/story-20260309-043624-64079-2.md
+  - cmd/smith-api/main.go
+  - cmd/smith-api/main_test.go
+  - .agents/tasks/prd-console-terminal-attach.json
   - .ralph/activity.log
+  - .ralph/progress.md
   - .ralph/errors.log
-  - .ralph/runs/run-20260309-043624-64079-iter-1.md
-  - .ralph/runs/run-20260309-043624-64079-iter-2.log
-  - artifacts/sbom-loop-base.spdx.json
-  - .ralph/progress.md
+  - .ralph/runs/run-20260309-043236-60668-iter-4.log
+  - .ralph/runs/run-20260309-043236-60668-iter-4.md
+  - .ralph/runs/run-20260309-043236-60668-iter-5.log
+  - .ralph/.tmp/prompt-20260309-043236-60668-5.md
+  - .ralph/.tmp/story-20260309-043236-60668-5.json
+  - .ralph/.tmp/story-20260309-043236-60668-5.md
 - What was implemented
-  - Installed Node.js/npm in the base image and installed Codex CLI from npm `@latest` channel during build.
-  - Added a Dockerfile maintainability comment with the exact Codex install command.
-  - Added a build-time check (`command -v codex`) to fail image build if the binary is not on PATH.
+  - Enforced early auth rejection in attach/command/detach handlers with explicit API error codes and rejected audit records before runtime/state resolution continues.
+  - Added per-session command rate limiting (`5` commands per `10s` window) with HTTP 429 throttling, `Retry-After` header, and throttle metadata in terminal command audit records.
+  - Standardized terminal control audit metadata to include `request_status=accepted|rejected` and `rejection_reason`/`error_code` for blocked paths.
+  - Kept max command length enforcement and upgraded oversized-command responses to include explicit API code metadata.
+  - Added smith-api tests for unauthorized attach/detach/command behavior, no-runtime/no-exec guard behavior on unauthorized requests, accepted/rejected audit tagging, explicit error codes, and per-session throttling behavior.
 - **Learnings for future iterations:**
   - Patterns discovered
-  - For story-scoped container changes, adding build-time `command -v` checks catches PATH regressions early.
+  - Centralizing accepted/rejected metadata helpers keeps audit semantics consistent across attach/detach/command handlers.
   - Gotchas encountered
-  - The combined global smoke command will still fail until US-003 adds remaining toolchain binaries (currently fails at `git`).
+  - Rejected-path audit writes can trigger nil-store panics in focused handler tests unless `appendAudit`/`appendJournal` safely no-op when store backing is absent.
   - Useful context
-  - `codex --version` currently outputs `codex-cli <semver>` in this environment.
+  - Pre-commit hooks run `go test ./cmd/...` and can append to iteration run logs after commit, requiring a follow-up commit to restore clean status.
 ---
-## [2026-03-09 05:02:59 EDT] - US-003: Add common developer tooling to image
-Thread: 
-Run: 20260309-043624-64079 (iteration 3)
-Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-3.log
-Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-3.md
+## [2026-03-09 05:57:23 EDT] - US-006: Verification coverage and operator documentation
+Thread: codex_60138
+Run: 20260309-043236-60668 (iteration 6)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-6.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-6.md
 - Guardrails reviewed: yes
 - No-commit run: false
-- Commit: 9d483f8 chore(progress): sync iter-3 run tail
-- Post-commit status: clean
+- Commit: 3adf22a test(terminal-control): expand verification coverage
+- Post-commit status: `.ralph/runs/run-20260309-043236-60668-iter-6.log`
 - Verification:
-  - Command: docker build -t loop-base:local . -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'git --version && curl --version >/dev/null && jq --version && make --version >/dev/null && node --version && npm --version && pnpm --version && python3 --version && pip --version && rg --version' -> PASS
-  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
-  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
-  - Command: REQUIRED_TOOLS='git definitely-missing-binary' ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS (expected failure with exact missing binary output)
-  - Command: hadolint Dockerfile -> PASS
-  - Command: shellcheck scripts/*.sh -> PASS
-  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
-  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
-- Files changed:
-  - Dockerfile
-  - scripts/check-base-tooling-smoke.sh
-  - README.md
-  - AGENTS.md
-  - artifacts/sbom-loop-base.spdx.json
-  - .agents/tasks/prd-base-container.json
-  - .ralph/activity.log
-  - .ralph/errors.log
-  - .ralph/progress.md
-  - .ralph/.tmp/prompt-20260309-043624-64079-3.md
-  - .ralph/.tmp/story-20260309-043624-64079-3.json
-  - .ralph/.tmp/story-20260309-043624-64079-3.md
-  - .ralph/runs/run-20260309-043624-64079-iter-2.log
-  - .ralph/runs/run-20260309-043624-64079-iter-2.md
-  - .ralph/runs/run-20260309-043624-64079-iter-3.log
-- What was implemented
-  - Expanded the base image package install step to include the full US-003 toolchain via explicit `apk add --no-cache` command.
-  - Added pnpm support via explicit npm global install (`pnpm@latest`) alongside Codex CLI, and cleaned npm cache to keep layer size down.
-  - Added `scripts/check-base-tooling-smoke.sh` to verify required binaries and emit exact `missing binary: <name>` failures for absent commands.
-  - Documented bundled tooling, pnpm installation method, and positive/negative smoke-check usage in README and AGENTS operational notes.
-- **Learnings for future iterations:**
-  - Patterns discovered
-  - A containerized smoke script with overridable tool lists provides both positive validation and deterministic negative-case checks without editing the image.
-  - Gotchas encountered
-  - `py3-pip` may not always expose `pip`; adding a guarded symlink keeps `pip` availability consistent with acceptance checks.
-  - Useful context
-  - `trivy` now scans many additional node packages after pnpm installation; CRITICAL gate still passes but output is substantially larger.
----
-## [2026-03-09 05:19:27 EDT] - US-004: Bundle internal binaries via multi-stage build
-Thread: 
-Run: 20260309-043624-64079 (iteration 4)
-Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-4.log
-Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-4.md
-- Guardrails reviewed: yes
-- No-commit run: false
-- Commit: e42fed9 feat(base-image): bundle internal binaries via builder
-- Post-commit status: dirty (`.ralph/runs/run-20260309-043624-64079-iter-4.log` changed after commit)
-- Verification:
-  - Command: go test ./cmd/smithctl ./cmd/smith-verify-completion -> PASS
-  - Command: docker build -t loop-base:local . -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
-  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
-  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/check-base-internal-binaries-smoke.sh loop-base:local -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'smithctl --version && smith-verify-completion --version' -> PASS
-  - Command: tmp_dir="$(mktemp -d)"; cat > "$tmp_dir/Dockerfile" <<'EOF' ...; docker build -f "$tmp_dir/Dockerfile" -t loop-base:missing-internal "$tmp_dir" >/dev/null; ./scripts/check-base-internal-binaries-smoke.sh loop-base:missing-internal -> PASS (expected failure with `missing internal binary: smith-verify-completion`)
-  - Command: hadolint Dockerfile -> PASS
-  - Command: shellcheck scripts/*.sh -> PASS
-  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
-  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
-- Files changed:
-  - Dockerfile
-  - docker/base-internal-binaries.txt
-  - scripts/check-base-internal-binaries-smoke.sh
-  - cmd/smithctl/main.go
-  - cmd/smithctl/main_test.go
-  - cmd/smith-verify-completion/main.go
-  - README.md
-  - AGENTS.md
-  - artifacts/sbom-loop-base.spdx.json
-  - .ralph/activity.log
-  - .ralph/progress.md
-- What was implemented
-  - Added a dedicated `internal-binaries-builder` Docker stage that compiles internal binaries from `./cmd/<name>` using `docker/base-internal-binaries.txt` as the builder input contract.
-  - Copied compiled artifacts into runtime `/usr/local/bin` so bundled internal binaries are on PATH in the final Alpine runtime stage.
-  - Added `scripts/check-base-internal-binaries-smoke.sh` to validate runtime presence and `--version` execution for required binaries, emitting exact `missing internal binary: <name>` errors.
-  - Added `--version` support to `smithctl` and `smith-verify-completion` so runtime smoke checks can execute per acceptance criteria.
-  - Documented builder inputs, expected artifacts, runtime path, and extension pattern for future binary additions in README and AGENTS.
-  - Addressed a CRITICAL trivy finding by pinning builder image to `golang:1.25.7-alpine`.
-- **Learnings for future iterations:**
-  - Patterns discovered
-  - Keeping binary names in a single list file (`docker/base-internal-binaries.txt`) prevents drift between build and smoke verification.
-  - Gotchas encountered
-  - Multi-line variable expansion in `sh -lc` loops needs normalization (`tr '\n' ' '`) to avoid loop parsing errors.
-  - Useful context
-  - trivy scans Go binaries copied into runtime; builder Go patch level directly affects runtime vulnerability gates.
----
-## [2026-03-09 05:28:11 EDT] - US-005: Support skills volume mount contract
-Thread: ses_742e22
-Run: 20260309-043624-64079 (iteration 5)
-Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-5.log
-Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-5.md
-- Guardrails reviewed: yes
-- No-commit run: false
-- Commit: 60c68e4 feat(base-image): support fixed skills mount path
-- Post-commit status: dirty (`.ralph/runs/run-20260309-043624-64079-iter-5.log`)
-- Verification:
-  - Command: docker build -t loop-base:local . -> PASS
-  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/check-base-internal-binaries-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/check-base-skills-mount-smoke.sh loop-base:local -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
-  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
-  - Command: mkdir -p tmp-skills && echo "example-skill" > tmp-skills/example.txt && docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'ls -la /home/dev/.codex/skills' -> PASS
-  - Command: hadolint Dockerfile -> PASS
-  - Command: shellcheck scripts/*.sh -> PASS
-  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
-  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
-- Files changed:
-  - Dockerfile
-  - scripts/check-base-skills-mount-smoke.sh
-  - README.md
-  - AGENTS.md
-  - artifacts/sbom-loop-base.spdx.json
-  - .ralph/activity.log
-  - .ralph/progress.md
-  - .ralph/runs/run-20260309-043624-64079-iter-5.log
-- What was implemented
-  - Added fixed runtime skills directory `/home/dev/.codex/skills` in the base image build and preserved runtime-user ownership/readability.
-  - Added `scripts/check-base-skills-mount-smoke.sh` to validate mounted and unmounted skills path behavior, including mounted-file content preservation.
-  - Documented the skills mount contract, behavior intent, and smoke verification commands in README and AGENTS.
-- **Learnings for future iterations:**
-  - Patterns discovered
-  - A sentinel-file mount check is a reliable way to validate that startup behavior does not overwrite host-mounted content.
-  - Gotchas encountered
-  - Creating host test files under `tmp-skills/` should be cleaned before the final commit to avoid artifact drift.
-  - Useful context
-  - `.ralph/runs/*iter-5.log` can continue updating after commands and may require a final sync commit for clean status.
----
-## [2026-03-09 05:38:34 EDT] - US-006: Add reproducible verification and security gates
-Thread: 
-Run: 20260309-043624-64079 (iteration 6)
-Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-6.log
-Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-6.md
-- Guardrails reviewed: yes
-- No-commit run: false
-- Commit: 10886dc feat(base-image): add reproducible quality gates
-- Post-commit status: dirty (.ralph/runs/run-20260309-043624-64079-iter-6.log changed after commit)
-- Verification:
-  - Command: docker build -t loop-base:local . -> PASS
-  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/check-base-internal-binaries-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/check-base-skills-mount-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/run-base-quality-gates.sh loop-base:local -> PASS
-  - Command: ./scripts/check-trivy-critical-negative.sh knqyf263/vuln-image:1.2.3 -> PASS (expected trivy non-zero gate failure)
-- Files changed:
-  - scripts/run-base-quality-gates.sh
-  - scripts/check-trivy-critical-negative.sh
-  - README.md
-  - AGENTS.md
-  - artifacts/sbom-loop-base.spdx.json
-  - .agents/tasks/prd-base-container.json
-  - .ralph/activity.log
-  - .ralph/errors.log
-  - .ralph/progress.md
-  - .ralph/.tmp/prompt-20260309-043624-64079-6.md
-  - .ralph/.tmp/story-20260309-043624-64079-6.json
-  - .ralph/.tmp/story-20260309-043624-64079-6.md
-  - .ralph/runs/run-20260309-043624-64079-iter-5.log
-  - .ralph/runs/run-20260309-043624-64079-iter-5.md
-  - .ralph/runs/run-20260309-043624-64079-iter-6.log
-- What was implemented
-  - Added a deterministic, fail-fast local gate runner (`scripts/run-base-quality-gates.sh`) that executes the top-level quality gate command set in order, including lint/security/SBOM steps.
-  - Added a reproducible trivy negative-case helper (`scripts/check-trivy-critical-negative.sh`) that validates the CRITICAL gate fails for a known vulnerable image tag.
-  - Documented quality-gate usage and setup notes for required local tools (`hadolint`, `shellcheck`, `trivy`, `syft`) in README and AGENTS.
-  - Verified that the full gate sequence succeeds for `loop-base:local` and writes `artifacts/sbom-loop-base.spdx.json`.
-- **Learnings for future iterations:**
-  - Patterns discovered
-  - Wrapping exact quality gate commands in a single shell script reduces drift between PRD qualityGates and local execution.
-  - Gotchas encountered
-  - `.ralph/runs/*iter-6.log` can continue updating after a commit, so a final sync commit is needed for a clean tree.
-  - Useful context
-  - `knqyf263/vuln-image:1.2.3` is a stable negative-case target for validating trivy CRITICAL gate failure behavior.
----
-## [2026-03-09 05:47:45 EDT] - US-007: Document base image usage in loop definitions
-Thread: codex_52757
-Run: 20260309-043624-64079 (iteration 7)
-Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-7.log
-Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-7.md
-- Guardrails reviewed: yes
-- No-commit run: false
-- Commit: bff095d docs(loop-base): document loop definition usage
-- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-7.log
-- Verification:
-  - Command: docker build -t loop-base:local . -> PASS
-  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/check-base-internal-binaries-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/check-base-skills-mount-smoke.sh loop-base:local -> PASS
-  - Command: ./scripts/run-base-quality-gates.sh loop-base:local -> PASS
-  - Command: ./scripts/check-trivy-critical-negative.sh knqyf263/vuln-image:1.2.3 -> PASS
-  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
-  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
-  - Command: hadolint Dockerfile -> PASS
-  - Command: shellcheck scripts/*.sh -> PASS
-  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
-  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
-  - Command: mkdir -p tmp-skills/commit && printf 'name: commit\n' > tmp-skills/commit/SKILL.md && docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills:ro" loop-base:local sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md && codex --version' -> PASS
-  - Command: if docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skillz:ro" loop-base:local sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md'; then echo 'unexpected success'; exit 1; else echo 'expected failure observed'; fi -> PASS
+  - Command: make build -> PASS
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
 - Files changed:
   - README.md
-  - docs/index.md
-  - docs/loop-base-image-usage.md
-  - artifacts/sbom-loop-base.spdx.json
-  - .ralph/progress.md
+  - cmd/smith-api/main_test.go
+  - cmd/smith-api/pod_exec_runner_test.go
+  - docs/loop-ingress-and-cli.md
+  - test/playwright/console.spec.js
 - What was implemented
-  - Added loop-definition documentation showing how to reference the base image and explicitly mount skills under /home/dev/.codex/skills.
-  - Included local development and production-like loop definition examples.
-  - Added a start-success example and a misconfigured mount-path negative case with expected symptoms and correction.
-  - Documented the bundled tools and internal binaries verified by smoke and quality gates.
+  - Expanded API verification coverage for runtime resolution fallback behavior, attach/detach lifecycle rejection handling, command payload validation, and command execution result handling for non-zero exits and execution transport errors.
+  - Added simulated Kubernetes exec-flow tests for `kubePodExecRunner.Execute` covering success, non-zero exit status mapping, and stream failures with output capture.
+  - Updated Playwright pod detail terminal coverage to explicitly run `echo ok` and verify terminal output visibility before detach.
+  - Updated operator-facing documentation with terminal API contracts, auth/RBAC permissions, and troubleshooting for missing/not-running pods and not-attached command failures.
 - **Learnings for future iterations:**
   - Patterns discovered
-  - Keep loop-definition docs aligned to implemented fields (`environment.container_image` and `skills[*].mount_path`).
+    - `kubePodExecRunner` can be tested without a live cluster by injecting a fake REST client and remote executor.
   - Gotchas encountered
-  - `git status` can remain dirty after commit because run logs continue updating; include follow-up commit for final cleanliness.
+    - Long-running hooks and run logging can mutate `.ralph/runs/*` after a commit; always re-check status and finalize with a cleanup commit.
   - Useful context
-  - The full gate runner already covers global gates, but explicit command reruns provide clearer progress traceability.
+    - Terminal command API returns structured error codes for validation/auth/rate-limit failures but attach runtime conflicts currently return text error messages.
 ---

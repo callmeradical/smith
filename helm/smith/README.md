@@ -30,6 +30,8 @@ make deploy-staging
 make deploy-prod
 ```
 
+Local note: `make deploy-local` builds the Smith images locally and imports them into the k3d cluster before Helm runs, so the default `ghcr.io/smith/*:v0.1.0` refs resolve without a remote registry pull.
+
 ## Values Contract
 
 - Schema file: `helm/smith/values.schema.json`
