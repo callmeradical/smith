@@ -176,7 +176,7 @@
     {
       "id": "US-003",
       "title": "Execute line commands inside active loop container",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-002"
       ],
@@ -190,13 +190,13 @@
         "Negative case: command over max size returns HTTP 400 with validation error and audit entry tagged as rejected."
       ],
       "startedAt": "2026-03-09T08:55:25.178381+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T08:55:25.178611+00:00"
+      "completedAt": "2026-03-09T09:09:10.813717+00:00",
+      "updatedAt": "2026-03-09T09:09:10.813322+00:00"
     },
     {
       "id": "US-004",
       "title": "Add interactive command controls to pod detail UI",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-002",
         "US-003"
@@ -209,7 +209,10 @@
         "Example: user opens a running loop in pod detail, clicks attach, runs `pwd`, and sees command output appear in journal panel.",
         "Negative case: user opens non-active loop; attach and command controls remain disabled with visible reason message from runtime endpoint.",
         "Playwright test validates route behavior and control state transitions on success and failure paths."
-      ]
+      ],
+      "startedAt": "2026-03-09T09:09:12.883974+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T09:09:12.884245+00:00"
     },
     {
       "id": "US-005",

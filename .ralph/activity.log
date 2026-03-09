@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-09 05:09:10 | run=20260309-043236-60668 | iter=3 | mode=build | story=US-003 | duration=825s | status=success
 - 2026-03-09 04:55:23 | run=20260309-043236-60668 | iter=2 | mode=build | story=US-002 | duration=707s | status=success
 - 2026-03-09 04:43:33 | run=20260309-043236-60668 | iter=1 | mode=build | story=US-001 | duration=656s | status=success
 
@@ -24,3 +25,8 @@
 [2026-03-09 05:02:34] US-003 major code change: added Kubernetes pod exec command execution path, command validation, and API tests
 [2026-03-09 05:03:48] US-003 verification complete: make build, go test suites, frontend tests, and test matrix all passing
 [2026-03-09 05:05:48] US-003 progress entry appended with commit and verification details
+[2026-03-09 05:09:10] ITERATION 3 end (duration=825s)
+[2026-03-09 05:09:13] ITERATION 4 start (mode=build story=US-004)
+[2026-03-09 05:11:03] US-004: completed initial audit of guardrails, errors, PRD, existing pod-view UI
+[2026-03-09 05:18:40] US-004: implemented pod-view terminal controls/state machine and Playwright mock/test coverage for attach/command/detach/runtime flows
+[2026-03-09 05:27:13] US-004: completed verification gates (build, Go tests, frontend Playwright, matrix) and dev-browser UI validation

@@ -1256,6 +1256,75 @@
       word-break: break-word;
     }
 
+    .pod-control-panel {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .pod-control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pod-runtime-summary {
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      color: #c7d7ea;
+      word-break: break-word;
+    }
+
+    .pod-terminal-state {
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 2px 9px;
+      font-size: 0.66rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #d9e7f8;
+    }
+
+    .pod-terminal-state.state-idle,
+    .pod-terminal-state.state-attached {
+      border-color: rgba(16, 185, 129, 0.6);
+      background: rgba(16, 185, 129, 0.16);
+      color: #ccfce9;
+    }
+
+    .pod-terminal-state.state-attaching,
+    .pod-terminal-state.state-executing,
+    .pod-terminal-state.state-detaching {
+      border-color: rgba(245, 158, 11, 0.65);
+      background: rgba(245, 158, 11, 0.16);
+      color: #ffe7c2;
+    }
+
+    .pod-terminal-state.state-error {
+      border-color: rgba(239, 68, 68, 0.65);
+      background: rgba(239, 68, 68, 0.16);
+      color: #ffd9d9;
+    }
+
+    .pod-command-row {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+    }
+
+    .pod-command-row input {
+      width: 100%;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+    }
+
     .journal.hidden {
       display: none;
     }
@@ -1297,6 +1366,10 @@
       .terminal {
         max-height: none;
         height: 44vh;
+      }
+
+      .pod-command-row {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -1523,9 +1596,27 @@
           </div>
           <div class="controls">
             <button id="pod-view-attach" type="button">attach</button>
+            <button id="pod-view-detach" type="button">detach</button>
             <button id="pod-view-delete" type="button" class="danger">delete loop</button>
           </div>
         </header>
+        <section class="pod-control-panel" aria-label="Terminal command controls">
+          <div class="pod-control-row">
+            <strong id="pod-view-runtime-target" class="pod-runtime-summary">runtime target: --</strong>
+            <span id="pod-view-terminal-state" class="pod-terminal-state state-idle" aria-live="polite">idle</span>
+          </div>
+          <div id="pod-view-control-message" class="status-note">Select a loop to resolve runtime target.</div>
+          <div class="pod-command-row">
+            <input
+              id="pod-view-command"
+              type="text"
+              placeholder="Run command (for example: pwd)"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button id="pod-view-run" type="button">run</button>
+          </div>
+        </section>
         <section class="journal">
           <div class="journal-header">
             <strong id="journal-title">Pod Detail Journal</strong>
@@ -1679,6 +1770,11 @@
       attachBusyLoopID: "",
       loopDeleteBusy: false,
       pendingPodViewLoopID: "",
+      terminalUIState: "idle",
+      terminalMessage: "",
+      terminalAttachedLoopID: "",
+      runtimeByLoopID: {},
+      runtimeBusyLoopID: "",
       providerStatus: {
         codex: {
           connected: false,
@@ -1696,7 +1792,13 @@
     const terminalEl = document.getElementById("terminal");
     const podViewBackEl = document.getElementById("pod-view-back");
     const podViewAttachEl = document.getElementById("pod-view-attach");
+    const podViewDetachEl = document.getElementById("pod-view-detach");
     const podViewDeleteEl = document.getElementById("pod-view-delete");
+    const podViewCommandEl = document.getElementById("pod-view-command");
+    const podViewRunEl = document.getElementById("pod-view-run");
+    const podViewTerminalStateEl = document.getElementById("pod-view-terminal-state");
+    const podViewRuntimeTargetEl = document.getElementById("pod-view-runtime-target");
+    const podViewControlMessageEl = document.getElementById("pod-view-control-message");
     const podViewTitleEl = document.getElementById("pod-view-title");
     const podsNoticeEl = document.getElementById("pods-notice");
     const podCreateToggleEl = document.getElementById("pod-create-toggle");
@@ -1826,6 +1928,14 @@
       },
     ];
     const projectStorageKey = "smith.console.projects.v1";
+    const podViewTerminalStates = new Set([
+      "idle",
+      "attaching",
+      "attached",
+      "executing",
+      "detaching",
+      "error",
+    ]);
     let podsNoticeTimer = null;
 
     document.getElementById("api-url").textContent = apiBase || "(api unset)";
@@ -1907,16 +2017,115 @@
       return state.loops.find((item) => item.loopID === loopID) || null;
     }
 
+    function normalizeTerminalState(value) {
+      const next = String(value || "").trim().toLowerCase();
+      return podViewTerminalStates.has(next) ? next : "idle";
+    }
+
+    function setTerminalUIState(nextState, message) {
+      state.terminalUIState = normalizeTerminalState(nextState);
+      state.terminalMessage = String(message || "").trim();
+      syncPodViewActions();
+    }
+
+    function selectedLoopRuntime() {
+      const selected = selectedLoopRecord();
+      if (!selected) return null;
+      return state.runtimeByLoopID[selected.loopID] || null;
+    }
+
+    function runtimeSummaryText(runtime) {
+      if (!runtime || typeof runtime !== "object") {
+        return "runtime target: -- / -- / -- (phase --)";
+      }
+      const namespace = String(runtime.namespace || "--");
+      const podName = String(runtime.pod_name || "--");
+      const containerName = String(runtime.container_name || "--");
+      const phase = String(runtime.pod_phase || "--");
+      return (
+        "runtime target: " +
+        namespace +
+        " / " +
+        podName +
+        " / " +
+        containerName +
+        " (phase " +
+        phase +
+        ")"
+      );
+    }
+
+    function runtimeReason(runtime) {
+      if (!runtime || runtime.attachable) return "";
+      return String(runtime.reason || "runtime target not attachable").trim();
+    }
+
     function syncPodViewActions() {
       const selected = selectedLoopRecord();
       const hasSelection = Boolean(selected);
-      const canAttach = hasSelection && isActive(selected.status);
-      const attachBusy = hasSelection && state.attachBusyLoopID === selected.loopID;
-      podViewAttachEl.disabled = !canAttach || state.loopDeleteBusy || attachBusy;
-      podViewAttachEl.textContent = attachBusy ? "attaching..." : "attach";
-      const canDelete = hasSelection && !isActive(selected.status) && !state.loopDeleteBusy;
+      const selectedLoopID = hasSelection ? String(selected.loopID || "").trim() : "";
+      const runtime = selectedLoopRuntime();
+      const loadingRuntime = hasSelection && state.runtimeBusyLoopID === selectedLoopID;
+      const runtimeAttachable = Boolean(runtime && runtime.attachable);
+      const attachedToSelected = hasSelection && state.terminalAttachedLoopID === selectedLoopID;
+      const terminalState = normalizeTerminalState(state.terminalUIState);
+      const attaching = terminalState === "attaching";
+      const executing = terminalState === "executing";
+      const detaching = terminalState === "detaching";
+      const controlsLocked =
+        state.loopDeleteBusy || loadingRuntime || attaching || executing || detaching;
+
+      podViewAttachEl.disabled =
+        !hasSelection || !runtimeAttachable || attachedToSelected || controlsLocked;
+      if (loadingRuntime) {
+        podViewAttachEl.textContent = "loading...";
+      } else {
+        podViewAttachEl.textContent = attaching ? "attaching..." : "attach";
+      }
+
+      podViewDetachEl.disabled = !hasSelection || !attachedToSelected || controlsLocked;
+      podViewDetachEl.textContent = detaching ? "detaching..." : "detach";
+
+      const canDelete = hasSelection && !isActive(selected.status) && !controlsLocked;
       podViewDeleteEl.disabled = !canDelete;
       podViewDeleteEl.textContent = state.loopDeleteBusy ? "deleting..." : "delete loop";
+
+      const commandEnabled = hasSelection && attachedToSelected && !controlsLocked;
+      const commandText = String(podViewCommandEl.value || "").trim();
+      podViewCommandEl.disabled = !commandEnabled;
+      podViewRunEl.disabled = !commandEnabled || commandText === "";
+      podViewRunEl.textContent = executing ? "running..." : "run";
+
+      const status =
+        attachedToSelected && terminalState === "idle" ? "attached" : terminalState;
+      podViewTerminalStateEl.textContent = status;
+      podViewTerminalStateEl.className = "pod-terminal-state state-" + status;
+
+      podViewRuntimeTargetEl.textContent = runtimeSummaryText(runtime);
+      const resolvedRuntimeReason = runtimeReason(runtime);
+      let controlMessage = "";
+      if (!hasSelection) {
+        controlMessage = "Select a loop to resolve runtime target.";
+      } else if (loadingRuntime) {
+        controlMessage = "Loading runtime target...";
+      } else if (resolvedRuntimeReason && !attachedToSelected) {
+        controlMessage = resolvedRuntimeReason;
+      } else if (state.terminalMessage) {
+        controlMessage = state.terminalMessage;
+      } else if (status === "attached") {
+        controlMessage = "Attached. Press Enter or Run to execute a command.";
+      } else if (status === "idle" && runtimeAttachable) {
+        controlMessage = "Attach to enable command execution.";
+      } else if (status === "idle") {
+        controlMessage = "Runtime target not attachable.";
+      } else if (status === "executing") {
+        controlMessage = "Command execution in progress...";
+      } else if (status === "attaching") {
+        controlMessage = "Creating terminal session...";
+      } else if (status === "detaching") {
+        controlMessage = "Closing terminal session...";
+      }
+      podViewControlMessageEl.textContent = controlMessage;
     }
 
     function renderSelectedLoop() {
@@ -1927,6 +2136,8 @@
         document.getElementById("journal-title").textContent = "Pod Detail Journal";
         terminalEl.textContent = "[journal] select a pod tile to open pod detail view\n";
         journalLatencyEl.textContent = "p95 --";
+        state.terminalUIState = "idle";
+        state.terminalMessage = "";
       } else {
         podViewTitleEl.textContent = "Pod: " + String(state.selectedLoop || "");
       }
@@ -1949,6 +2160,10 @@
 
     async function postJSON(path, payload) {
       return requestJSON(path, "POST", payload);
+    }
+
+    async function getJSON(path) {
+      return requestJSON(path, "GET");
     }
 
     async function deleteJSON(path, payload) {
@@ -3563,11 +3778,16 @@
         apiDotEl.className = "dot ok";
         if (state.selectedLoop && !state.loops.some((l) => l.loopID === state.selectedLoop)) {
           clearJournal("selected pod no longer present");
+          if (state.terminalAttachedLoopID === state.selectedLoop) {
+            state.terminalAttachedLoopID = "";
+          }
           state.selectedLoop = "";
           renderSelectedLoop();
           if (pages.podView.classList.contains("active")) {
             setActivePage("pods", true);
           }
+        } else if (state.selectedLoop && pages.podView.classList.contains("active")) {
+          void loadLoopRuntime(state.selectedLoop, false);
         }
       } catch (_) {
         apiDotEl.className = "dot err";
@@ -3641,13 +3861,60 @@
       terminalEl.scrollTop = terminalEl.scrollHeight;
     }
 
+    async function loadLoopRuntime(loopID, force) {
+      const id = String(loopID || "").trim();
+      if (!id) return null;
+      if (!force && state.runtimeByLoopID[id]) {
+        return state.runtimeByLoopID[id];
+      }
+      if (state.runtimeBusyLoopID === id) {
+        return state.runtimeByLoopID[id] || null;
+      }
+      state.runtimeBusyLoopID = id;
+      syncPodViewActions();
+      try {
+        const runtime = await getJSON(
+          "/v1/loops/" + encodeURIComponent(id) + "/runtime",
+        );
+        if (runtime && typeof runtime === "object") {
+          state.runtimeByLoopID[id] = runtime;
+        } else {
+          state.runtimeByLoopID[id] = {
+            loop_id: id,
+            attachable: false,
+            reason: "runtime target not attachable",
+          };
+        }
+      } catch (err) {
+        state.runtimeByLoopID[id] = {
+          loop_id: id,
+          attachable: false,
+          reason: err && err.message ? err.message : "runtime target lookup failed",
+        };
+      } finally {
+        if (state.runtimeBusyLoopID === id) {
+          state.runtimeBusyLoopID = "";
+        }
+        syncPodViewActions();
+      }
+      return state.runtimeByLoopID[id] || null;
+    }
+
     function selectLoop(loopID) {
       state.selectedLoop = loopID;
+      if (state.terminalAttachedLoopID === loopID) {
+        state.terminalUIState = "attached";
+        state.terminalMessage = "";
+      } else {
+        state.terminalUIState = "idle";
+        state.terminalMessage = "";
+      }
       renderSelectedLoop();
       document.getElementById("journal-title").textContent = "Live Journal: " + loopID;
       renderGrid();
       clearJournal("attaching to stream...");
       attachStream(loopID);
+      void loadLoopRuntime(loopID, true);
     }
 
     function openPodView(loopID) {
@@ -3669,21 +3936,86 @@
         return;
       }
       state.attachBusyLoopID = id;
+      setTerminalUIState("attaching", "");
       renderGrid();
-      syncPodViewActions();
       try {
+        const runtime = await loadLoopRuntime(id, false);
+        if (!runtime || !runtime.attachable) {
+          setTerminalUIState("error", runtimeReason(runtime) || "runtime target not attachable");
+          return;
+        }
         await postJSON("/v1/loops/" + encodeURIComponent(id) + "/control/attach", {
           actor: authActor(),
           terminal: "console-pods",
         });
+        state.terminalAttachedLoopID = id;
+        setTerminalUIState("attached", "");
         pushToast("Attached to " + id + ".", "ok");
-        selectLoop(id);
+        if (state.selectedLoop !== id) {
+          selectLoop(id);
+        } else {
+          syncPodViewActions();
+        }
       } catch (err) {
         const message = err && err.message ? err.message : "attach failed";
+        setTerminalUIState("error", message);
         pushToast("Failed to attach to " + id + ": " + message, "err");
       } finally {
         state.attachBusyLoopID = "";
         renderGrid();
+        syncPodViewActions();
+      }
+    }
+
+    async function detachLoopTerminal(loopID) {
+      const id = String(loopID || "").trim();
+      if (!id) return;
+      if (state.terminalAttachedLoopID !== id) {
+        setTerminalUIState("error", "attach before detaching");
+        return;
+      }
+      setTerminalUIState("detaching", "");
+      try {
+        await postJSON("/v1/loops/" + encodeURIComponent(id) + "/control/detach", {
+          actor: authActor(),
+        });
+        state.terminalAttachedLoopID = "";
+        setTerminalUIState("idle", "");
+        pushToast("Detached from " + id + ".", "ok");
+      } catch (err) {
+        const message = err && err.message ? err.message : "detach failed";
+        setTerminalUIState("error", message);
+        pushToast("Failed to detach from " + id + ": " + message, "err");
+      }
+    }
+
+    async function runSelectedLoopCommand() {
+      const id = String(state.selectedLoop || "").trim();
+      if (!id) {
+        setTerminalUIState("error", "select a loop first");
+        return;
+      }
+      if (state.terminalAttachedLoopID !== id) {
+        setTerminalUIState("error", "attach before running commands");
+        return;
+      }
+      const command = String(podViewCommandEl.value || "").trim();
+      if (!command) {
+        setTerminalUIState("error", "command is required");
+        return;
+      }
+      setTerminalUIState("executing", "");
+      try {
+        await postJSON("/v1/loops/" + encodeURIComponent(id) + "/control/command", {
+          actor: authActor(),
+          command,
+        });
+        podViewCommandEl.value = "";
+        setTerminalUIState("attached", "");
+      } catch (err) {
+        const message = err && err.message ? err.message : "command failed";
+        setTerminalUIState("error", message);
+      } finally {
         syncPodViewActions();
       }
     }
@@ -3711,6 +4043,9 @@
       setActivePage("pods", true);
       detachStream();
       clearJournal("deleting loop...");
+      if (state.terminalAttachedLoopID === loopID) {
+        state.terminalAttachedLoopID = "";
+      }
       state.selectedLoop = "";
       renderSelectedLoop();
       renderGrid();
@@ -3849,6 +4184,22 @@
       if (state.selectedLoop) {
         void attachLoopTerminal(state.selectedLoop);
       }
+    });
+    podViewDetachEl.addEventListener("click", () => {
+      if (state.selectedLoop) {
+        void detachLoopTerminal(state.selectedLoop);
+      }
+    });
+    podViewRunEl.addEventListener("click", () => {
+      void runSelectedLoopCommand();
+    });
+    podViewCommandEl.addEventListener("input", () => {
+      syncPodViewActions();
+    });
+    podViewCommandEl.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault();
+      void runSelectedLoopCommand();
     });
     podViewDeleteEl.addEventListener("click", () => {
       void deleteSelectedLoop();

@@ -41,7 +41,7 @@ function jsonResponse(route, payload, status = 200) {
   });
 }
 
-async function mockConsoleApi(page) {
+async function mockConsoleApi(page, options = {}) {
   const loopsState = loopsFixture.map((item) => ({
     ...item,
     record: { ...item.record },
@@ -57,6 +57,15 @@ async function mockConsoleApi(page) {
   const projectCredentialState = {};
   const overridePayloads = [];
   const createdLoopPayloads = [];
+  const commandPayloads = [];
+  const attachedSessions = new Set();
+  const failCommands = new Set(
+    Array.isArray(options.failCommands) && options.failCommands.length > 0
+      ? options.failCommands
+      : ['fail-command'],
+  );
+  const journalEntriesByLoopID = {};
+  let journalSequence = Date.now();
 
   await page.addInitScript(() => {
     window.__lastConfirmMessage = '';
@@ -64,26 +73,35 @@ async function mockConsoleApi(page) {
       window.__lastConfirmMessage = String(message || '');
       return true;
     };
+    window.__mockEventSources = [];
+    window.__emitMockJournalEntry = (loopID, entry) => {
+      if (!entry || !loopID) return;
+      const payload = { data: JSON.stringify({ entry }) };
+      for (const source of window.__mockEventSources) {
+        if (!source || source.readyState !== 1) continue;
+        if (String(source.loopID || '') !== String(loopID)) continue;
+        source.emit('entry', payload);
+      }
+    };
 
     class MockEventSource {
       constructor(url) {
         this.url = url;
         this.listeners = {};
         this.readyState = 1;
+        const match = String(url || '').match(/\/v1\/loops\/([^/]+)\/journal\/stream/);
+        this.loopID = match ? decodeURIComponent(match[1]) : '';
+        window.__mockEventSources.push(this);
         setTimeout(() => this.emit('ready', { data: '{}' }), 0);
         setTimeout(
           () =>
-            this.emit('entry', {
-              data: JSON.stringify({
-                entry: {
-                  sequence: Date.now(),
-                  timestamp: new Date().toISOString(),
-                  level: 'info',
-                  phase: 'replica',
-                  actor_id: 'replica-test',
-                  message: 'worker started',
-                },
-              }),
+            window.__emitMockJournalEntry(this.loopID, {
+              sequence: Date.now(),
+              timestamp: new Date().toISOString(),
+              level: 'info',
+              phase: 'replica',
+              actor_id: 'replica-test',
+              message: 'worker started',
             }),
           10,
         );
@@ -98,6 +116,7 @@ async function mockConsoleApi(page) {
 
       close() {
         this.readyState = 2;
+        window.__mockEventSources = window.__mockEventSources.filter((source) => source !== this);
       }
 
       emit(type, payload) {
@@ -110,6 +129,69 @@ async function mockConsoleApi(page) {
 
     window.EventSource = MockEventSource;
   });
+
+  function loopIDFromURL(url, suffix) {
+    const path = new URL(url).pathname;
+    if (!path.startsWith('/v1/loops/') || !path.endsWith(suffix)) {
+      return '';
+    }
+    const encoded = path.slice('/v1/loops/'.length, path.length - suffix.length);
+    return decodeURIComponent(encoded).trim();
+  }
+
+  function loopRecord(loopID) {
+    return loopsState.find((item) => item?.record?.loop_id === loopID) || null;
+  }
+
+  function loopActive(loopID) {
+    const current = loopRecord(loopID);
+    if (!current) return false;
+    const state = String(current.record?.state || '').toLowerCase();
+    return state === 'unresolved' || state === 'overwriting';
+  }
+
+  function loopRuntimePayload(loopID) {
+    const current = loopRecord(loopID);
+    if (!current) return null;
+    const attachable = loopActive(loopID);
+    return {
+      loop_id: loopID,
+      namespace: 'smith-system',
+      pod_name: attachable ? `smith-replica-${loopID}-abc` : '',
+      container_name: 'replica',
+      pod_phase: attachable ? 'Running' : 'Succeeded',
+      attachable,
+      reason: attachable ? '' : 'loop not active',
+    };
+  }
+
+  function sessionKey(loopID, actor) {
+    return `${loopID}:${actor || 'operator'}`;
+  }
+
+  async function emitJournal(loopID, actorID, message, level = 'info') {
+    journalSequence = Math.max(journalSequence + 1, Date.now());
+    const entry = {
+      sequence: journalSequence,
+      timestamp: new Date().toISOString(),
+      level,
+      phase: 'operator',
+      actor_id: actorID,
+      message: String(message || ''),
+    };
+    if (!journalEntriesByLoopID[loopID]) {
+      journalEntriesByLoopID[loopID] = [];
+    }
+    journalEntriesByLoopID[loopID].push(entry);
+    await page.evaluate(
+      ({ targetLoopID, streamEntry }) => {
+        if (typeof window.__emitMockJournalEntry === 'function') {
+          window.__emitMockJournalEntry(targetLoopID, streamEntry);
+        }
+      },
+      { targetLoopID: loopID, streamEntry: entry },
+    );
+  }
 
   await page.route(/\/v1\/loops$/, async (route) => {
     if (route.request().method() === 'GET') {
@@ -159,6 +241,114 @@ async function mockConsoleApi(page) {
       return;
     }
     await jsonResponse(route, { error: 'method not allowed' }, 405);
+  });
+
+  await page.route(/\/v1\/loops\/[^/]+\/runtime$/, async (route) => {
+    const loopID = loopIDFromURL(route.request().url(), '/runtime');
+    const runtime = loopRuntimePayload(loopID);
+    if (!runtime) {
+      await jsonResponse(route, { error: 'loop not found' }, 404);
+      return;
+    }
+    await jsonResponse(route, runtime);
+  });
+
+  await page.route(/\/v1\/loops\/[^/]+\/control\/attach$/, async (route) => {
+    const loopID = loopIDFromURL(route.request().url(), '/control/attach');
+    const runtime = loopRuntimePayload(loopID);
+    if (!runtime) {
+      await jsonResponse(route, { error: 'loop not found' }, 404);
+      return;
+    }
+    if (!runtime.attachable) {
+      await jsonResponse(route, { error: runtime.reason || 'runtime target not attachable' }, 409);
+      return;
+    }
+    const payload = route.request().postDataJSON();
+    const actor = String(payload?.actor || 'operator').trim() || 'operator';
+    attachedSessions.add(sessionKey(loopID, actor));
+    await jsonResponse(route, {
+      loop_id: loopID,
+      status: 'attached',
+      actor,
+      attach_count: 1,
+      active_attach_count: 1,
+      runtime_target_ref: `${runtime.namespace}/${runtime.pod_name}:${runtime.container_name}`,
+    });
+  });
+
+  await page.route(/\/v1\/loops\/[^/]+\/control\/detach$/, async (route) => {
+    const loopID = loopIDFromURL(route.request().url(), '/control/detach');
+    const runtime = loopRuntimePayload(loopID);
+    if (!runtime) {
+      await jsonResponse(route, { error: 'loop not found' }, 404);
+      return;
+    }
+    const payload = route.request().postDataJSON();
+    const actor = String(payload?.actor || 'operator').trim() || 'operator';
+    const key = sessionKey(loopID, actor);
+    if (!attachedSessions.has(key)) {
+      await jsonResponse(route, { error: 'actor is not attached' }, 409);
+      return;
+    }
+    attachedSessions.delete(key);
+    await jsonResponse(route, {
+      loop_id: loopID,
+      status: 'detached',
+      actor,
+      attach_count: 1,
+      active_attach_count: 0,
+      runtime_target_ref: `${runtime.namespace}/${runtime.pod_name}:${runtime.container_name}`,
+    });
+  });
+
+  await page.route(/\/v1\/loops\/[^/]+\/control\/command$/, async (route) => {
+    const loopID = loopIDFromURL(route.request().url(), '/control/command');
+    const runtime = loopRuntimePayload(loopID);
+    if (!runtime) {
+      await jsonResponse(route, { error: 'loop not found' }, 404);
+      return;
+    }
+    if (!loopActive(loopID)) {
+      await jsonResponse(route, { error: 'loop is not active' }, 409);
+      return;
+    }
+    const payload = route.request().postDataJSON();
+    commandPayloads.push(payload);
+    const actor = String(payload?.actor || 'operator').trim() || 'operator';
+    const key = sessionKey(loopID, actor);
+    if (!attachedSessions.has(key)) {
+      await jsonResponse(route, { error: 'actor must attach before issuing commands' }, 409);
+      return;
+    }
+    const command = String(payload?.command || '').trim();
+    if (!command) {
+      await jsonResponse(route, { error: 'command is required' }, 400);
+      return;
+    }
+    if (failCommands.has(command)) {
+      await jsonResponse(route, { error: 'command failed in runtime' }, 500);
+      return;
+    }
+    const stdout =
+      command === 'pwd'
+        ? `/workspace/${loopID}\n`
+        : `executed: ${command}\n`;
+    for (const line of stdout.split('\n').map((value) => value.trim()).filter(Boolean)) {
+      await emitJournal(loopID, actor, line, 'info');
+    }
+    await jsonResponse(route, {
+      loop_id: loopID,
+      status: 'completed',
+      actor,
+      command,
+      delivered: true,
+      result: 'success',
+      exit_code: 0,
+      stdout,
+      stderr: '',
+      runtime_target_ref: `${runtime.namespace}/${runtime.pod_name}:${runtime.container_name}`,
+    });
   });
 
   await page.route(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+\/issues.*$/, async (route) => {
@@ -293,10 +483,11 @@ async function mockConsoleApi(page) {
   });
 
   await page.route(/\/v1\/loops\/[^/]+\/journal(\?.*)?$/, async (route) => {
-    await jsonResponse(route, []);
+    const loopID = loopIDFromURL(route.request().url(), '/journal');
+    await jsonResponse(route, journalEntriesByLoopID[loopID] || []);
   });
 
-  return { overridePayloads, createdLoopPayloads };
+  return { overridePayloads, createdLoopPayloads, commandPayloads };
 }
 
 test('renders loop tiles and summary stats', async ({ page }) => {
@@ -316,6 +507,55 @@ test('renders loop tiles and summary stats', async ({ page }) => {
   await expect(page.locator('#pod-view-title')).toContainText('loop-alpha');
   await expect(page.locator('#journal-title')).toContainText('loop-alpha');
   await expect(page.locator('#terminal')).toContainText('worker started');
+});
+
+test('supports pod detail terminal control states', async ({ page }) => {
+  const api = await mockConsoleApi(page, { failCommands: ['fail-command'] });
+  await page.goto('/');
+
+  await page.locator('#grid .pod-tile', { hasText: 'loop-alpha' }).click();
+  await expect(page.locator('#page-pod-view')).toBeVisible();
+  await expect(page.locator('#pod-view-runtime-target')).toContainText('smith-system');
+  await expect(page.locator('#pod-view-terminal-state')).toHaveText('idle');
+  await expect(page.locator('#pod-view-control-message')).toContainText('Attach to enable');
+  await expect(page.locator('#pod-view-attach')).toBeEnabled();
+  await expect(page.locator('#pod-view-detach')).toBeDisabled();
+  await expect(page.locator('#pod-view-command')).toBeDisabled();
+  await expect(page.locator('#pod-view-run')).toBeDisabled();
+
+  await page.locator('#pod-view-attach').click();
+  await expect(page.locator('#pod-view-terminal-state')).toHaveText('attached');
+  await expect(page.locator('#pod-view-command')).toBeEnabled();
+  await expect(page.locator('#pod-view-control-message')).toContainText('Press Enter or Run');
+
+  await page.locator('#pod-view-command').fill('pwd');
+  await expect(page.locator('#pod-view-run')).toBeEnabled();
+  await page.locator('#pod-view-command').press('Enter');
+  await expect(page.locator('#pod-view-terminal-state')).toHaveText('attached');
+  await expect(page.locator('#pod-view-command')).toHaveValue('');
+  await expect(page.locator('#terminal')).toContainText('/workspace/loop-alpha');
+  await expect
+    .poll(() => api.commandPayloads.length)
+    .toBe(1);
+
+  await page.locator('#pod-view-command').fill('fail-command');
+  await page.locator('#pod-view-run').click();
+  await expect(page.locator('#pod-view-terminal-state')).toHaveText('error');
+  await expect(page.locator('#pod-view-command')).toHaveValue('fail-command');
+  await expect(page.locator('#pod-view-control-message')).toContainText('command failed in runtime');
+
+  await page.locator('#pod-view-detach').click();
+  await expect(page.locator('#pod-view-terminal-state')).toHaveText('idle');
+  await expect(page.locator('#pod-view-command')).toBeDisabled();
+  await expect(page.locator('#pod-view-run')).toBeDisabled();
+
+  await page.locator('#pod-view-back').click();
+  await page.locator('#grid .pod-tile', { hasText: 'loop-gamma' }).click();
+  await expect(page.locator('#pod-view-control-message')).toContainText('loop not active');
+  await expect(page.locator('#pod-view-terminal-state')).toHaveText('idle');
+  await expect(page.locator('#pod-view-attach')).toBeDisabled();
+  await expect(page.locator('#pod-view-command')).toBeDisabled();
+  await expect(page.locator('#pod-view-run')).toBeDisabled();
 });
 
 test('deletes a completed loop from pod detail view', async ({ page }) => {
