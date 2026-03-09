@@ -298,6 +298,57 @@ func TestHandleLoopAttachRejectsNonRunningRuntime(t *testing.T) {
 	}
 }
 
+func TestHandleLoopAttachRejectsUnauthorizedBeforeRuntimeResolution(t *testing.T) {
+	var stateCalls int
+	var audits []store.AuditRecord
+	runtimeReader := &fakeRuntimePodReader{}
+	s := &server{
+		cfg: config{
+			operatorToken: "secret-token",
+		},
+		term: newTerminalSessionStore(),
+		getStateFn: func(_ context.Context, _ string) (store.LoopWithRevision, bool, error) {
+			stateCalls++
+			return store.LoopWithRevision{}, false, nil
+		},
+		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
+			audits = append(audits, rec)
+			return nil
+		},
+		runtimePods: runtimeReader,
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-auth/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
+	s.handleLoopAttach(rec, req, "loop-auth")
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthorized attach, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if stateCalls != 0 {
+		t.Fatalf("expected no state resolution for unauthorized attach, got %d calls", stateCalls)
+	}
+	if runtimeReader.calls != 0 {
+		t.Fatalf("expected no runtime resolution for unauthorized attach, got %d calls", runtimeReader.calls)
+	}
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected attach audit entry, got %d", len(audits))
+	}
+	if audits[0].Action != "attach-terminal-rejected" {
+		t.Fatalf("expected attach-terminal-rejected action, got %q", audits[0].Action)
+	}
+	if audits[0].Metadata["request_status"] != "rejected" {
+		t.Fatalf("expected rejected status in audit metadata, got %q", audits[0].Metadata["request_status"])
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if body["code"] != terminalErrUnauthorized {
+		t.Fatalf("expected unauthorized code %q, got %q", terminalErrUnauthorized, body["code"])
+	}
+}
+
 func TestHandleLoopAttachDetachIncludeRuntimeMetadata(t *testing.T) {
 	var (
 		audits   []store.AuditRecord
@@ -389,12 +440,18 @@ func TestHandleLoopAttachDetachIncludeRuntimeMetadata(t *testing.T) {
 	if lastAttachAudit.Metadata["attach_count"] != "2" {
 		t.Fatalf("expected attach_count=2 in audit metadata, got %q", lastAttachAudit.Metadata["attach_count"])
 	}
+	if lastAttachAudit.Metadata["request_status"] != "accepted" {
+		t.Fatalf("expected request_status=accepted in attach metadata, got %q", lastAttachAudit.Metadata["request_status"])
+	}
 
 	detachAudit := audits[2]
 	if detachAudit.Action != "detach-terminal" {
 		t.Fatalf("expected detach-terminal action, got %q", detachAudit.Action)
 	}
 	assertTerminalMetadata(t, detachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
+	if detachAudit.Metadata["request_status"] != "accepted" {
+		t.Fatalf("expected request_status=accepted in detach metadata, got %q", detachAudit.Metadata["request_status"])
+	}
 
 	detachJournal := journals[2]
 	if detachJournal.Message != "terminal detached" {
@@ -540,6 +597,9 @@ func TestHandleLoopControlCommandExecutesAttachedRuntime(t *testing.T) {
 	if lastAudit.Metadata["exit_code"] != "0" {
 		t.Fatalf("expected exit_code audit metadata 0, got %q", lastAudit.Metadata["exit_code"])
 	}
+	if lastAudit.Metadata["request_status"] != "accepted" {
+		t.Fatalf("expected accepted request_status metadata, got %q", lastAudit.Metadata["request_status"])
+	}
 }
 
 func TestHandleLoopControlCommandRequiresAttach(t *testing.T) {
@@ -617,6 +677,178 @@ func TestHandleLoopControlCommandRejectsOversizedCommand(t *testing.T) {
 	}
 	if audits[0].Metadata["result"] != "rejected" {
 		t.Fatalf("expected rejected metadata tag, got %q", audits[0].Metadata["result"])
+	}
+	if audits[0].Metadata["error_code"] != terminalErrTooLong {
+		t.Fatalf("expected error_code %q, got %q", terminalErrTooLong, audits[0].Metadata["error_code"])
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if body["code"] != terminalErrTooLong {
+		t.Fatalf("expected API error code %q, got %q", terminalErrTooLong, body["code"])
+	}
+}
+
+func TestHandleLoopControlCommandRejectsUnauthorizedWithoutExec(t *testing.T) {
+	var stateCalls int
+	var audits []store.AuditRecord
+	execRunner := &fakePodExecRunner{}
+	s := &server{
+		cfg: config{
+			operatorToken: "secret-token",
+		},
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		getStateFn: func(_ context.Context, _ string) (store.LoopWithRevision, bool, error) {
+			stateCalls++
+			return store.LoopWithRevision{}, false, nil
+		},
+		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
+			audits = append(audits, rec)
+			return nil
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthorized command, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if stateCalls != 0 {
+		t.Fatalf("expected no state lookup for unauthorized command, got %d calls", stateCalls)
+	}
+	if execRunner.calls != 0 {
+		t.Fatalf("expected no pod exec call for unauthorized command, got %d", execRunner.calls)
+	}
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected audit entry, got %d", len(audits))
+	}
+	if audits[0].Metadata["error_code"] != terminalErrUnauthorized {
+		t.Fatalf("expected unauthorized error_code %q, got %q", terminalErrUnauthorized, audits[0].Metadata["error_code"])
+	}
+}
+
+func TestHandleLoopDetachRejectsUnauthorizedBeforeStateLookup(t *testing.T) {
+	var stateCalls int
+	var audits []store.AuditRecord
+	s := &server{
+		cfg: config{
+			operatorToken: "secret-token",
+		},
+		term: newTerminalSessionStore(),
+		getStateFn: func(_ context.Context, _ string) (store.LoopWithRevision, bool, error) {
+			stateCalls++
+			return store.LoopWithRevision{}, false, nil
+		},
+		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
+			audits = append(audits, rec)
+			return nil
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-auth/control/detach", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopDetach(rec, req, "loop-auth")
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthorized detach, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if stateCalls != 0 {
+		t.Fatalf("expected no state lookup for unauthorized detach, got %d calls", stateCalls)
+	}
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected detach audit entry, got %d", len(audits))
+	}
+	if audits[0].Action != "detach-terminal-rejected" {
+		t.Fatalf("expected detach-terminal-rejected action, got %q", audits[0].Action)
+	}
+}
+
+func TestHandleLoopControlCommandRateLimitPerSession(t *testing.T) {
+	previousWindow := terminalCommandRateWindow
+	terminalCommandRateWindow = 30 * time.Second
+	t.Cleanup(func() {
+		terminalCommandRateWindow = previousWindow
+	})
+
+	var audits []store.AuditRecord
+	execRunner := &fakePodExecRunner{
+		result: podExecResult{
+			Stdout:   "ok\n",
+			ExitCode: 0,
+		},
+	}
+	s := &server{
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
+			return store.LoopWithRevision{
+				Record: model.StateRecord{
+					LoopID:        loopID,
+					State:         model.LoopStateOverwriting,
+					CorrelationID: "corr-command-throttle",
+				},
+			}, true, nil
+		},
+		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
+			audits = append(audits, rec)
+			return nil
+		},
+		appendJournalFn: func(_ context.Context, _ model.JournalEntry) error { return nil },
+	}
+	runtime := loopRuntimeResponse{
+		Namespace:     "smith-system",
+		PodName:       "smith-replica-loop-command-12345-abc",
+		ContainerName: "replica",
+		PodPhase:      string(corev1.PodRunning),
+		Attachable:    true,
+	}
+	s.term.Attach("loop-command", "alice", "console-pods", runtime)
+
+	for i := 0; i < terminalCommandRateMax; i++ {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo ok"}`))
+		s.handleLoopControlCommand(rec, req, "loop-command")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected command %d to pass within rate limit, got %d body=%s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo burst"}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after burst, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != terminalCommandRateMax {
+		t.Fatalf("expected pod exec calls capped at %d, got %d", terminalCommandRateMax, execRunner.calls)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode throttled response: %v", err)
+	}
+	if body["code"] != terminalErrRateLimited {
+		t.Fatalf("expected throttled code %q, got %q", terminalErrRateLimited, body["code"])
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("expected Retry-After header for throttled response")
+	}
+	if len(audits) < terminalCommandRateMax+1 {
+		t.Fatalf("expected audit records for accepted and throttled commands, got %d", len(audits))
+	}
+	last := audits[len(audits)-1]
+	if last.Action != "terminal-command-rejected" {
+		t.Fatalf("expected terminal-command-rejected audit action, got %q", last.Action)
+	}
+	if last.Metadata["rejection_reason"] != "command rate limit exceeded" {
+		t.Fatalf("expected throttle rejection reason, got %q", last.Metadata["rejection_reason"])
+	}
+	if last.Metadata["request_status"] != "rejected" {
+		t.Fatalf("expected rejected request_status metadata, got %q", last.Metadata["request_status"])
 	}
 }
 

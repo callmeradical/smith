@@ -36,10 +36,21 @@ import (
 )
 
 const (
-	defaultPort            = 8080
-	defaultShutdownTimeout = 10 * time.Second
-	defaultRuntimeReason   = "runtime pod not found"
-	terminalCommandMaxSize = 2048
+	defaultPort             = 8080
+	defaultShutdownTimeout  = 10 * time.Second
+	defaultRuntimeReason    = "runtime pod not found"
+	terminalCommandMaxSize  = 2048
+	terminalCommandRateMax  = 5
+	terminalErrUnauthorized = "terminal_unauthorized"
+	terminalErrTooLong      = "terminal_command_too_long"
+	terminalErrRateLimited  = "terminal_command_rate_limited"
+	terminalErrNotAttached  = "terminal_actor_not_attached"
+	terminalErrInvalidJSON  = "terminal_invalid_json"
+	terminalErrRequiredCmd  = "terminal_command_required"
+)
+
+var (
+	terminalCommandRateWindow = 10 * time.Second
 )
 
 type config struct {
@@ -230,6 +241,8 @@ type terminalSession struct {
 	AttachedAt           time.Time
 	LastActivityAt       time.Time
 	AttachCount          int
+	CommandWindowStarted time.Time
+	CommandWindowCount   int
 	RuntimeTargetRef     string
 	RuntimeNamespace     string
 	RuntimePodName       string
@@ -356,6 +369,8 @@ func (t *terminalSessionStore) Attach(loopID, actor, terminal string, runtime lo
 		AttachedAt:           now,
 		LastActivityAt:       now,
 		AttachCount:          attachCount,
+		CommandWindowStarted: now,
+		CommandWindowCount:   0,
 		RuntimeTargetRef:     runtimeTargetReference(runtime.Namespace, runtime.PodName, runtime.ContainerName),
 		RuntimeNamespace:     runtime.Namespace,
 		RuntimePodName:       runtime.PodName,
@@ -414,6 +429,40 @@ func (t *terminalSessionStore) Session(loopID, actor string) (terminalSession, b
 	return session, true
 }
 
+func (t *terminalSessionStore) ConsumeCommandSlot(loopID, actor string, now time.Time) (terminalSession, bool, bool, time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	actors, ok := t.sessions[loopID]
+	if !ok {
+		return terminalSession{}, false, false, 0
+	}
+	session, found := actors[actor]
+	if !found {
+		return terminalSession{}, false, false, 0
+	}
+	if session.CommandWindowStarted.IsZero() || now.Sub(session.CommandWindowStarted) >= terminalCommandRateWindow {
+		session.CommandWindowStarted = now
+		session.CommandWindowCount = 0
+	}
+	elapsed := now.Sub(session.CommandWindowStarted)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	if session.CommandWindowCount >= terminalCommandRateMax {
+		retryAfter := terminalCommandRateWindow - elapsed
+		if retryAfter < 0 {
+			retryAfter = 0
+		}
+		session.LastActivityAt = now
+		actors[actor] = session
+		return session, true, false, retryAfter
+	}
+	session.CommandWindowCount++
+	session.LastActivityAt = now
+	actors[actor] = session
+	return session, true, true, 0
+}
+
 func runtimeTargetReference(namespace, podName, containerName string) string {
 	namespace = strings.TrimSpace(namespace)
 	podName = strings.TrimSpace(podName)
@@ -446,6 +495,22 @@ func terminalSessionMetadata(actor string, session terminalSession, activeAttach
 	}
 }
 
+func terminalAcceptedMetadata(metadata map[string]string) map[string]string {
+	out := copyStringMap(metadata)
+	out["request_status"] = "accepted"
+	return out
+}
+
+func terminalRejectedMetadata(metadata map[string]string, reason, errorCode string) map[string]string {
+	out := copyStringMap(metadata)
+	out["request_status"] = "rejected"
+	out["rejection_reason"] = reason
+	if strings.TrimSpace(errorCode) != "" {
+		out["error_code"] = errorCode
+	}
+	return out
+}
+
 func (s *server) getState(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error) {
 	if s.getStateFn != nil {
 		return s.getStateFn(ctx, loopID)
@@ -457,12 +522,18 @@ func (s *server) appendAudit(ctx context.Context, rec store.AuditRecord) error {
 	if s.appendAuditFn != nil {
 		return s.appendAuditFn(ctx, rec)
 	}
+	if s.store == nil {
+		return nil
+	}
 	return s.store.AppendAudit(ctx, rec)
 }
 
 func (s *server) appendJournal(ctx context.Context, entry model.JournalEntry) error {
 	if s.appendJournalFn != nil {
 		return s.appendJournalFn(ctx, entry)
+	}
+	if s.store == nil {
+		return nil
 	}
 	return s.store.AppendJournal(ctx, entry)
 }
@@ -1197,8 +1268,26 @@ func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID
 		return
 	}
 	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:        "unauthenticated",
+			Action:       "attach-terminal-rejected",
+			TargetLoopID: loopID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor": "unauthenticated",
+			}, "unauthorized", terminalErrUnauthorized),
+		})
+		writeErrCode(w, http.StatusUnauthorized, terminalErrUnauthorized, "unauthorized")
 		return
+	}
+	var req terminalAttachRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+	terminal := strings.TrimSpace(req.Terminal)
+	if terminal == "" {
+		terminal = "unknown"
 	}
 	state, found, err := s.getState(r.Context(), loopID)
 	if err != nil {
@@ -1210,6 +1299,15 @@ func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID
 		return
 	}
 	if !isActiveLoopState(state.Record.State) {
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "attach-terminal-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor": actor,
+			}, "loop is not active", "terminal_loop_not_active"),
+		})
 		writeErr(w, http.StatusConflict, "loop is not active")
 		return
 	}
@@ -1219,22 +1317,21 @@ func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID
 		if reason == "" {
 			reason = "runtime target not attachable"
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "attach-terminal-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor":    actor,
+				"terminal": terminal,
+			}, reason, "terminal_runtime_not_attachable"),
+		})
 		writeErr(w, http.StatusConflict, reason)
 		return
 	}
-
-	var req terminalAttachRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	actor := strings.TrimSpace(req.Actor)
-	if actor == "" {
-		actor = "operator"
-	}
-	terminal := strings.TrimSpace(req.Terminal)
-	if terminal == "" {
-		terminal = "unknown"
-	}
 	session, activeAttachCount := s.term.Attach(loopID, actor, terminal, runtime)
-	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
+	metadata := terminalAcceptedMetadata(terminalSessionMetadata(actor, session, activeAttachCount))
 
 	_ = s.appendAudit(r.Context(), store.AuditRecord{
 		Actor:         actor,
@@ -1269,8 +1366,22 @@ func (s *server) handleLoopDetach(w http.ResponseWriter, r *http.Request, loopID
 		return
 	}
 	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:        "unauthenticated",
+			Action:       "detach-terminal-rejected",
+			TargetLoopID: loopID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor": "unauthenticated",
+			}, "unauthorized", terminalErrUnauthorized),
+		})
+		writeErrCode(w, http.StatusUnauthorized, terminalErrUnauthorized, "unauthorized")
 		return
+	}
+	var req terminalDetachRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
 	}
 	state, found, err := s.getState(r.Context(), loopID)
 	if err != nil {
@@ -1282,19 +1393,21 @@ func (s *server) handleLoopDetach(w http.ResponseWriter, r *http.Request, loopID
 		return
 	}
 
-	var req terminalDetachRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	actor := strings.TrimSpace(req.Actor)
-	if actor == "" {
-		actor = "operator"
-	}
-
 	session, detached, activeAttachCount := s.term.Detach(loopID, actor)
 	if !detached {
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "detach-terminal-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor": actor,
+			}, "actor is not attached", terminalErrNotAttached),
+		})
 		writeErr(w, http.StatusConflict, "actor is not attached")
 		return
 	}
-	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
+	metadata := terminalAcceptedMetadata(terminalSessionMetadata(actor, session, activeAttachCount))
 
 	_ = s.appendAudit(r.Context(), store.AuditRecord{
 		Actor:         actor,
@@ -1329,7 +1442,15 @@ func (s *server) handleLoopControlCommand(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:        "unauthenticated",
+			Action:       "terminal-command-rejected",
+			TargetLoopID: loopID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor": "unauthenticated",
+			}, "unauthorized", terminalErrUnauthorized),
+		})
+		writeErrCode(w, http.StatusUnauthorized, terminalErrUnauthorized, "unauthorized")
 		return
 	}
 	state, found, err := s.getState(r.Context(), loopID)
@@ -1342,12 +1463,30 @@ func (s *server) handleLoopControlCommand(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !isActiveLoopState(state.Record.State) {
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         "operator",
+			Action:        "terminal-command-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor": "operator",
+			}, "loop is not active", "terminal_loop_not_active"),
+		})
 		writeErr(w, http.StatusConflict, "loop is not active")
 		return
 	}
 	var req terminalCommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         "operator",
+			Action:        "terminal-command-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor": "operator",
+			}, "invalid json", terminalErrInvalidJSON),
+		})
+		writeErrCode(w, http.StatusBadRequest, terminalErrInvalidJSON, "invalid json")
 		return
 	}
 	actor := strings.TrimSpace(req.Actor)
@@ -1356,32 +1495,63 @@ func (s *server) handleLoopControlCommand(w http.ResponseWriter, r *http.Request
 	}
 	command := strings.TrimSpace(req.Command)
 	if command == "" {
-		writeErr(w, http.StatusBadRequest, "command is required")
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "terminal-command-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor": actor,
+			}, "command is required", terminalErrRequiredCmd),
+		})
+		writeErrCode(w, http.StatusBadRequest, terminalErrRequiredCmd, "command is required")
 		return
 	}
 	if s.term == nil {
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "terminal-command-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor":   actor,
+				"command": command,
+			}, "actor must attach before issuing commands", terminalErrNotAttached),
+		})
 		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
 		return
 	}
 	session, attached := s.term.Session(loopID, actor)
 	if !attached {
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "terminal-command-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: terminalRejectedMetadata(map[string]string{
+				"actor":   actor,
+				"command": command,
+			}, "actor must attach before issuing commands", terminalErrNotAttached),
+		})
 		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
 		return
 	}
 	baseMetadata := map[string]string{
-		"command":            command,
-		"runtime_target_ref": session.RuntimeTargetRef,
-		"runtime_namespace":  session.RuntimeNamespace,
-		"runtime_pod":        session.RuntimePodName,
-		"runtime_container":  session.RuntimeContainerName,
+		"actor":                             actor,
+		"command":                           command,
+		"runtime_target_ref":                session.RuntimeTargetRef,
+		"runtime_namespace":                 session.RuntimeNamespace,
+		"runtime_pod":                       session.RuntimePodName,
+		"runtime_container":                 session.RuntimeContainerName,
+		"max_command_length":                strconv.Itoa(terminalCommandMaxSize),
+		"command_rate_limit_max":            strconv.Itoa(terminalCommandRateMax),
+		"command_rate_limit_window_seconds": strconv.Itoa(int(terminalCommandRateWindow.Seconds())),
 	}
 
 	if len(command) > terminalCommandMaxSize {
-		rejectedMetadata := copyStringMap(baseMetadata)
+		rejectedMetadata := terminalRejectedMetadata(baseMetadata, "command too long", terminalErrTooLong)
 		rejectedMetadata["result"] = "rejected"
-		rejectedMetadata["rejection_reason"] = "command too long"
 		rejectedMetadata["command_length"] = strconv.Itoa(len(command))
-		rejectedMetadata["max_command_length"] = strconv.Itoa(terminalCommandMaxSize)
 		_ = s.appendAudit(r.Context(), store.AuditRecord{
 			Actor:         actor,
 			Action:        "terminal-command-rejected",
@@ -1389,7 +1559,38 @@ func (s *server) handleLoopControlCommand(w http.ResponseWriter, r *http.Request
 			CorrelationID: state.Record.CorrelationID,
 			Metadata:      rejectedMetadata,
 		})
-		writeErr(w, http.StatusBadRequest, fmt.Sprintf("command exceeds max length of %d characters", terminalCommandMaxSize))
+		writeErrCode(w, http.StatusBadRequest, terminalErrTooLong, fmt.Sprintf("command exceeds max length of %d characters", terminalCommandMaxSize))
+		return
+	}
+	session, slotFound, allowed, retryAfter := s.term.ConsumeCommandSlot(loopID, actor, time.Now().UTC())
+	if !slotFound {
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "terminal-command-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata:      terminalRejectedMetadata(baseMetadata, "actor must attach before issuing commands", terminalErrNotAttached),
+		})
+		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
+		return
+	}
+	if !allowed {
+		rejectedMetadata := terminalRejectedMetadata(baseMetadata, "command rate limit exceeded", terminalErrRateLimited)
+		rejectedMetadata["result"] = "rejected"
+		retryAfterSeconds := int((retryAfter + time.Second - 1) / time.Second)
+		if retryAfterSeconds < 1 {
+			retryAfterSeconds = 1
+		}
+		rejectedMetadata["retry_after_seconds"] = strconv.Itoa(retryAfterSeconds)
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "terminal-command-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata:      rejectedMetadata,
+		})
+		writeErrCode(w, http.StatusTooManyRequests, terminalErrRateLimited, "command rate limit exceeded")
 		return
 	}
 	if s.podExec == nil {
@@ -1397,6 +1598,7 @@ func (s *server) handleLoopControlCommand(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	baseMetadata = terminalAcceptedMetadata(baseMetadata)
 	_ = s.appendJournal(r.Context(), model.JournalEntry{
 		LoopID:        loopID,
 		Phase:         "operator",
@@ -2384,6 +2586,13 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+func writeErrCode(w http.ResponseWriter, status int, errorCode, msg string) {
+	writeJSON(w, status, map[string]string{
+		"code":  errorCode,
+		"error": msg,
+	})
 }
 
 func parseIntDefault(raw string, fallback int) int {

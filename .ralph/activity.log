@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-09 05:33:39 | run=20260309-043236-60668 | iter=4 | mode=build | story=US-004 | duration=1467s | status=success
 - 2026-03-09 05:09:10 | run=20260309-043236-60668 | iter=3 | mode=build | story=US-003 | duration=825s | status=success
 - 2026-03-09 04:55:23 | run=20260309-043236-60668 | iter=2 | mode=build | story=US-002 | duration=707s | status=success
 - 2026-03-09 04:43:33 | run=20260309-043236-60668 | iter=1 | mode=build | story=US-001 | duration=656s | status=success
@@ -31,3 +32,8 @@
 [2026-03-09 05:18:40] US-004: implemented pod-view terminal controls/state machine and Playwright mock/test coverage for attach/command/detach/runtime flows
 [2026-03-09 05:27:13] US-004: completed verification gates (build, Go tests, frontend Playwright, matrix) and dev-browser UI validation
 [2026-03-09 05:30:20] US-004: appended progress entry with commit and verification details
+[2026-03-09 05:33:39] ITERATION 4 end (duration=1467s)
+[2026-03-09 05:33:41] ITERATION 5 start (mode=build story=US-005)
+[2026-03-09 05:34:18] Start US-005 iteration 5: auditing guardrails/errors/prd and existing terminal security controls
+[2026-03-09 05:41:19] Implemented US-005 backend hardening: unauthorized audit rejection, per-session command rate limiting, explicit API error codes, and added smith-api tests for auth/rate/audit behavior
+[2026-03-09 05:42:25] Completed required verification gates for US-005: make build, go tests (api/source/all), frontend Playwright suite, and test matrix all passing
