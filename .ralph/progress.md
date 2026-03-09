@@ -146,3 +146,52 @@ Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309
   - Useful context
   - `trivy` now scans many additional node packages after pnpm installation; CRITICAL gate still passes but output is substantially larger.
 ---
+## [2026-03-09 05:19:27 EDT] - US-004: Bundle internal binaries via multi-stage build
+Thread: 
+Run: 20260309-043624-64079 (iteration 4)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-4.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-4.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: e42fed9 feat(base-image): bundle internal binaries via builder
+- Post-commit status: dirty (`.ralph/runs/run-20260309-043624-64079-iter-4.log` changed after commit)
+- Verification:
+  - Command: go test ./cmd/smithctl ./cmd/smith-verify-completion -> PASS
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
+  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
+  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/check-base-internal-binaries-smoke.sh loop-base:local -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'smithctl --version && smith-verify-completion --version' -> PASS
+  - Command: tmp_dir="$(mktemp -d)"; cat > "$tmp_dir/Dockerfile" <<'EOF' ...; docker build -f "$tmp_dir/Dockerfile" -t loop-base:missing-internal "$tmp_dir" >/dev/null; ./scripts/check-base-internal-binaries-smoke.sh loop-base:missing-internal -> PASS (expected failure with `missing internal binary: smith-verify-completion`)
+  - Command: hadolint Dockerfile -> PASS
+  - Command: shellcheck scripts/*.sh -> PASS
+  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
+  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
+- Files changed:
+  - Dockerfile
+  - docker/base-internal-binaries.txt
+  - scripts/check-base-internal-binaries-smoke.sh
+  - cmd/smithctl/main.go
+  - cmd/smithctl/main_test.go
+  - cmd/smith-verify-completion/main.go
+  - README.md
+  - AGENTS.md
+  - artifacts/sbom-loop-base.spdx.json
+  - .ralph/activity.log
+  - .ralph/progress.md
+- What was implemented
+  - Added a dedicated `internal-binaries-builder` Docker stage that compiles internal binaries from `./cmd/<name>` using `docker/base-internal-binaries.txt` as the builder input contract.
+  - Copied compiled artifacts into runtime `/usr/local/bin` so bundled internal binaries are on PATH in the final Alpine runtime stage.
+  - Added `scripts/check-base-internal-binaries-smoke.sh` to validate runtime presence and `--version` execution for required binaries, emitting exact `missing internal binary: <name>` errors.
+  - Added `--version` support to `smithctl` and `smith-verify-completion` so runtime smoke checks can execute per acceptance criteria.
+  - Documented builder inputs, expected artifacts, runtime path, and extension pattern for future binary additions in README and AGENTS.
+  - Addressed a CRITICAL trivy finding by pinning builder image to `golang:1.25.7-alpine`.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Keeping binary names in a single list file (`docker/base-internal-binaries.txt`) prevents drift between build and smoke verification.
+  - Gotchas encountered
+  - Multi-line variable expansion in `sh -lc` loops needs normalization (`tr '\n' ' '`) to avoid loop parsing errors.
+  - Useful context
+  - trivy scans Go binaries copied into runtime; builder Go patch level directly affects runtime vulnerability gates.
+---
