@@ -4460,3 +4460,2082 @@ index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f04
 +echo \"tooling smoke check passed\"
 +"
 
+exec
+/bin/zsh -lc 'git add -A && git commit -m "chore(progress): sync iter-3 run log" -m "Capture trailing iteration log updates so the working tree is clean." && git show -s --format="%h %s" HEAD && git status --porcelain' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+ succeeded in 31.46s:
+[pre-commit] running quick checks...
+go test ./cmd/...
+go: downloading k8s.io/api v0.35.2
+go: downloading k8s.io/apimachinery v0.35.2
+go: downloading k8s.io/client-go v0.35.2
+go: downloading go.etcd.io/etcd/client/v3 v3.6.8
+go: downloading go.etcd.io/etcd/api/v3 v3.6.8
+go: downloading github.com/coreos/go-semver v0.3.1
+go: downloading go.etcd.io/etcd/client/pkg/v3 v3.6.8
+go: downloading go.uber.org/zap v1.27.0
+go: downloading google.golang.org/grpc v1.71.1
+go: downloading k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+go: downloading github.com/coreos/go-systemd/v22 v22.5.0
+go: downloading golang.org/x/sys v0.38.0
+go: downloading go.uber.org/multierr v1.11.0
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+codex
+The iteration run log is still auto-mutating during shell actions, which keeps re-dirtying that single file after each commit. I’m making one final progress note update to record this accurately and then doing a last sync commit of the run-log/progress artifacts.
+exec
+/bin/zsh -lc 'rg -n "US-003: Add common developer tooling to image|Post-commit status" .ralph/progress.md' in /Users/lars/Dev/smith.base-container-build succeeded in 50ms:
+16:- Post-commit status: clean
+63:- Post-commit status: clean
+99:## [2026-03-09 05:02:59 EDT] - US-003: Add common developer tooling to image
+107:- Post-commit status: clean
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+file update
+M /Users/lars/Dev/smith.base-container-build/.ralph/progress.md
+@@ -15,3 +15,3 @@
+ - Commit: 08004be chore(progress): sync run log after execution
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+apply_patch(auto_approved=true) exited 0 in 177ms:
+Success. Updated the following files:
+M /Users/lars/Dev/smith.base-container-build/.ralph/progress.md
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..a83e9e35a5119065ba4df6b4e92fb1dd3be4b1ce
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -13,7 +13,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: 08004be chore(progress): sync run log after execution
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..a83e9e35a5119065ba4df6b4e92fb1dd3be4b1ce
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -13,7 +13,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: 08004be chore(progress): sync run log after execution
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+exec
+/bin/zsh -lc "sed -n '90,130p' .ralph/progress.md" in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+  - Added a build-time check (`command -v codex`) to fail image build if the binary is not on PATH.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - For story-scoped container changes, adding build-time `command -v` checks catches PATH regressions early.
+  - Gotchas encountered
+  - The combined global smoke command will still fail until US-003 adds remaining toolchain binaries (currently fails at `git`).
+  - Useful context
+  - `codex --version` currently outputs `codex-cli <semver>` in this environment.
+---
+## [2026-03-09 05:02:59 EDT] - US-003: Add common developer tooling to image
+Thread: 
+Run: 20260309-043624-64079 (iteration 3)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-3.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-3.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: a314aa9 feat(container): add common dev tooling to base image
+- Post-commit status: clean
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..a83e9e35a5119065ba4df6b4e92fb1dd3be4b1ce
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -13,7 +13,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: 08004be chore(progress): sync run log after execution
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+exec
+/bin/zsh -lc 'rg -n "live logger continues appending" .ralph/progress.md' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+16:- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..a83e9e35a5119065ba4df6b4e92fb1dd3be4b1ce
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -13,7 +13,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: 08004be chore(progress): sync run log after execution
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+codex
+I found that the status-line edit landed in the US-001 section by pattern match; I’m correcting it so only the US-003 entry reflects the live run-log drift.
+file update
+M /Users/lars/Dev/smith.base-container-build/.ralph/progress.md
+@@ -15,3 +15,3 @@
+ - Commit: 08004be chore(progress): sync run log after execution
+-- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
++- Post-commit status: clean
+ - Verification:
+@@ -62,3 +62,3 @@
+ - Commit: ce2d1f3 feat(container): install codex cli in runtime image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+apply_patch(auto_approved=true) exited 0 in 93ms:
+Success. Updated the following files:
+M /Users/lars/Dev/smith.base-container-build/.ralph/progress.md
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..665d5774a8f8256760085e2582e027ae8eea14f1
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -60,7 +60,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: ce2d1f3 feat(container): install codex cli in runtime image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local codex --version -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..665d5774a8f8256760085e2582e027ae8eea14f1
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -60,7 +60,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: ce2d1f3 feat(container): install codex cli in runtime image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local codex --version -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+exec
+/bin/zsh -lc 'rg -n "US-003: Add common developer tooling to image|Post-commit status" .ralph/progress.md' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+16:- Post-commit status: clean
+63:- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+99:## [2026-03-09 05:02:59 EDT] - US-003: Add common developer tooling to image
+107:- Post-commit status: clean
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..665d5774a8f8256760085e2582e027ae8eea14f1
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -60,7 +60,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: ce2d1f3 feat(container): install codex cli in runtime image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local codex --version -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+exec
+/bin/zsh -lc "sed -n '48,78p' .ralph/progress.md && sed -n '100,112p' .ralph/progress.md" in /Users/lars/Dev/smith.base-container-build succeeded in 50ms:
+  - Patterns discovered
+  - Runtime OS validation in Dockerfile is an effective guard against accidental base-image drift.
+  - Gotchas encountered
+  - Global smoke gate currently expects Codex/toolchain binaries not yet added in US-001 scope.
+  - Useful context
+  - Homebrew installs for local gate tooling (`hadolint`, `shellcheck`, `trivy`, `syft`) were required to run all non-containerized checks.
+---
+## [2026-03-09 04:53:37 EDT] - US-002: Install Codex CLI in runtime image
+Thread: 
+Run: 20260309-043624-64079 (iteration 2)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: ce2d1f3 feat(container): install codex cli in runtime image
+- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: docker run --rm loop-base:local codex --version -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'command -v codex >/dev/null' -> PASS
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..665d5774a8f8256760085e2582e027ae8eea14f1
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -60,7 +60,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: ce2d1f3 feat(container): install codex cli in runtime image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local codex --version -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+file update
+M /Users/lars/Dev/smith.base-container-build/.ralph/progress.md
+@@ -62,3 +62,3 @@
+ - Commit: ce2d1f3 feat(container): install codex cli in runtime image
+-- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
++- Post-commit status: clean
+ - Verification:
+@@ -106,3 +106,3 @@
+ - Commit: a314aa9 feat(container): add common dev tooling to base image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+apply_patch(auto_approved=true) exited 0 in 97ms:
+Success. Updated the following files:
+M /Users/lars/Dev/smith.base-container-build/.ralph/progress.md
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..25545e6bc61e8e4c7d74a354c8650ce67d9a1d30
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -104,7 +104,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: a314aa9 feat(container): add common dev tooling to base image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..25545e6bc61e8e4c7d74a354c8650ce67d9a1d30
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -104,7 +104,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: a314aa9 feat(container): add common dev tooling to base image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+codex
+I’ve corrected the progress status-line mix-up and I’m doing a quick final check, then one last commit for the updated progress plus trailing run-log changes.
+exec
+/bin/zsh -lc 'rg -n "US-002:|US-003:|Post-commit status" .ralph/progress.md' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+16:- Post-commit status: clean
+55:## [2026-03-09 04:53:37 EDT] - US-002: Install Codex CLI in runtime image
+63:- Post-commit status: clean
+99:## [2026-03-09 05:02:59 EDT] - US-003: Add common developer tooling to image
+107:- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..25545e6bc61e8e4c7d74a354c8650ce67d9a1d30
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -104,7 +104,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: a314aa9 feat(container): add common dev tooling to base image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
+exec
+/bin/zsh -lc 'git status --short' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+ M .ralph/progress.md
+ M .ralph/runs/run-20260309-043624-64079-iter-3.log
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index bf246cf5d8d42021bbe995640604dc14b89e0b28..25545e6bc61e8e4c7d74a354c8650ce67d9a1d30
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -104,7 +104,7 @@
+ - Guardrails reviewed: yes
+ - No-commit run: false
+ - Commit: a314aa9 feat(container): add common dev tooling to base image
+-- Post-commit status: clean
++- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-3.log (live logger continues appending during run)
+ - Verification:
+   - Command: docker build -t loop-base:local . -> PASS
+   - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
+diff --git a/AGENTS.md b/AGENTS.md
+index bd08e80e672f3a9b963cf05da50b9b5370e13f45..d38258fc628720318cab3d79f13f55e04db2cba9
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2,3 +2,17 @@
+ 
+ You must run td usage --new-session at conversation start (or after /clear) to see current work.
+ Use td usage -q for subsequent reads.
++
++## Base Image Validation
++
++Build the loop base image:
++
++```bash
++docker build -t loop-base:local .
++```
++
++Run tooling smoke checks:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
+diff --git a/Dockerfile b/Dockerfile
+index 2b2c6556fb09a92107be52d69109770a57bd6e8c..cb318089c9a24b54c4fbd0dec671f1eb94fe0e91
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,13 +13,29 @@
+     fi
+ 
+ # hadolint ignore=DL3018
+-RUN apk add --no-cache nodejs npm
++RUN apk add --no-cache \
++      bash \
++      git \
++      curl \
++      jq \
++      ca-certificates \
++      make \
++      python3 \
++      py3-pip \
++      ripgrep \
++      nodejs \
++      npm \
++    && update-ca-certificates
+ 
+ # Install Codex CLI from npm latest channel for v1 (no version pin).
+-# Command: npm install --global @openai/codex@latest
++# Install pnpm support via explicit npm global install.
++# Commands: npm install --global @openai/codex@latest pnpm@latest
+ # hadolint ignore=DL3016
+-RUN npm install --global @openai/codex@latest \
+-    && command -v codex >/dev/null
++RUN npm install --global @openai/codex@latest pnpm@latest \
++    && npm cache clean --force \
++    && command -v codex >/dev/null \
++    && command -v pnpm >/dev/null \
++    && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+diff --git a/README.md b/README.md
+index 63ee14d5dec527c2615f1fcc1b428e22ec2b09f5..781b2b79754ebf762b21595f0c41e30799098002
+--- a/README.md
++++ b/README.md
+@@ -61,6 +61,25 @@
+ - simple package/runtime surface for reproducible loop environments,
+ - clear security patch cadence with explicit minor tag pinning.
+ 
++Bundled developer tooling in the base image includes:
++`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
++`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
++
++pnpm support is installed via explicit global npm install
++(`npm install --global pnpm@latest`) in the Dockerfile.
++
++Tooling smoke test:
++
++```bash
++./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-tooling-smoke.sh b/scripts/check-base-tooling-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a972b1a66595402f0210be52e9ef5f048f56845f
+--- /dev/null
++++ b/scripts/check-base-tooling-smoke.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for tool in $REQUIRED_TOOLS; do
++  if ! command -v \"\$tool\" >/dev/null 2>&1; then
++    echo \"missing binary: \$tool\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"tooling smoke check passed\"
++"
+
