@@ -9,3 +9,4 @@
 [2026-03-09 04:39:02] Implemented US-001 core changes: added Alpine root Dockerfile with non-root dev user, working directory/shell defaults, and Alpine base enforcement; documented base tag rationale in README
 [2026-03-09 04:42:17] Completed US-001 verification: story checks passed (including non-Alpine rejection); global gates run with one expected smoke fail for missing codex in current image
 [2026-03-09 04:44:40] Updated .ralph/progress.md with US-001 run summary, verification results, and commit details
+[2026-03-09 04:47:17] Finalized progress entry metadata for US-001 with final commit hash and clean status
