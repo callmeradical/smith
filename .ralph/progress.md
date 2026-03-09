@@ -282,3 +282,46 @@ Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309
   - Useful context
   - `knqyf263/vuln-image:1.2.3` is a stable negative-case target for validating trivy CRITICAL gate failure behavior.
 ---
+## [2026-03-09 05:47:45 EDT] - US-007: Document base image usage in loop definitions
+Thread: codex_52757
+Run: 20260309-043624-64079 (iteration 7)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-7.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-7.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: bff095d docs(loop-base): document loop definition usage
+- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-7.log
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/check-base-internal-binaries-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/check-base-skills-mount-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/run-base-quality-gates.sh loop-base:local -> PASS
+  - Command: ./scripts/check-trivy-critical-negative.sh knqyf263/vuln-image:1.2.3 -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
+  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
+  - Command: hadolint Dockerfile -> PASS
+  - Command: shellcheck scripts/*.sh -> PASS
+  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
+  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
+  - Command: mkdir -p tmp-skills/commit && printf 'name: commit\n' > tmp-skills/commit/SKILL.md && docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills:ro" loop-base:local sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md && codex --version' -> PASS
+  - Command: if docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skillz:ro" loop-base:local sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md'; then echo 'unexpected success'; exit 1; else echo 'expected failure observed'; fi -> PASS
+- Files changed:
+  - README.md
+  - docs/index.md
+  - docs/loop-base-image-usage.md
+  - artifacts/sbom-loop-base.spdx.json
+  - .ralph/progress.md
+- What was implemented
+  - Added loop-definition documentation showing how to reference the base image and explicitly mount skills under /home/dev/.codex/skills.
+  - Included local development and production-like loop definition examples.
+  - Added a start-success example and a misconfigured mount-path negative case with expected symptoms and correction.
+  - Documented the bundled tools and internal binaries verified by smoke and quality gates.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Keep loop-definition docs aligned to implemented fields (`environment.container_image` and `skills[*].mount_path`).
+  - Gotchas encountered
+  - `git status` can remain dirty after commit because run logs continue updating; include follow-up commit for final cleanliness.
+  - Useful context
+  - The full gate runner already covers global gates, but explicit command reruns provide clearer progress traceability.
+---
