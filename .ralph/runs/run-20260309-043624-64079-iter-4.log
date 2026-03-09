@@ -17215,3 +17215,807 @@ index 0000000000000000000000000000000000000000..c0931be50d5a7acaad3469d07c949332
 +echo \"internal binary smoke check passed\"
 +"
 
+exec
+/bin/zsh -lc 'git add -A && git commit -m "chore(progress): record us-004 run outcomes"' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/AGENTS.md b/AGENTS.md
+index d38258fc628720318cab3d79f13f55e04db2cba9..5a695c2e04cea8dcb5f816e840d185359bcdce7b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -15,4 +15,5 @@
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
++./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index cb318089c9a24b54c4fbd0dec671f1eb94fe0e91..6ebbd4f49071ba40c92ee339672e7c4f7065bbd4
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,6 +1,37 @@
+ # syntax=docker/dockerfile:1.7
+ 
+ ARG ALPINE_TAG=3.21
++ARG GO_ALPINE_TAG=1.25.7-alpine
++
++FROM golang:${GO_ALPINE_TAG} AS internal-binaries-builder
++
++WORKDIR /src
++
++# hadolint ignore=DL3018
++RUN apk add --no-cache \
++      ca-certificates \
++      git
++
++COPY go.mod go.sum ./
++RUN go mod download
++
++# Inputs for the internal binary build contract:
++# - source packages in ./cmd
++# - shared code in ./internal
++# - artifact list in docker/base-internal-binaries.txt
++COPY cmd ./cmd
++COPY internal ./internal
++COPY docker/base-internal-binaries.txt ./docker/base-internal-binaries.txt
++
++RUN set -eu; \
++    mkdir -p /out; \
++    while IFS= read -r bin || [ -n "$bin" ]; do \
++      case "$bin" in \
++        ""|\#*) continue ;; \
++      esac; \
++      CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o "/out/${bin}" "./cmd/${bin}"; \
++    done < ./docker/base-internal-binaries.txt
++
+ FROM alpine:${ALPINE_TAG}
+ 
+ ENV HOME=/home/dev \
+@@ -37,6 +68,9 @@
+     && command -v pnpm >/dev/null \
+     && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
++# Internal binaries are copied from the dedicated builder stage into PATH.
++COPY --from=internal-binaries-builder /out/ /usr/local/bin/
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+diff --git a/README.md b/README.md
+index 781b2b79754ebf762b21595f0c41e30799098002..dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb
+--- a/README.md
++++ b/README.md
+@@ -80,6 +80,34 @@
+ REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ```
+ 
++### Internal Binary Bundle Contract
++
++The loop base image uses a dedicated Docker builder stage to compile internal
++Go binaries, then copies artifacts into `/usr/local/bin` in the runtime image.
++`/usr/local/bin` is on `PATH` for the runtime user.
++
++Builder inputs and expected artifacts are declared by
++`docker/base-internal-binaries.txt`:
++
++- Input package: `./cmd/<binary-name>`
++- Builder artifact: `/out/<binary-name>`
++- Runtime artifact: `/usr/local/bin/<binary-name>`
++
++To add a new binary, append it to `docker/base-internal-binaries.txt` and
++ensure `./cmd/<binary-name>` supports `--version` for smoke verification.
++
++Internal binary smoke test:
++
++```bash
++./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/cmd/smith-verify-completion/main.go b/cmd/smith-verify-completion/main.go
+index b1175cd03772719bc5dad837e9073b08ad692c8a..ab71d6f0e86ff582c1741e49da80d5fe5471e04b
+--- a/cmd/smith-verify-completion/main.go
++++ b/cmd/smith-verify-completion/main.go
+@@ -11,7 +11,10 @@
+ 	"smith/internal/source/verification"
+ )
+ 
++var version = "dev"
++
+ func main() {
++	showVersion := flag.Bool("version", false, "print version and exit")
+ 	repoPath := flag.String("repo", "", "path to git repository fixture")
+ 	expectedPath := flag.String("expected", "", "path to expected outcomes JSON")
+ 	scenarioID := flag.String("scenario", "", "scenario id to verify")
+@@ -19,6 +22,10 @@
+ 	phasePath := flag.String("phase", "", "optional path to phase-state JSON")
+ 	outputPath := flag.String("output", "", "optional output JSON file path")
+ 	flag.Parse()
++	if *showVersion {
++		fmt.Println(version)
++		return
++	}
+ 
+ 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+ 	defer cancel()
+diff --git a/cmd/smithctl/main.go b/cmd/smithctl/main.go
+index 1ffd23106a134aa92ae1184852022181493e1ef6..a03e86c248f3280e9f4b1e689f32768a38cef1cc
+--- a/cmd/smithctl/main.go
++++ b/cmd/smithctl/main.go
+@@ -20,12 +20,15 @@
+ 
+ const defaultServer = "http://127.0.0.1:8080"
+ 
++var version = "dev"
++
+ type rootFlags struct {
+ 	Server  string
+ 	Token   string
+ 	Config  string
+ 	Context string
+ 	Output  string
++	Version bool
+ }
+ 
+ type runtimeConfig struct {
+@@ -131,6 +134,10 @@
+ 		fmt.Fprintln(stderr, err.Error())
+ 		return 2
+ 	}
++	if flags.Version {
++		fmt.Fprintln(stdout, version)
++		return 0
++	}
+ 	cfg, err := resolveConfig(flags)
+ 	if err != nil {
+ 		fmt.Fprintln(stderr, err.Error())
+@@ -173,6 +180,7 @@
+ 	fs.StringVar(&defaults.Config, "config", defaults.Config, "Path to smithctl config file")
+ 	fs.StringVar(&defaults.Context, "context", "", "Named config context")
+ 	fs.StringVar(&defaults.Output, "output", defaults.Output, "Output format: text|json")
++	fs.BoolVar(&defaults.Version, "version", false, "Print version and exit")
+ 	if err := fs.Parse(args); err != nil {
+ 		return rootFlags{}, nil, err
+ 	}
+diff --git a/cmd/smithctl/main_test.go b/cmd/smithctl/main_test.go
+index aeb90fe3730d5fbc528ddec6423ff1090a54dd8e..176e2f1239ccf6043febae101cc49e5c23f71a4d
+--- a/cmd/smithctl/main_test.go
++++ b/cmd/smithctl/main_test.go
+@@ -39,6 +39,26 @@
+ 	}
+ }
+ 
++func TestRunVersionFlag(t *testing.T) {
++	previous := version
++	version = "test-version"
++	t.Cleanup(func() {
++		version = previous
++	})
++
++	var stdout, stderr bytes.Buffer
++	code := run([]string{"--version"}, &stdout, &stderr)
++	if code != 0 {
++		t.Fatalf("expected code=0, got %d stderr=%s", code, stderr.String())
++	}
++	if strings.TrimSpace(stdout.String()) != "test-version" {
++		t.Fatalf("unexpected stdout: %q", stdout.String())
++	}
++	if stderr.Len() != 0 {
++		t.Fatalf("unexpected stderr: %s", stderr.String())
++	}
++}
++
+ func TestResolveConfigEnvAndFlagPrecedence(t *testing.T) {
+ 	t.Setenv("SMITH_API_URL", "http://env.local:8080")
+ 	t.Setenv("SMITH_OPERATOR_TOKEN", "env-token")
+diff --git a/docker/base-internal-binaries.txt b/docker/base-internal-binaries.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..aeeb48fa30e081317e150cf7745e85b06fdb090c
+--- /dev/null
++++ b/docker/base-internal-binaries.txt
+@@ -0,0 +1,2 @@
++smithctl
++smith-verify-completion
+diff --git a/scripts/check-base-internal-binaries-smoke.sh b/scripts/check-base-internal-binaries-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..c0931be50d5a7acaad3469d07c9493326b8ec9ed
+--- /dev/null
++++ b/scripts/check-base-internal-binaries-smoke.sh
+@@ -0,0 +1,46 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++BINARY_LIST_FILE="${BINARY_LIST_FILE:-docker/base-internal-binaries.txt}"
++
++if [[ ! -f "$BINARY_LIST_FILE" ]]; then
++  echo "missing binary list file: $BINARY_LIST_FILE" >&2
++  exit 1
++fi
++
++required_binaries="$(
++  awk '
++    /^[[:space:]]*#/ { next }
++    /^[[:space:]]*$/ { next }
++    { print $1 }
++  ' "$BINARY_LIST_FILE"
++)"
++
++if [[ -z "$required_binaries" ]]; then
++  echo "no required binaries found in: $BINARY_LIST_FILE" >&2
++  exit 1
++fi
++
++required_binaries="$(echo "$required_binaries" | tr '\n' ' ')"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for bin in $required_binaries; do
++  if ! command -v \"\$bin\" >/dev/null 2>&1; then
++    echo \"missing internal binary: \$bin\" >&2
++    missing=1
++    continue
++  fi
++  if ! \"\$bin\" --version >/dev/null 2>&1; then
++    echo \"internal binary version check failed: \$bin\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"internal binary smoke check passed\"
++"
+
+ succeeded in 37.09s:
+[pre-commit] running quick checks...
+go test ./cmd/...
+go: downloading k8s.io/api v0.35.2
+go: downloading k8s.io/apimachinery v0.35.2
+go: downloading k8s.io/client-go v0.35.2
+go: downloading go.etcd.io/etcd/client/v3 v3.6.8
+go: downloading go.etcd.io/etcd/api/v3 v3.6.8
+go: downloading github.com/coreos/go-semver v0.3.1
+go: downloading go.etcd.io/etcd/client/pkg/v3 v3.6.8
+go: downloading go.uber.org/zap v1.27.0
+go: downloading google.golang.org/grpc v1.71.1
+go: downloading k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+go: downloading github.com/coreos/go-systemd/v22 v22.5.0
+go: downloading golang.org/x/sys v0.38.0
+go: downloading go.uber.org/multierr v1.11.0
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index d38258fc628720318cab3d79f13f55e04db2cba9..5a695c2e04cea8dcb5f816e840d185359bcdce7b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -15,4 +15,5 @@
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
++./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index cb318089c9a24b54c4fbd0dec671f1eb94fe0e91..6ebbd4f49071ba40c92ee339672e7c4f7065bbd4
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,6 +1,37 @@
+ # syntax=docker/dockerfile:1.7
+ 
+ ARG ALPINE_TAG=3.21
++ARG GO_ALPINE_TAG=1.25.7-alpine
++
++FROM golang:${GO_ALPINE_TAG} AS internal-binaries-builder
++
++WORKDIR /src
++
++# hadolint ignore=DL3018
++RUN apk add --no-cache \
++      ca-certificates \
++      git
++
++COPY go.mod go.sum ./
++RUN go mod download
++
++# Inputs for the internal binary build contract:
++# - source packages in ./cmd
++# - shared code in ./internal
++# - artifact list in docker/base-internal-binaries.txt
++COPY cmd ./cmd
++COPY internal ./internal
++COPY docker/base-internal-binaries.txt ./docker/base-internal-binaries.txt
++
++RUN set -eu; \
++    mkdir -p /out; \
++    while IFS= read -r bin || [ -n "$bin" ]; do \
++      case "$bin" in \
++        ""|\#*) continue ;; \
++      esac; \
++      CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o "/out/${bin}" "./cmd/${bin}"; \
++    done < ./docker/base-internal-binaries.txt
++
+ FROM alpine:${ALPINE_TAG}
+ 
+ ENV HOME=/home/dev \
+@@ -37,6 +68,9 @@
+     && command -v pnpm >/dev/null \
+     && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
++# Internal binaries are copied from the dedicated builder stage into PATH.
++COPY --from=internal-binaries-builder /out/ /usr/local/bin/
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+diff --git a/README.md b/README.md
+index 781b2b79754ebf762b21595f0c41e30799098002..dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb
+--- a/README.md
++++ b/README.md
+@@ -80,6 +80,34 @@
+ REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ```
+ 
++### Internal Binary Bundle Contract
++
++The loop base image uses a dedicated Docker builder stage to compile internal
++Go binaries, then copies artifacts into `/usr/local/bin` in the runtime image.
++`/usr/local/bin` is on `PATH` for the runtime user.
++
++Builder inputs and expected artifacts are declared by
++`docker/base-internal-binaries.txt`:
++
++- Input package: `./cmd/<binary-name>`
++- Builder artifact: `/out/<binary-name>`
++- Runtime artifact: `/usr/local/bin/<binary-name>`
++
++To add a new binary, append it to `docker/base-internal-binaries.txt` and
++ensure `./cmd/<binary-name>` supports `--version` for smoke verification.
++
++Internal binary smoke test:
++
++```bash
++./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/cmd/smith-verify-completion/main.go b/cmd/smith-verify-completion/main.go
+index b1175cd03772719bc5dad837e9073b08ad692c8a..ab71d6f0e86ff582c1741e49da80d5fe5471e04b
+--- a/cmd/smith-verify-completion/main.go
++++ b/cmd/smith-verify-completion/main.go
+@@ -11,7 +11,10 @@
+ 	"smith/internal/source/verification"
+ )
+ 
++var version = "dev"
++
+ func main() {
++	showVersion := flag.Bool("version", false, "print version and exit")
+ 	repoPath := flag.String("repo", "", "path to git repository fixture")
+ 	expectedPath := flag.String("expected", "", "path to expected outcomes JSON")
+ 	scenarioID := flag.String("scenario", "", "scenario id to verify")
+@@ -19,6 +22,10 @@
+ 	phasePath := flag.String("phase", "", "optional path to phase-state JSON")
+ 	outputPath := flag.String("output", "", "optional output JSON file path")
+ 	flag.Parse()
++	if *showVersion {
++		fmt.Println(version)
++		return
++	}
+ 
+ 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+ 	defer cancel()
+diff --git a/cmd/smithctl/main.go b/cmd/smithctl/main.go
+index 1ffd23106a134aa92ae1184852022181493e1ef6..a03e86c248f3280e9f4b1e689f32768a38cef1cc
+--- a/cmd/smithctl/main.go
++++ b/cmd/smithctl/main.go
+@@ -20,12 +20,15 @@
+ 
+ const defaultServer = "http://127.0.0.1:8080"
+ 
++var version = "dev"
++
+ type rootFlags struct {
+ 	Server  string
+ 	Token   string
+ 	Config  string
+ 	Context string
+ 	Output  string
++	Version bool
+ }
+ 
+ type runtimeConfig struct {
+@@ -131,6 +134,10 @@
+ 		fmt.Fprintln(stderr, err.Error())
+ 		return 2
+ 	}
++	if flags.Version {
++		fmt.Fprintln(stdout, version)
++		return 0
++	}
+ 	cfg, err := resolveConfig(flags)
+ 	if err != nil {
+ 		fmt.Fprintln(stderr, err.Error())
+@@ -173,6 +180,7 @@
+ 	fs.StringVar(&defaults.Config, "config", defaults.Config, "Path to smithctl config file")
+ 	fs.StringVar(&defaults.Context, "context", "", "Named config context")
+ 	fs.StringVar(&defaults.Output, "output", defaults.Output, "Output format: text|json")
++	fs.BoolVar(&defaults.Version, "version", false, "Print version and exit")
+ 	if err := fs.Parse(args); err != nil {
+ 		return rootFlags{}, nil, err
+ 	}
+diff --git a/cmd/smithctl/main_test.go b/cmd/smithctl/main_test.go
+index aeb90fe3730d5fbc528ddec6423ff1090a54dd8e..176e2f1239ccf6043febae101cc49e5c23f71a4d
+--- a/cmd/smithctl/main_test.go
++++ b/cmd/smithctl/main_test.go
+@@ -39,6 +39,26 @@
+ 	}
+ }
+ 
++func TestRunVersionFlag(t *testing.T) {
++	previous := version
++	version = "test-version"
++	t.Cleanup(func() {
++		version = previous
++	})
++
++	var stdout, stderr bytes.Buffer
++	code := run([]string{"--version"}, &stdout, &stderr)
++	if code != 0 {
++		t.Fatalf("expected code=0, got %d stderr=%s", code, stderr.String())
++	}
++	if strings.TrimSpace(stdout.String()) != "test-version" {
++		t.Fatalf("unexpected stdout: %q", stdout.String())
++	}
++	if stderr.Len() != 0 {
++		t.Fatalf("unexpected stderr: %s", stderr.String())
++	}
++}
++
+ func TestResolveConfigEnvAndFlagPrecedence(t *testing.T) {
+ 	t.Setenv("SMITH_API_URL", "http://env.local:8080")
+ 	t.Setenv("SMITH_OPERATOR_TOKEN", "env-token")
+diff --git a/docker/base-internal-binaries.txt b/docker/base-internal-binaries.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..aeeb48fa30e081317e150cf7745e85b06fdb090c
+--- /dev/null
++++ b/docker/base-internal-binaries.txt
+@@ -0,0 +1,2 @@
++smithctl
++smith-verify-completion
+diff --git a/scripts/check-base-internal-binaries-smoke.sh b/scripts/check-base-internal-binaries-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..c0931be50d5a7acaad3469d07c9493326b8ec9ed
+--- /dev/null
++++ b/scripts/check-base-internal-binaries-smoke.sh
+@@ -0,0 +1,46 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++BINARY_LIST_FILE="${BINARY_LIST_FILE:-docker/base-internal-binaries.txt}"
++
++if [[ ! -f "$BINARY_LIST_FILE" ]]; then
++  echo "missing binary list file: $BINARY_LIST_FILE" >&2
++  exit 1
++fi
++
++required_binaries="$(
++  awk '
++    /^[[:space:]]*#/ { next }
++    /^[[:space:]]*$/ { next }
++    { print $1 }
++  ' "$BINARY_LIST_FILE"
++)"
++
++if [[ -z "$required_binaries" ]]; then
++  echo "no required binaries found in: $BINARY_LIST_FILE" >&2
++  exit 1
++fi
++
++required_binaries="$(echo "$required_binaries" | tr '\n' ' ')"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for bin in $required_binaries; do
++  if ! command -v \"\$bin\" >/dev/null 2>&1; then
++    echo \"missing internal binary: \$bin\" >&2
++    missing=1
++    continue
++  fi
++  if ! \"\$bin\" --version >/dev/null 2>&1; then
++    echo \"internal binary version check failed: \$bin\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"internal binary smoke check passed\"
++"
+
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+ M .ralph/runs/run-20260309-043624-64079-iter-4.log
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index d38258fc628720318cab3d79f13f55e04db2cba9..5a695c2e04cea8dcb5f816e840d185359bcdce7b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -15,4 +15,5 @@
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
++./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index cb318089c9a24b54c4fbd0dec671f1eb94fe0e91..6ebbd4f49071ba40c92ee339672e7c4f7065bbd4
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,6 +1,37 @@
+ # syntax=docker/dockerfile:1.7
+ 
+ ARG ALPINE_TAG=3.21
++ARG GO_ALPINE_TAG=1.25.7-alpine
++
++FROM golang:${GO_ALPINE_TAG} AS internal-binaries-builder
++
++WORKDIR /src
++
++# hadolint ignore=DL3018
++RUN apk add --no-cache \
++      ca-certificates \
++      git
++
++COPY go.mod go.sum ./
++RUN go mod download
++
++# Inputs for the internal binary build contract:
++# - source packages in ./cmd
++# - shared code in ./internal
++# - artifact list in docker/base-internal-binaries.txt
++COPY cmd ./cmd
++COPY internal ./internal
++COPY docker/base-internal-binaries.txt ./docker/base-internal-binaries.txt
++
++RUN set -eu; \
++    mkdir -p /out; \
++    while IFS= read -r bin || [ -n "$bin" ]; do \
++      case "$bin" in \
++        ""|\#*) continue ;; \
++      esac; \
++      CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o "/out/${bin}" "./cmd/${bin}"; \
++    done < ./docker/base-internal-binaries.txt
++
+ FROM alpine:${ALPINE_TAG}
+ 
+ ENV HOME=/home/dev \
+@@ -37,6 +68,9 @@
+     && command -v pnpm >/dev/null \
+     && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+ 
++# Internal binaries are copied from the dedicated builder stage into PATH.
++COPY --from=internal-binaries-builder /out/ /usr/local/bin/
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+diff --git a/README.md b/README.md
+index 781b2b79754ebf762b21595f0c41e30799098002..dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb
+--- a/README.md
++++ b/README.md
+@@ -80,6 +80,34 @@
+ REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ```
+ 
++### Internal Binary Bundle Contract
++
++The loop base image uses a dedicated Docker builder stage to compile internal
++Go binaries, then copies artifacts into `/usr/local/bin` in the runtime image.
++`/usr/local/bin` is on `PATH` for the runtime user.
++
++Builder inputs and expected artifacts are declared by
++`docker/base-internal-binaries.txt`:
++
++- Input package: `./cmd/<binary-name>`
++- Builder artifact: `/out/<binary-name>`
++- Runtime artifact: `/usr/local/bin/<binary-name>`
++
++To add a new binary, append it to `docker/base-internal-binaries.txt` and
++ensure `./cmd/<binary-name>` supports `--version` for smoke verification.
++
++Internal binary smoke test:
++
++```bash
++./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++```
++
++Negative-case check (example):
++
++```bash
++BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/cmd/smith-verify-completion/main.go b/cmd/smith-verify-completion/main.go
+index b1175cd03772719bc5dad837e9073b08ad692c8a..ab71d6f0e86ff582c1741e49da80d5fe5471e04b
+--- a/cmd/smith-verify-completion/main.go
++++ b/cmd/smith-verify-completion/main.go
+@@ -11,7 +11,10 @@
+ 	"smith/internal/source/verification"
+ )
+ 
++var version = "dev"
++
+ func main() {
++	showVersion := flag.Bool("version", false, "print version and exit")
+ 	repoPath := flag.String("repo", "", "path to git repository fixture")
+ 	expectedPath := flag.String("expected", "", "path to expected outcomes JSON")
+ 	scenarioID := flag.String("scenario", "", "scenario id to verify")
+@@ -19,6 +22,10 @@
+ 	phasePath := flag.String("phase", "", "optional path to phase-state JSON")
+ 	outputPath := flag.String("output", "", "optional output JSON file path")
+ 	flag.Parse()
++	if *showVersion {
++		fmt.Println(version)
++		return
++	}
+ 
+ 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+ 	defer cancel()
+diff --git a/cmd/smithctl/main.go b/cmd/smithctl/main.go
+index 1ffd23106a134aa92ae1184852022181493e1ef6..a03e86c248f3280e9f4b1e689f32768a38cef1cc
+--- a/cmd/smithctl/main.go
++++ b/cmd/smithctl/main.go
+@@ -20,12 +20,15 @@
+ 
+ const defaultServer = "http://127.0.0.1:8080"
+ 
++var version = "dev"
++
+ type rootFlags struct {
+ 	Server  string
+ 	Token   string
+ 	Config  string
+ 	Context string
+ 	Output  string
++	Version bool
+ }
+ 
+ type runtimeConfig struct {
+@@ -131,6 +134,10 @@
+ 		fmt.Fprintln(stderr, err.Error())
+ 		return 2
+ 	}
++	if flags.Version {
++		fmt.Fprintln(stdout, version)
++		return 0
++	}
+ 	cfg, err := resolveConfig(flags)
+ 	if err != nil {
+ 		fmt.Fprintln(stderr, err.Error())
+@@ -173,6 +180,7 @@
+ 	fs.StringVar(&defaults.Config, "config", defaults.Config, "Path to smithctl config file")
+ 	fs.StringVar(&defaults.Context, "context", "", "Named config context")
+ 	fs.StringVar(&defaults.Output, "output", defaults.Output, "Output format: text|json")
++	fs.BoolVar(&defaults.Version, "version", false, "Print version and exit")
+ 	if err := fs.Parse(args); err != nil {
+ 		return rootFlags{}, nil, err
+ 	}
+diff --git a/cmd/smithctl/main_test.go b/cmd/smithctl/main_test.go
+index aeb90fe3730d5fbc528ddec6423ff1090a54dd8e..176e2f1239ccf6043febae101cc49e5c23f71a4d
+--- a/cmd/smithctl/main_test.go
++++ b/cmd/smithctl/main_test.go
+@@ -39,6 +39,26 @@
+ 	}
+ }
+ 
++func TestRunVersionFlag(t *testing.T) {
++	previous := version
++	version = "test-version"
++	t.Cleanup(func() {
++		version = previous
++	})
++
++	var stdout, stderr bytes.Buffer
++	code := run([]string{"--version"}, &stdout, &stderr)
++	if code != 0 {
++		t.Fatalf("expected code=0, got %d stderr=%s", code, stderr.String())
++	}
++	if strings.TrimSpace(stdout.String()) != "test-version" {
++		t.Fatalf("unexpected stdout: %q", stdout.String())
++	}
++	if stderr.Len() != 0 {
++		t.Fatalf("unexpected stderr: %s", stderr.String())
++	}
++}
++
+ func TestResolveConfigEnvAndFlagPrecedence(t *testing.T) {
+ 	t.Setenv("SMITH_API_URL", "http://env.local:8080")
+ 	t.Setenv("SMITH_OPERATOR_TOKEN", "env-token")
+diff --git a/docker/base-internal-binaries.txt b/docker/base-internal-binaries.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..aeeb48fa30e081317e150cf7745e85b06fdb090c
+--- /dev/null
++++ b/docker/base-internal-binaries.txt
+@@ -0,0 +1,2 @@
++smithctl
++smith-verify-completion
+diff --git a/scripts/check-base-internal-binaries-smoke.sh b/scripts/check-base-internal-binaries-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..c0931be50d5a7acaad3469d07c9493326b8ec9ed
+--- /dev/null
++++ b/scripts/check-base-internal-binaries-smoke.sh
+@@ -0,0 +1,46 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++BINARY_LIST_FILE="${BINARY_LIST_FILE:-docker/base-internal-binaries.txt}"
++
++if [[ ! -f "$BINARY_LIST_FILE" ]]; then
++  echo "missing binary list file: $BINARY_LIST_FILE" >&2
++  exit 1
++fi
++
++required_binaries="$(
++  awk '
++    /^[[:space:]]*#/ { next }
++    /^[[:space:]]*$/ { next }
++    { print $1 }
++  ' "$BINARY_LIST_FILE"
++)"
++
++if [[ -z "$required_binaries" ]]; then
++  echo "no required binaries found in: $BINARY_LIST_FILE" >&2
++  exit 1
++fi
++
++required_binaries="$(echo "$required_binaries" | tr '\n' ' ')"
++
++docker run --rm "$IMAGE" sh -lc "
++missing=0
++for bin in $required_binaries; do
++  if ! command -v \"\$bin\" >/dev/null 2>&1; then
++    echo \"missing internal binary: \$bin\" >&2
++    missing=1
++    continue
++  fi
++  if ! \"\$bin\" --version >/dev/null 2>&1; then
++    echo \"internal binary version check failed: \$bin\" >&2
++    missing=1
++  fi
++done
++
++if [ \"\$missing\" -ne 0 ]; then
++  exit 1
++fi
++
++echo \"internal binary smoke check passed\"
++"
+
+codex
+I’m doing one final log-sync commit for the auto-updating run log, then checking commit hash and worktree state in the same command block to satisfy the clean-tree requirement as closely as possible.
