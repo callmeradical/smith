@@ -1548,3 +1548,356 @@ index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22
  
  Implemented today:
 
+exec
+/bin/zsh -lc 'git add -A && git status --short' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+A  .agents/tasks/prd-base-container.json
+A  .ralph/.tmp/prd-prompt-20260309-043224-59608.md
+A  .ralph/.tmp/prompt-20260309-043624-64079-1.md
+A  .ralph/.tmp/story-20260309-043624-64079-1.json
+A  .ralph/.tmp/story-20260309-043624-64079-1.md
+A  .ralph/activity.log
+A  .ralph/errors.log
+A  .ralph/guardrails.md
+A  .ralph/progress.md
+A  .ralph/runs/run-20260309-043624-64079-iter-1.log
+A  Dockerfile
+M  README.md
+A  artifacts/sbom-loop-base.spdx.json
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+exec
+/bin/zsh -lc 'git commit -m "feat(base-image): add alpine runtime skeleton
+
+Add a root Dockerfile that:
+- pins an Alpine runtime base tag
+- validates the runtime OS is Alpine and fails build otherwise
+- creates a non-root dev user with stable /home/dev
+- sets default WORKDIR and shell behavior for loop execution
+
+Also document the base image tag and rationale in README,
+and generate the local SBOM artifact from quality gates.
+
+Reference: US-001"' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+ succeeded in 32.93s:
+[pre-commit] running quick checks...
+go test ./cmd/...
+go: downloading go.etcd.io/etcd/client/v3 v3.6.8
+go: downloading k8s.io/client-go v0.35.2
+go: downloading k8s.io/api v0.35.2
+go: downloading k8s.io/apimachinery v0.35.2
+go: downloading go.etcd.io/etcd/api/v3 v3.6.8
+go: downloading github.com/coreos/go-semver v0.3.1
+go: downloading go.etcd.io/etcd/client/pkg/v3 v3.6.8
+go: downloading go.uber.org/zap v1.27.0
+go: downloading google.golang.org/grpc v1.71.1
+go: downloading k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+go: downloading github.com/coreos/go-systemd/v22 v22.5.0
+go: downloading golang.org/x/sys v0.38.0
+go: downloading go.uber.org/multierr v1.11.0
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+ M .ralph/runs/run-20260309-043624-64079-iter-1.log
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+codex
+I’ve made the main US-001 commit. Next I’m appending the required progress entry (including command-by-command verification outcomes), then committing the progress/log updates so the tree is clean.
+exec
+/bin/zsh -lc "date '+%Y-%m-%d %H:%M:%S %Z'" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc 'git show -s --format="%h %s" HEAD' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+2026-03-09 04:44:08 EDT
+ succeeded in 51ms:
+c7dda60 feat(base-image): add alpine runtime skeleton
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith.base-container-build succeeded in 51ms:
+ M .ralph/runs/run-20260309-043624-64079-iter-1.log
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+exec
+/bin/zsh -lc "cat >> .ralph/progress.md <<'EOF'
+## [2026-03-09 04:44:08 EDT] - US-001: Define Alpine-based base image skeleton and runtime user
+Thread: 
+Run: 20260309-043624-64079 (iteration 1)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-1.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-1.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: c7dda60 feat(base-image): add alpine runtime skeleton
+- Post-commit status: .ralph/runs/run-20260309-043624-64079-iter-1.log modified
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+  - Command: docker build -f <temp-non-alpine-dockerfile> -t loop-base:nonalpine-test . -> PASS (expected failure with explicit Alpine message)
+  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> FAIL (codex missing; out of scope for US-001)
+  - Command: docker run --rm -v "'$(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc '"'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
+  - Command: hadolint Dockerfile -> PASS
+  - Command: shellcheck scripts/*.sh -> PASS
+  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
+  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
+- Files changed:
+  - Dockerfile
+  - README.md
+  - .agents/tasks/prd-base-container.json
+  - .ralph/.tmp/prd-prompt-20260309-043224-59608.md
+  - .ralph/.tmp/prompt-20260309-043624-64079-1.md
+  - .ralph/.tmp/story-20260309-043624-64079-1.json
+  - .ralph/.tmp/story-20260309-043624-64079-1.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/guardrails.md
+  - .ralph/progress.md
+  - .ralph/runs/run-20260309-043624-64079-iter-1.log
+  - artifacts/sbom-loop-base.spdx.json
+- What was implemented
+  - Added a new repo-root Alpine-based Dockerfile skeleton pinned to alpine:3.21.
+  - Added an explicit in-build Alpine enforcement check that fails with a clear error if base OS is not Alpine.
+  - Added non-root runtime user "'`dev` (uid/gid 1000) with stable home `/home/dev`.
+  - Set default loop runtime environment to `WORKDIR /workspace`, `SHELL /bin/sh`, and `USER dev`.
+  - Documented the base image tag and rationale in README.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Runtime OS validation in Dockerfile is an effective guard against accidental base-image drift.
+  - Gotchas encountered
+  - Global smoke gate currently expects Codex/toolchain binaries not yet added in US-001 scope.
+  - Useful context
+  - Homebrew installs for local gate tooling (`hadolint`, `shellcheck`, `trivy`, `syft`) were required to run all non-containerized checks.
+---
+EOF' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+exec
+/bin/zsh -lc 'ralph log "Updated .ralph/progress.md with US-001 run summary, verification results, and commit details"' in /Users/lars/Dev/smith.base-container-build succeeded in 51ms:
+Using bundled templates: /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+exec
+/bin/zsh -lc 'git status --short' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+ M .ralph/activity.log
+ M .ralph/progress.md
+ M .ralph/runs/run-20260309-043624-64079-iter-1.log
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
