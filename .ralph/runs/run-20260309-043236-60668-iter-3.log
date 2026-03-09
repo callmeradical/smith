@@ -26199,3 +26199,1273 @@ index 054da03ac3a4e959528125069f7991c920e71223..90d7ade6ef1913f9fd6e11f9ed74b4f6
 +	return f.result, f.err
 +}
 
+exec
+/bin/zsh -lc 'cd /Users/lars/Dev/smith.terminal-support && git add .ralph/runs/run-20260309-043236-60668-iter-3.log && git commit -m "chore(progress): sync run log tail" && git status --porcelain' in /Users/lars/Dev/smith.terminal-supportfile update:
+diff --git a/cmd/smith-api/main.go b/cmd/smith-api/main.go
+index 0456290e74574c663075c15c69bfc7237b35c519..6595b6f300f598d0a11bfa5f68d5e3011a1bed0f
+--- a/cmd/smith-api/main.go
++++ b/cmd/smith-api/main.go
+@@ -1,6 +1,7 @@
+ package main
+ 
+ import (
++	"bytes"
+ 	"context"
+ 	"encoding/json"
+ 	"errors"
+@@ -8,6 +9,7 @@
+ 	"io"
+ 	"log"
+ 	"net/http"
++	"net/url"
+ 	"os"
+ 	"os/signal"
+ 	"sort"
+@@ -26,14 +28,18 @@
+ 	corev1 "k8s.io/api/core/v1"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/client-go/kubernetes"
++	kubescheme "k8s.io/client-go/kubernetes/scheme"
+ 	"k8s.io/client-go/rest"
+ 	"k8s.io/client-go/tools/clientcmd"
++	"k8s.io/client-go/tools/remotecommand"
++	kexec "k8s.io/client-go/util/exec"
+ )
+ 
+ const (
+ 	defaultPort            = 8080
+ 	defaultShutdownTimeout = 10 * time.Second
+ 	defaultRuntimeReason   = "runtime pod not found"
++	terminalCommandMaxSize = 2048
+ )
+ 
+ type config struct {
+@@ -61,6 +67,7 @@
+ 	skillPolicy     model.SkillPolicy
+ 	term            *terminalSessionStore
+ 	runtimePods     runtimePodReader
++	podExec         podExecRunner
+ 	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
+ 	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
+ 	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
+@@ -234,14 +241,95 @@
+ 	List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error)
+ }
+ 
++type podExecRequest struct {
++	Namespace     string
++	PodName       string
++	ContainerName string
++	Command       string
++}
++
++type podExecResult struct {
++	Stdout   string
++	Stderr   string
++	ExitCode int
++}
++
++type podExecRunner interface {
++	Execute(ctx context.Context, req podExecRequest) (podExecResult, error)
++}
++
+ type kubeRuntimePodReader struct {
+ 	kube kubernetes.Interface
+ }
+ 
++type kubePodExecRunner struct {
++	kube        kubernetes.Interface
++	restConfig  *rest.Config
++	newExecutor func(*rest.Config, string, *url.URL) (remotecommand.Executor, error)
++}
++
+ func (k kubeRuntimePodReader) List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error) {
+ 	return k.kube.CoreV1().Pods(namespace).List(ctx, opts)
+ }
+ 
++func (k kubePodExecRunner) Execute(ctx context.Context, req podExecRequest) (podExecResult, error) {
++	out := podExecResult{}
++	if k.kube == nil || k.restConfig == nil {
++		return out, errors.New("kubernetes pod exec is unavailable")
++	}
++
++	namespace := strings.TrimSpace(req.Namespace)
++	podName := strings.TrimSpace(req.PodName)
++	containerName := strings.TrimSpace(req.ContainerName)
++	command := strings.TrimSpace(req.Command)
++	if namespace == "" || podName == "" || command == "" {
++		return out, errors.New("runtime target and command are required")
++	}
++
++	execRequest := k.kube.CoreV1().RESTClient().Post().
++		Resource("pods").
++		Namespace(namespace).
++		Name(podName).
++		SubResource("exec").
++		VersionedParams(&corev1.PodExecOptions{
++			Container: containerName,
++			Command:   []string{"/bin/sh", "-lc", command},
++			Stdin:     false,
++			Stdout:    true,
++			Stderr:    true,
++			TTY:       false,
++		}, kubescheme.ParameterCodec)
++
++	newExecutor := k.newExecutor
++	if newExecutor == nil {
++		newExecutor = remotecommand.NewSPDYExecutor
++	}
++	executor, err := newExecutor(k.restConfig, http.MethodPost, execRequest.URL())
++	if err != nil {
++		return out, err
++	}
++
++	var stdout bytes.Buffer
++	var stderr bytes.Buffer
++	streamErr := executor.StreamWithContext(ctx, remotecommand.StreamOptions{
++		Stdout: &stdout,
++		Stderr: &stderr,
++	})
++	out.Stdout = stdout.String()
++	out.Stderr = stderr.String()
++
++	if streamErr == nil {
++		out.ExitCode = 0
++		return out, nil
++	}
++	var exitErr kexec.ExitError
++	if errors.As(streamErr, &exitErr) {
++		out.ExitCode = exitErr.ExitStatus()
++		return out, nil
++	}
++	return out, streamErr
++}
++
+ func newTerminalSessionStore() *terminalSessionStore {
+ 	return &terminalSessionStore{
+ 		sessions:     map[string]map[string]terminalSession{},
+@@ -310,6 +398,22 @@
+ 	return found
+ }
+ 
++func (t *terminalSessionStore) Session(loopID, actor string) (terminalSession, bool) {
++	t.mu.Lock()
++	defer t.mu.Unlock()
++	actors, ok := t.sessions[loopID]
++	if !ok {
++		return terminalSession{}, false
++	}
++	session, found := actors[actor]
++	if !found {
++		return terminalSession{}, false
++	}
++	session.LastActivityAt = time.Now().UTC()
++	actors[actor] = session
++	return session, true
++}
++
+ func runtimeTargetReference(namespace, podName, containerName string) string {
+ 	namespace = strings.TrimSpace(namespace)
+ 	podName = strings.TrimSpace(podName)
+@@ -397,6 +501,10 @@
+ 	if err != nil {
+ 		log.Printf("smith-api runtime pod lookup unavailable: %v", err)
+ 	}
++	podExec, err := newPodExecRunner()
++	if err != nil {
++		log.Printf("smith-api pod exec unavailable: %v", err)
++	}
+ 
+ 	s := &server{
+ 		cfg:         cfg,
+@@ -407,6 +515,7 @@
+ 		skillPolicy: cfg.skillPolicy,
+ 		term:        newTerminalSessionStore(),
+ 		runtimePods: runtimePods,
++		podExec:     podExec,
+ 	}
+ 	mux := http.NewServeMux()
+ 	mux.HandleFunc("/healthz", s.handleHealth)
+@@ -1223,7 +1332,7 @@
+ 		writeErr(w, http.StatusUnauthorized, "unauthorized")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -1250,40 +1359,159 @@
+ 		writeErr(w, http.StatusBadRequest, "command is required")
+ 		return
+ 	}
+-	if !s.term.IsAttached(loopID, actor) {
++	if s.term == nil {
+ 		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
+ 		return
+ 	}
+-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
++	session, attached := s.term.Session(loopID, actor)
++	if !attached {
++		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
++		return
++	}
++	baseMetadata := map[string]string{
++		"command":            command,
++		"runtime_target_ref": session.RuntimeTargetRef,
++		"runtime_namespace":  session.RuntimeNamespace,
++		"runtime_pod":        session.RuntimePodName,
++		"runtime_container":  session.RuntimeContainerName,
++	}
++
++	if len(command) > terminalCommandMaxSize {
++		rejectedMetadata := copyStringMap(baseMetadata)
++		rejectedMetadata["result"] = "rejected"
++		rejectedMetadata["rejection_reason"] = "command too long"
++		rejectedMetadata["command_length"] = strconv.Itoa(len(command))
++		rejectedMetadata["max_command_length"] = strconv.Itoa(terminalCommandMaxSize)
++		_ = s.appendAudit(r.Context(), store.AuditRecord{
++			Actor:         actor,
++			Action:        "terminal-command-rejected",
++			TargetLoopID:  loopID,
++			CorrelationID: state.Record.CorrelationID,
++			Metadata:      rejectedMetadata,
++		})
++		writeErr(w, http.StatusBadRequest, fmt.Sprintf("command exceeds max length of %d characters", terminalCommandMaxSize))
++		return
++	}
++	if s.podExec == nil {
++		writeErr(w, http.StatusServiceUnavailable, "runtime command execution unavailable")
++		return
++	}
++
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
++		LoopID:        loopID,
++		Phase:         "operator",
++		Level:         "info",
++		ActorType:     "operator",
++		ActorID:       actor,
++		Message:       "terminal command started",
++		CorrelationID: state.Record.CorrelationID,
++		Metadata:      baseMetadata,
++	})
++
++	execResult, execErr := s.podExec.Execute(r.Context(), podExecRequest{
++		Namespace:     session.RuntimeNamespace,
++		PodName:       session.RuntimePodName,
++		ContainerName: session.RuntimeContainerName,
++		Command:       command,
++	})
++	delivered := true
++	result := "success"
++	if execErr != nil {
++		result = "error"
++		execResult.ExitCode = -1
++	} else if execResult.ExitCode != 0 {
++		result = "failed"
++	}
++	for _, line := range journalCommandOutputLines(execResult.Stdout) {
++		metadata := copyStringMap(baseMetadata)
++		metadata["stream"] = "stdout"
++		_ = s.appendJournal(r.Context(), model.JournalEntry{
++			LoopID:        loopID,
++			Phase:         "operator",
++			Level:         "info",
++			ActorType:     "operator",
++			ActorID:       actor,
++			Message:       line,
++			CorrelationID: state.Record.CorrelationID,
++			Metadata:      metadata,
++		})
++	}
++	for _, line := range journalCommandOutputLines(execResult.Stderr) {
++		metadata := copyStringMap(baseMetadata)
++		metadata["stream"] = "stderr"
++		_ = s.appendJournal(r.Context(), model.JournalEntry{
++			LoopID:        loopID,
++			Phase:         "operator",
++			Level:         "warn",
++			ActorType:     "operator",
++			ActorID:       actor,
++			Message:       line,
++			CorrelationID: state.Record.CorrelationID,
++			Metadata:      metadata,
++		})
++	}
++
++	resultMetadata := copyStringMap(baseMetadata)
++	resultMetadata["delivered"] = strconv.FormatBool(delivered)
++	resultMetadata["result"] = result
++	resultMetadata["exit_code"] = strconv.Itoa(execResult.ExitCode)
++	resultMetadata["stdout_bytes"] = strconv.Itoa(len(execResult.Stdout))
++	resultMetadata["stderr_bytes"] = strconv.Itoa(len(execResult.Stderr))
++	if execErr != nil {
++		resultMetadata["exec_error"] = execErr.Error()
++	}
++	_ = s.appendAudit(r.Context(), store.AuditRecord{
+ 		Actor:         actor,
+ 		Action:        "terminal-command",
+ 		TargetLoopID:  loopID,
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"command": command,
+-		},
++		Metadata:      resultMetadata,
+ 	})
+-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
+ 		LoopID:        loopID,
+ 		Phase:         "operator",
+-		Level:         "warn",
++		Level:         "info",
+ 		ActorType:     "operator",
+ 		ActorID:       actor,
+-		Message:       "terminal command issued",
++		Message:       "terminal command completed",
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"command": command,
+-		},
+-	})
+-	writeJSON(w, http.StatusOK, map[string]any{
+-		"loop_id":   loopID,
+-		"status":    "accepted",
+-		"actor":     actor,
+-		"command":   command,
+-		"delivered": false,
++		Metadata:      resultMetadata,
+ 	})
++	response := map[string]any{
++		"loop_id":            loopID,
++		"status":             "completed",
++		"actor":              actor,
++		"command":            command,
++		"delivered":          delivered,
++		"result":             result,
++		"exit_code":          execResult.ExitCode,
++		"stdout":             execResult.Stdout,
++		"stderr":             execResult.Stderr,
++		"runtime_target_ref": session.RuntimeTargetRef,
++	}
++	if execErr != nil {
++		response["error"] = execErr.Error()
++	}
++	writeJSON(w, http.StatusOK, response)
+ }
+ 
++func journalCommandOutputLines(raw string) []string {
++	if raw == "" {
++		return nil
++	}
++	raw = strings.ReplaceAll(raw, "\r\n", "\n")
++	parts := strings.Split(raw, "\n")
++	lines := make([]string, 0, len(parts))
++	for _, part := range parts {
++		line := strings.TrimRight(part, "\r")
++		if strings.TrimSpace(line) == "" {
++			continue
++		}
++		lines = append(lines, line)
++	}
++	return lines
++}
++
+ func isActiveLoopState(state model.LoopState) bool {
+ 	switch state {
+ 	case model.LoopStateUnresolved, model.LoopStateOverwriting:
+@@ -1912,9 +2140,26 @@
+ 	return kubeRuntimePodReader{kube: client}, nil
+ }
+ 
++func newPodExecRunner() (podExecRunner, error) {
++	client, restConfig, err := kubeClientWithConfig()
++	if err != nil {
++		return nil, err
++	}
++	return kubePodExecRunner{
++		kube:       client,
++		restConfig: restConfig,
++	}, nil
++}
++
+ func kubeClient() (*kubernetes.Clientset, error) {
++	client, _, err := kubeClientWithConfig()
++	return client, err
++}
++
++func kubeClientWithConfig() (*kubernetes.Clientset, *rest.Config, error) {
+ 	if cfg, err := rest.InClusterConfig(); err == nil {
+-		return kubernetes.NewForConfig(cfg)
++		client, clientErr := kubernetes.NewForConfig(cfg)
++		return client, cfg, clientErr
+ 	}
+ 	kubeconfig := strings.TrimSpace(os.Getenv("KUBECONFIG"))
+ 	if kubeconfig == "" {
+@@ -1925,9 +2170,13 @@
+ 	}
+ 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+ 	if err != nil {
+-		return nil, err
++		return nil, nil, err
+ 	}
+-	return kubernetes.NewForConfig(cfg)
++	client, err := kubernetes.NewForConfig(cfg)
++	if err != nil {
++		return nil, nil, err
++	}
++	return client, cfg, nil
+ }
+ 
+ func loadConfig() (config, error) {
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 054da03ac3a4e959528125069f7991c920e71223..90d7ade6ef1913f9fd6e11f9ed74b4f66d0db488
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -442,6 +442,184 @@
+ 	}
+ }
+ 
++func TestHandleLoopControlCommandExecutesAttachedRuntime(t *testing.T) {
++	var (
++		audits   []store.AuditRecord
++		journals []model.JournalEntry
++	)
++	execRunner := &fakePodExecRunner{
++		result: podExecResult{
++			Stdout:   "hello\n",
++			ExitCode: 0,
++		},
++	}
++	s := &server{
++		term:    newTerminalSessionStore(),
++		podExec: execRunner,
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					CorrelationID: "corr-command-success",
++				},
++			}, true, nil
++		},
++		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
++			audits = append(audits, rec)
++			return nil
++		},
++		appendJournalFn: func(_ context.Context, entry model.JournalEntry) error {
++			journals = append(journals, entry)
++			return nil
++		},
++	}
++	runtime := loopRuntimeResponse{
++		Namespace:     "smith-system",
++		PodName:       "smith-replica-loop-command-12345-abc",
++		ContainerName: "replica",
++		PodPhase:      string(corev1.PodRunning),
++		Attachable:    true,
++	}
++	s.term.Attach("loop-command", "alice", "console-pods", runtime)
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
++	s.handleLoopControlCommand(rec, req, "loop-command")
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("expected command success, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if execRunner.calls != 1 {
++		t.Fatalf("expected exactly one pod exec call, got %d", execRunner.calls)
++	}
++	if execRunner.lastRequest.Command != "echo hello" {
++		t.Fatalf("expected command payload echo hello, got %q", execRunner.lastRequest.Command)
++	}
++	if execRunner.lastRequest.Namespace != runtime.Namespace || execRunner.lastRequest.PodName != runtime.PodName || execRunner.lastRequest.ContainerName != runtime.ContainerName {
++		t.Fatalf("unexpected runtime target: %+v", execRunner.lastRequest)
++	}
++
++	var body map[string]any
++	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
++		t.Fatalf("decode response: %v", err)
++	}
++	if delivered, ok := body["delivered"].(bool); !ok || !delivered {
++		t.Fatalf("expected delivered=true, got %#v", body["delivered"])
++	}
++	if result, _ := body["result"].(string); result != "success" {
++		t.Fatalf("expected result=success, got %#v", body["result"])
++	}
++	if int(body["exit_code"].(float64)) != 0 {
++		t.Fatalf("expected exit_code=0, got %#v", body["exit_code"])
++	}
++	if stdout, _ := body["stdout"].(string); stdout != "hello\n" {
++		t.Fatalf("expected stdout hello\\n, got %#v", body["stdout"])
++	}
++
++	foundHello := false
++	for _, entry := range journals {
++		if entry.Message == "hello" {
++			foundHello = true
++			break
++		}
++	}
++	if !foundHello {
++		t.Fatalf("expected journal output containing hello, got %+v", journals)
++	}
++	if len(audits) == 0 {
++		t.Fatal("expected terminal command audit entry")
++	}
++	lastAudit := audits[len(audits)-1]
++	if lastAudit.Action != "terminal-command" {
++		t.Fatalf("expected terminal-command action, got %q", lastAudit.Action)
++	}
++	if lastAudit.Metadata["delivered"] != "true" {
++		t.Fatalf("expected delivered audit metadata true, got %q", lastAudit.Metadata["delivered"])
++	}
++	if lastAudit.Metadata["exit_code"] != "0" {
++		t.Fatalf("expected exit_code audit metadata 0, got %q", lastAudit.Metadata["exit_code"])
++	}
++}
++
++func TestHandleLoopControlCommandRequiresAttach(t *testing.T) {
++	execRunner := &fakePodExecRunner{}
++	s := &server{
++		term:    newTerminalSessionStore(),
++		podExec: execRunner,
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID: loopID,
++					State:  model.LoopStateUnresolved,
++				},
++			}, true, nil
++		},
++	}
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
++	s.handleLoopControlCommand(rec, req, "loop-command")
++
++	if rec.Code != http.StatusConflict {
++		t.Fatalf("expected 409 when actor is not attached, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if execRunner.calls != 0 {
++		t.Fatalf("expected no pod exec call without attachment, got %d", execRunner.calls)
++	}
++}
++
++func TestHandleLoopControlCommandRejectsOversizedCommand(t *testing.T) {
++	var audits []store.AuditRecord
++	execRunner := &fakePodExecRunner{}
++	s := &server{
++		term:    newTerminalSessionStore(),
++		podExec: execRunner,
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					CorrelationID: "corr-command-rejected",
++				},
++			}, true, nil
++		},
++		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
++			audits = append(audits, rec)
++			return nil
++		},
++	}
++	runtime := loopRuntimeResponse{
++		Namespace:     "smith-system",
++		PodName:       "smith-replica-loop-command-99999-abc",
++		ContainerName: "replica",
++		PodPhase:      string(corev1.PodRunning),
++		Attachable:    true,
++	}
++	s.term.Attach("loop-command", "alice", "console-pods", runtime)
++
++	oversized := strings.Repeat("x", terminalCommandMaxSize+1)
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"`+oversized+`"}`))
++	s.handleLoopControlCommand(rec, req, "loop-command")
++
++	if rec.Code != http.StatusBadRequest {
++		t.Fatalf("expected 400 for oversized command, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if execRunner.calls != 0 {
++		t.Fatalf("expected no pod exec call for oversized command, got %d", execRunner.calls)
++	}
++	if len(audits) != 1 {
++		t.Fatalf("expected one rejected audit entry, got %d", len(audits))
++	}
++	if audits[0].Action != "terminal-command-rejected" {
++		t.Fatalf("expected terminal-command-rejected action, got %q", audits[0].Action)
++	}
++	if audits[0].Metadata["result"] != "rejected" {
++		t.Fatalf("expected rejected metadata tag, got %q", audits[0].Metadata["result"])
++	}
++}
++
+ func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, terminal, runtimeRef string) {
+ 	t.Helper()
+ 	if metadata["actor"] != actor {
+@@ -483,3 +661,16 @@
+ 	}
+ 	return ""
+ }
++
++type fakePodExecRunner struct {
++	result      podExecResult
++	err         error
++	calls       int
++	lastRequest podExecRequest
++}
++
++func (f *fakePodExecRunner) Execute(_ context.Context, req podExecRequest) (podExecResult, error) {
++	f.calls++
++	f.lastRequest = req
++	return f.result, f.err
++}
+
+file update:
+diff --git a/cmd/smith-api/main.go b/cmd/smith-api/main.go
+index 0456290e74574c663075c15c69bfc7237b35c519..6595b6f300f598d0a11bfa5f68d5e3011a1bed0f
+--- a/cmd/smith-api/main.go
++++ b/cmd/smith-api/main.go
+@@ -1,6 +1,7 @@
+ package main
+ 
+ import (
++	"bytes"
+ 	"context"
+ 	"encoding/json"
+ 	"errors"
+@@ -8,6 +9,7 @@
+ 	"io"
+ 	"log"
+ 	"net/http"
++	"net/url"
+ 	"os"
+ 	"os/signal"
+ 	"sort"
+@@ -26,14 +28,18 @@
+ 	corev1 "k8s.io/api/core/v1"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/client-go/kubernetes"
++	kubescheme "k8s.io/client-go/kubernetes/scheme"
+ 	"k8s.io/client-go/rest"
+ 	"k8s.io/client-go/tools/clientcmd"
++	"k8s.io/client-go/tools/remotecommand"
++	kexec "k8s.io/client-go/util/exec"
+ )
+ 
+ const (
+ 	defaultPort            = 8080
+ 	defaultShutdownTimeout = 10 * time.Second
+ 	defaultRuntimeReason   = "runtime pod not found"
++	terminalCommandMaxSize = 2048
+ )
+ 
+ type config struct {
+@@ -61,6 +67,7 @@
+ 	skillPolicy     model.SkillPolicy
+ 	term            *terminalSessionStore
+ 	runtimePods     runtimePodReader
++	podExec         podExecRunner
+ 	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
+ 	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
+ 	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
+@@ -234,14 +241,95 @@
+ 	List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error)
+ }
+ 
++type podExecRequest struct {
++	Namespace     string
++	PodName       string
++	ContainerName string
++	Command       string
++}
++
++type podExecResult struct {
++	Stdout   string
++	Stderr   string
++	ExitCode int
++}
++
++type podExecRunner interface {
++	Execute(ctx context.Context, req podExecRequest) (podExecResult, error)
++}
++
+ type kubeRuntimePodReader struct {
+ 	kube kubernetes.Interface
+ }
+ 
++type kubePodExecRunner struct {
++	kube        kubernetes.Interface
++	restConfig  *rest.Config
++	newExecutor func(*rest.Config, string, *url.URL) (remotecommand.Executor, error)
++}
++
+ func (k kubeRuntimePodReader) List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error) {
+ 	return k.kube.CoreV1().Pods(namespace).List(ctx, opts)
+ }
+ 
++func (k kubePodExecRunner) Execute(ctx context.Context, req podExecRequest) (podExecResult, error) {
++	out := podExecResult{}
++	if k.kube == nil || k.restConfig == nil {
++		return out, errors.New("kubernetes pod exec is unavailable")
++	}
++
++	namespace := strings.TrimSpace(req.Namespace)
++	podName := strings.TrimSpace(req.PodName)
++	containerName := strings.TrimSpace(req.ContainerName)
++	command := strings.TrimSpace(req.Command)
++	if namespace == "" || podName == "" || command == "" {
++		return out, errors.New("runtime target and command are required")
++	}
++
++	execRequest := k.kube.CoreV1().RESTClient().Post().
++		Resource("pods").
++		Namespace(namespace).
++		Name(podName).
++		SubResource("exec").
++		VersionedParams(&corev1.PodExecOptions{
++			Container: containerName,
++			Command:   []string{"/bin/sh", "-lc", command},
++			Stdin:     false,
++			Stdout:    true,
++			Stderr:    true,
++			TTY:       false,
++		}, kubescheme.ParameterCodec)
++
++	newExecutor := k.newExecutor
++	if newExecutor == nil {
++		newExecutor = remotecommand.NewSPDYExecutor
++	}
++	executor, err := newExecutor(k.restConfig, http.MethodPost, execRequest.URL())
++	if err != nil {
++		return out, err
++	}
++
++	var stdout bytes.Buffer
++	var stderr bytes.Buffer
++	streamErr := executor.StreamWithContext(ctx, remotecommand.StreamOptions{
++		Stdout: &stdout,
++		Stderr: &stderr,
++	})
++	out.Stdout = stdout.String()
++	out.Stderr = stderr.String()
++
++	if streamErr == nil {
++		out.ExitCode = 0
++		return out, nil
++	}
++	var exitErr kexec.ExitError
++	if errors.As(streamErr, &exitErr) {
++		out.ExitCode = exitErr.ExitStatus()
++		return out, nil
++	}
++	return out, streamErr
++}
++
+ func newTerminalSessionStore() *terminalSessionStore {
+ 	return &terminalSessionStore{
+ 		sessions:     map[string]map[string]terminalSession{},
+@@ -310,6 +398,22 @@
+ 	return found
+ }
+ 
++func (t *terminalSessionStore) Session(loopID, actor string) (terminalSession, bool) {
++	t.mu.Lock()
++	defer t.mu.Unlock()
++	actors, ok := t.sessions[loopID]
++	if !ok {
++		return terminalSession{}, false
++	}
++	session, found := actors[actor]
++	if !found {
++		return terminalSession{}, false
++	}
++	session.LastActivityAt = time.Now().UTC()
++	actors[actor] = session
++	return session, true
++}
++
+ func runtimeTargetReference(namespace, podName, containerName string) string {
+ 	namespace = strings.TrimSpace(namespace)
+ 	podName = strings.TrimSpace(podName)
+@@ -397,6 +501,10 @@
+ 	if err != nil {
+ 		log.Printf("smith-api runtime pod lookup unavailable: %v", err)
+ 	}
++	podExec, err := newPodExecRunner()
++	if err != nil {
++		log.Printf("smith-api pod exec unavailable: %v", err)
++	}
+ 
+ 	s := &server{
+ 		cfg:         cfg,
+@@ -407,6 +515,7 @@
+ 		skillPolicy: cfg.skillPolicy,
+ 		term:        newTerminalSessionStore(),
+ 		runtimePods: runtimePods,
++		podExec:     podExec,
+ 	}
+ 	mux := http.NewServeMux()
+ 	mux.HandleFunc("/healthz", s.handleHealth)
+@@ -1223,7 +1332,7 @@
+ 		writeErr(w, http.StatusUnauthorized, "unauthorized")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -1250,40 +1359,159 @@
+ 		writeErr(w, http.StatusBadRequest, "command is required")
+ 		return
+ 	}
+-	if !s.term.IsAttached(loopID, actor) {
++	if s.term == nil {
+ 		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
+ 		return
+ 	}
+-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
++	session, attached := s.term.Session(loopID, actor)
++	if !attached {
++		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
++		return
++	}
++	baseMetadata := map[string]string{
++		"command":            command,
++		"runtime_target_ref": session.RuntimeTargetRef,
++		"runtime_namespace":  session.RuntimeNamespace,
++		"runtime_pod":        session.RuntimePodName,
++		"runtime_container":  session.RuntimeContainerName,
++	}
++
++	if len(command) > terminalCommandMaxSize {
++		rejectedMetadata := copyStringMap(baseMetadata)
++		rejectedMetadata["result"] = "rejected"
++		rejectedMetadata["rejection_reason"] = "command too long"
++		rejectedMetadata["command_length"] = strconv.Itoa(len(command))
++		rejectedMetadata["max_command_length"] = strconv.Itoa(terminalCommandMaxSize)
++		_ = s.appendAudit(r.Context(), store.AuditRecord{
++			Actor:         actor,
++			Action:        "terminal-command-rejected",
++			TargetLoopID:  loopID,
++			CorrelationID: state.Record.CorrelationID,
++			Metadata:      rejectedMetadata,
++		})
++		writeErr(w, http.StatusBadRequest, fmt.Sprintf("command exceeds max length of %d characters", terminalCommandMaxSize))
++		return
++	}
++	if s.podExec == nil {
++		writeErr(w, http.StatusServiceUnavailable, "runtime command execution unavailable")
++		return
++	}
++
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
++		LoopID:        loopID,
++		Phase:         "operator",
++		Level:         "info",
++		ActorType:     "operator",
++		ActorID:       actor,
++		Message:       "terminal command started",
++		CorrelationID: state.Record.CorrelationID,
++		Metadata:      baseMetadata,
++	})
++
++	execResult, execErr := s.podExec.Execute(r.Context(), podExecRequest{
++		Namespace:     session.RuntimeNamespace,
++		PodName:       session.RuntimePodName,
++		ContainerName: session.RuntimeContainerName,
++		Command:       command,
++	})
++	delivered := true
++	result := "success"
++	if execErr != nil {
++		result = "error"
++		execResult.ExitCode = -1
++	} else if execResult.ExitCode != 0 {
++		result = "failed"
++	}
++	for _, line := range journalCommandOutputLines(execResult.Stdout) {
++		metadata := copyStringMap(baseMetadata)
++		metadata["stream"] = "stdout"
++		_ = s.appendJournal(r.Context(), model.JournalEntry{
++			LoopID:        loopID,
++			Phase:         "operator",
++			Level:         "info",
++			ActorType:     "operator",
++			ActorID:       actor,
++			Message:       line,
++			CorrelationID: state.Record.CorrelationID,
++			Metadata:      metadata,
++		})
++	}
++	for _, line := range journalCommandOutputLines(execResult.Stderr) {
++		metadata := copyStringMap(baseMetadata)
++		metadata["stream"] = "stderr"
++		_ = s.appendJournal(r.Context(), model.JournalEntry{
++			LoopID:        loopID,
++			Phase:         "operator",
++			Level:         "warn",
++			ActorType:     "operator",
++			ActorID:       actor,
++			Message:       line,
++			CorrelationID: state.Record.CorrelationID,
++			Metadata:      metadata,
++		})
++	}
++
++	resultMetadata := copyStringMap(baseMetadata)
++	resultMetadata["delivered"] = strconv.FormatBool(delivered)
++	resultMetadata["result"] = result
++	resultMetadata["exit_code"] = strconv.Itoa(execResult.ExitCode)
++	resultMetadata["stdout_bytes"] = strconv.Itoa(len(execResult.Stdout))
++	resultMetadata["stderr_bytes"] = strconv.Itoa(len(execResult.Stderr))
++	if execErr != nil {
++		resultMetadata["exec_error"] = execErr.Error()
++	}
++	_ = s.appendAudit(r.Context(), store.AuditRecord{
+ 		Actor:         actor,
+ 		Action:        "terminal-command",
+ 		TargetLoopID:  loopID,
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"command": command,
+-		},
++		Metadata:      resultMetadata,
+ 	})
+-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
+ 		LoopID:        loopID,
+ 		Phase:         "operator",
+-		Level:         "warn",
++		Level:         "info",
+ 		ActorType:     "operator",
+ 		ActorID:       actor,
+-		Message:       "terminal command issued",
++		Message:       "terminal command completed",
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"command": command,
+-		},
+-	})
+-	writeJSON(w, http.StatusOK, map[string]any{
+-		"loop_id":   loopID,
+-		"status":    "accepted",
+-		"actor":     actor,
+-		"command":   command,
+-		"delivered": false,
++		Metadata:      resultMetadata,
+ 	})
++	response := map[string]any{
++		"loop_id":            loopID,
++		"status":             "completed",
++		"actor":              actor,
++		"command":            command,
++		"delivered":          delivered,
++		"result":             result,
++		"exit_code":          execResult.ExitCode,
++		"stdout":             execResult.Stdout,
++		"stderr":             execResult.Stderr,
++		"runtime_target_ref": session.RuntimeTargetRef,
++	}
++	if execErr != nil {
++		response["error"] = execErr.Error()
++	}
++	writeJSON(w, http.StatusOK, response)
+ }
+ 
++func journalCommandOutputLines(raw string) []string {
++	if raw == "" {
++		return nil
++	}
++	raw = strings.ReplaceAll(raw, "\r\n", "\n")
++	parts := strings.Split(raw, "\n")
++	lines := make([]string, 0, len(parts))
++	for _, part := range parts {
++		line := strings.TrimRight(part, "\r")
++		if strings.TrimSpace(line) == "" {
++			continue
++		}
++		lines = append(lines, line)
++	}
++	return lines
++}
++
+ func isActiveLoopState(state model.LoopState) bool {
+ 	switch state {
+ 	case model.LoopStateUnresolved, model.LoopStateOverwriting:
+@@ -1912,9 +2140,26 @@
+ 	return kubeRuntimePodReader{kube: client}, nil
+ }
+ 
++func newPodExecRunner() (podExecRunner, error) {
++	client, restConfig, err := kubeClientWithConfig()
++	if err != nil {
++		return nil, err
++	}
++	return kubePodExecRunner{
++		kube:       client,
++		restConfig: restConfig,
++	}, nil
++}
++
+ func kubeClient() (*kubernetes.Clientset, error) {
++	client, _, err := kubeClientWithConfig()
++	return client, err
++}
++
++func kubeClientWithConfig() (*kubernetes.Clientset, *rest.Config, error) {
+ 	if cfg, err := rest.InClusterConfig(); err == nil {
+-		return kubernetes.NewForConfig(cfg)
++		client, clientErr := kubernetes.NewForConfig(cfg)
++		return client, cfg, clientErr
+ 	}
+ 	kubeconfig := strings.TrimSpace(os.Getenv("KUBECONFIG"))
+ 	if kubeconfig == "" {
+@@ -1925,9 +2170,13 @@
+ 	}
+ 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+ 	if err != nil {
+-		return nil, err
++		return nil, nil, err
+ 	}
+-	return kubernetes.NewForConfig(cfg)
++	client, err := kubernetes.NewForConfig(cfg)
++	if err != nil {
++		return nil, nil, err
++	}
++	return client, cfg, nil
+ }
+ 
+ func loadConfig() (config, error) {
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 054da03ac3a4e959528125069f7991c920e71223..90d7ade6ef1913f9fd6e11f9ed74b4f66d0db488
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -442,6 +442,184 @@
+ 	}
+ }
+ 
++func TestHandleLoopControlCommandExecutesAttachedRuntime(t *testing.T) {
++	var (
++		audits   []store.AuditRecord
++		journals []model.JournalEntry
++	)
++	execRunner := &fakePodExecRunner{
++		result: podExecResult{
++			Stdout:   "hello\n",
++			ExitCode: 0,
++		},
++	}
++	s := &server{
++		term:    newTerminalSessionStore(),
++		podExec: execRunner,
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					CorrelationID: "corr-command-success",
++				},
++			}, true, nil
++		},
++		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
++			audits = append(audits, rec)
++			return nil
++		},
++		appendJournalFn: func(_ context.Context, entry model.JournalEntry) error {
++			journals = append(journals, entry)
++			return nil
++		},
++	}
++	runtime := loopRuntimeResponse{
++		Namespace:     "smith-system",
++		PodName:       "smith-replica-loop-command-12345-abc",
++		ContainerName: "replica",
++		PodPhase:      string(corev1.PodRunning),
++		Attachable:    true,
++	}
++	s.term.Attach("loop-command", "alice", "console-pods", runtime)
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
++	s.handleLoopControlCommand(rec, req, "loop-command")
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("expected command success, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if execRunner.calls != 1 {
++		t.Fatalf("expected exactly one pod exec call, got %d", execRunner.calls)
++	}
++	if execRunner.lastRequest.Command != "echo hello" {
++		t.Fatalf("expected command payload echo hello, got %q", execRunner.lastRequest.Command)
++	}
++	if execRunner.lastRequest.Namespace != runtime.Namespace || execRunner.lastRequest.PodName != runtime.PodName || execRunner.lastRequest.ContainerName != runtime.ContainerName {
++		t.Fatalf("unexpected runtime target: %+v", execRunner.lastRequest)
++	}
++
++	var body map[string]any
++	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
++		t.Fatalf("decode response: %v", err)
++	}
++	if delivered, ok := body["delivered"].(bool); !ok || !delivered {
++		t.Fatalf("expected delivered=true, got %#v", body["delivered"])
++	}
++	if result, _ := body["result"].(string); result != "success" {
++		t.Fatalf("expected result=success, got %#v", body["result"])
++	}
++	if int(body["exit_code"].(float64)) != 0 {
++		t.Fatalf("expected exit_code=0, got %#v", body["exit_code"])
++	}
++	if stdout, _ := body["stdout"].(string); stdout != "hello\n" {
++		t.Fatalf("expected stdout hello\\n, got %#v", body["stdout"])
++	}
++
++	foundHello := false
++	for _, entry := range journals {
++		if entry.Message == "hello" {
++			foundHello = true
++			break
++		}
++	}
++	if !foundHello {
++		t.Fatalf("expected journal output containing hello, got %+v", journals)
++	}
++	if len(audits) == 0 {
++		t.Fatal("expected terminal command audit entry")
++	}
++	lastAudit := audits[len(audits)-1]
++	if lastAudit.Action != "terminal-command" {
++		t.Fatalf("expected terminal-command action, got %q", lastAudit.Action)
++	}
++	if lastAudit.Metadata["delivered"] != "true" {
++		t.Fatalf("expected delivered audit metadata true, got %q", lastAudit.Metadata["delivered"])
++	}
++	if lastAudit.Metadata["exit_code"] != "0" {
++		t.Fatalf("expected exit_code audit metadata 0, got %q", lastAudit.Metadata["exit_code"])
++	}
++}
++
++func TestHandleLoopControlCommandRequiresAttach(t *testing.T) {
++	execRunner := &fakePodExecRunner{}
++	s := &server{
++		term:    newTerminalSessionStore(),
++		podExec: execRunner,
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID: loopID,
++					State:  model.LoopStateUnresolved,
++				},
++			}, true, nil
++		},
++	}
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
++	s.handleLoopControlCommand(rec, req, "loop-command")
++
++	if rec.Code != http.StatusConflict {
++		t.Fatalf("expected 409 when actor is not attached, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if execRunner.calls != 0 {
++		t.Fatalf("expected no pod exec call without attachment, got %d", execRunner.calls)
++	}
++}
++
++func TestHandleLoopControlCommandRejectsOversizedCommand(t *testing.T) {
++	var audits []store.AuditRecord
++	execRunner := &fakePodExecRunner{}
++	s := &server{
++		term:    newTerminalSessionStore(),
++		podExec: execRunner,
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					CorrelationID: "corr-command-rejected",
++				},
++			}, true, nil
++		},
++		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
++			audits = append(audits, rec)
++			return nil
++		},
++	}
++	runtime := loopRuntimeResponse{
++		Namespace:     "smith-system",
++		PodName:       "smith-replica-loop-command-99999-abc",
++		ContainerName: "replica",
++		PodPhase:      string(corev1.PodRunning),
++		Attachable:    true,
++	}
++	s.term.Attach("loop-command", "alice", "console-pods", runtime)
++
++	oversized := strings.Repeat("x", terminalCommandMaxSize+1)
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"`+oversized+`"}`))
++	s.handleLoopControlCommand(rec, req, "loop-command")
++
++	if rec.Code != http.StatusBadRequest {
++		t.Fatalf("expected 400 for oversized command, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if execRunner.calls != 0 {
++		t.Fatalf("expected no pod exec call for oversized command, got %d", execRunner.calls)
++	}
++	if len(audits) != 1 {
++		t.Fatalf("expected one rejected audit entry, got %d", len(audits))
++	}
++	if audits[0].Action != "terminal-command-rejected" {
++		t.Fatalf("expected terminal-command-rejected action, got %q", audits[0].Action)
++	}
++	if audits[0].Metadata["result"] != "rejected" {
++		t.Fatalf("expected rejected metadata tag, got %q", audits[0].Metadata["result"])
++	}
++}
++
+ func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, terminal, runtimeRef string) {
+ 	t.Helper()
+ 	if metadata["actor"] != actor {
+@@ -483,3 +661,16 @@
+ 	}
+ 	return ""
+ }
++
++type fakePodExecRunner struct {
++	result      podExecResult
++	err         error
++	calls       int
++	lastRequest podExecRequest
++}
++
++func (f *fakePodExecRunner) Execute(_ context.Context, req podExecRequest) (podExecResult, error) {
++	f.calls++
++	f.lastRequest = req
++	return f.result, f.err
++}
+
+ succeeded in 30.68s:
+[pre-commit] running quick checks...
+go test ./cmd/...
+go: downloading k8s.io/api v0.35.2
+go: downloading k8s.io/client-go v0.35.2
+go: downloading k8s.io/apimachinery v0.35.2
+go: downloading go.etcd.io/etcd/client/v3 v3.6.8
+go: downloading github.com/coreos/go-semver v0.3.1
+go: downloading go.etcd.io/etcd/api/v3 v3.6.8
+go: downloading go.etcd.io/etcd/client/pkg/v3 v3.6.8
+go: downloading go.uber.org/zap v1.27.0
+go: downloading google.golang.org/grpc v1.71.1
+go: downloading k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+go: downloading k8s.io/klog/v2 v2.130.1
+go: downloading github.com/coreos/go-systemd/v22 v22.5.0
+go: downloading golang.org/x/sys v0.38.0
