@@ -285,6 +285,8 @@
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean" },
+        "apiBaseUrl": { "type": "string", "minLength": 1 },
+        "showComingSoonProviders": { "type": "boolean" },
         "replicaCount": {
           "type": "integer",
           "minimum": 1

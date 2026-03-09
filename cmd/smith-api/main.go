@@ -75,6 +75,12 @@ type authCompleteRequest struct {
 	DeviceCode string `json:"device_code"`
 }
 
+type authAPIKeyRequest struct {
+	Actor     string `json:"actor"`
+	APIKey    string `json:"api_key"`
+	AccountID string `json:"account_id"`
+}
+
 type terminalAttachRequest struct {
 	Actor    string `json:"actor"`
 	Terminal string `json:"terminal"`
@@ -255,6 +261,7 @@ func main() {
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
 	mux.HandleFunc("/v1/auth/codex/connect/start", s.handleCodexAuthStart)
 	mux.HandleFunc("/v1/auth/codex/connect/complete", s.handleCodexAuthComplete)
+	mux.HandleFunc("/v1/auth/codex/connect/api-key", s.handleCodexAuthAPIKey)
 	mux.HandleFunc("/v1/auth/codex/status", s.handleCodexAuthStatus)
 	mux.HandleFunc("/v1/auth/codex/disconnect", s.handleCodexAuthDisconnect)
 
@@ -1291,6 +1298,41 @@ func (s *server) handleCodexAuthComplete(w http.ResponseWriter, r *http.Request)
 		"connected":       true,
 		"expires_at":      token.ExpiresAt.UTC().Format(time.RFC3339),
 		"account_id":      token.AccountID,
+		"auth_method":     token.AuthMethod,
+		"connected_at":    formatRFC3339OrEmpty(token.ConnectedAt),
+		"last_refresh_at": formatRFC3339OrEmpty(token.LastRefreshAt),
+	})
+}
+
+func (s *server) handleCodexAuthAPIKey(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req authAPIKeyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	token, err := s.auth.ConnectAPIKey(
+		r.Context(),
+		strings.TrimSpace(req.Actor),
+		strings.TrimSpace(req.APIKey),
+		strings.TrimSpace(req.AccountID),
+	)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"connected":       true,
+		"expires_at":      token.ExpiresAt.UTC().Format(time.RFC3339),
+		"account_id":      token.AccountID,
+		"auth_method":     token.AuthMethod,
 		"connected_at":    formatRFC3339OrEmpty(token.ConnectedAt),
 		"last_refresh_at": formatRFC3339OrEmpty(token.LastRefreshAt),
 	})
@@ -1317,6 +1359,7 @@ func (s *server) handleCodexAuthStatus(w http.ResponseWriter, r *http.Request) {
 	if status.Connected {
 		out["expires_at"] = status.ExpiresAt.UTC().Format(time.RFC3339)
 		out["account_id"] = status.AccountID
+		out["auth_method"] = status.AuthMethod
 		out["connected_at"] = formatRFC3339OrEmpty(status.ConnectedAt)
 		out["last_refresh_at"] = formatRFC3339OrEmpty(status.LastRefreshAt)
 	}
@@ -1333,6 +1376,11 @@ func (s *server) handleCodexAuthDisconnect(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
+	if actor == "" {
+		var req authStartRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		actor = strings.TrimSpace(req.Actor)
+	}
 	if err := s.auth.Disconnect(r.Context(), actor); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1624,7 +1672,10 @@ func (a *auditBridge) RecordAuthEvent(ctx context.Context, event provider.AuthEv
 	if a == nil || a.store == nil {
 		return nil
 	}
-	return a.store.AppendAudit(ctx, store.AuditRecord{
+	// Auth lifecycle calls should not block on audit availability.
+	auditCtx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
+	defer cancel()
+	return a.store.AppendAudit(auditCtx, store.AuditRecord{
 		Actor:        event.Actor,
 		Action:       "auth-" + event.Action,
 		TargetLoopID: "",

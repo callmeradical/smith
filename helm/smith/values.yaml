@@ -85,6 +85,8 @@ api:
 console:
   replicaCount: 1
   enabled: true
+  apiBaseUrl: /api
+  showComingSoonProviders: false
   autoscaling:
     enabled: false
     minReplicas: 2

@@ -29,7 +29,9 @@ spec:
           imagePullPolicy: {{ .Values.console.image.pullPolicy }}
           env:
             - name: SMITH_API_BASE_URL
-              value: {{ printf "http://%s-api:%v" (include "smith.fullname" .) .Values.api.service.port | quote }}
+              value: {{ .Values.console.apiBaseUrl | quote }}
+            - name: SMITH_SHOW_COMING_SOON_PROVIDERS
+              value: {{ .Values.console.showComingSoonProviders | quote }}
             {{- if $runtimeSecretName }}
             - name: SMITH_RUNTIME_CREDENTIALS
               valueFrom:

@@ -8,3 +8,5 @@
 .td-root
 site/
 .cache/
+node_modules/
+output/playwright/

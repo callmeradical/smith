@@ -85,6 +85,31 @@ SKIP_GIT_HOOKS=1 git commit -m "..."
 SKIP_GIT_HOOKS=1 git push
 ```
 
+## Frontend Playwright Tests
+
+Install frontend test dependencies:
+
+```bash
+npm install
+```
+
+Run Playwright tests for the console UI:
+
+```bash
+npm run test:frontend
+# or
+make test-frontend
+```
+
+Artifacts are written under `output/playwright/` (HTML report + failure artifacts).
+
+Run tests against a deployed, port-forwarded console UI:
+
+```bash
+kubectl -n smith-system port-forward svc/smith-smith-console 3000:3000
+npm run test:frontend:live
+```
+
 ## Technology Stack and Thanks
 
 See the dedicated documentation page for:

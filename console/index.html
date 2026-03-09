@@ -3,369 +3,947 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Smith Operator Console</title>
+  <title>SMITH</title>
   <script src="/runtime-config.js"></script>
   <style>
     :root {
-      --bg: #090b0f;
-      --bg-elev: #11161d;
-      --panel: rgba(255, 255, 255, 0.06);
+      --bg: #07090e;
+      --bg-elev: #0d1119;
+      --panel: rgba(255, 255, 255, 0.05);
       --panel-strong: rgba(255, 255, 255, 0.1);
       --border: rgba(255, 255, 255, 0.16);
-      --text: #e5edf7;
-      --muted: #8ea0b6;
+      --text: #e6eef9;
+      --muted: #90a1b7;
       --ok: #10b981;
       --warn: #f59e0b;
       --err: #ef4444;
       --accent: #06b6d4;
-      --radius: 10px;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "Noto Sans", Helvetica, Arial, sans-serif;
+      --radius: 12px;
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: "IBM Plex Sans", "Segoe UI", -apple-system, BlinkMacSystemFont, "Noto Sans", Helvetica, Arial, sans-serif;
     }
+
     * {
       box-sizing: border-box;
     }
+
     body {
       margin: 0;
       background:
-        radial-gradient(1200px 600px at 90% -20%, rgba(6, 182, 212, 0.12), transparent 50%),
-        radial-gradient(900px 500px at -10% -10%, rgba(16, 185, 129, 0.12), transparent 45%),
+        radial-gradient(1100px 600px at 110% -20%, rgba(6, 182, 212, 0.16), transparent 50%),
+        radial-gradient(1000px 620px at -20% -30%, rgba(16, 185, 129, 0.12), transparent 55%),
         var(--bg);
       color: var(--text);
       font-family: var(--sans);
       min-height: 100vh;
     }
-    .app {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 12px 14px 24px;
-      display: grid;
-      gap: 12px;
-    }
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      backdrop-filter: blur(10px);
-      background: rgba(9, 11, 15, 0.7);
+
+    button,
+    select,
+    input,
+    textarea {
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 10px;
-      align-items: center;
-      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font-size: 0.88rem;
     }
-    .title {
+
+    button:hover,
+    select:hover,
+    input:hover,
+    textarea:hover {
+      border-color: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.09);
+    }
+
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    .pod-tile:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .shell {
+      min-height: 100vh;
+      padding: 14px;
+    }
+
+    .sidebar {
+      position: fixed;
+      left: 14px;
+      top: 14px;
+      bottom: 14px;
+      width: 240px;
+      overflow: auto;
+      border: 0;
+      border-radius: 14px;
+      background: rgba(7, 9, 14, 0.98);
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      padding: 14px;
+      transform: translateX(-120%);
+      transition: transform 180ms ease;
+      z-index: 30;
+    }
+
+    body.sidebar-open .sidebar {
+      transform: translateX(0);
+    }
+
+    .sidebar-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: none;
+      z-index: 20;
+    }
+
+    body.sidebar-open .sidebar-overlay {
+      display: block;
+    }
+
+    .brand {
+      display: grid;
+      gap: 4px;
+      padding: 4px 2px;
+    }
+
+    .brand-line {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       font-weight: 600;
-      letter-spacing: 0.02em;
     }
+
     .dot {
       width: 10px;
       height: 10px;
       border-radius: 50%;
       background: var(--warn);
-      box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
     }
+
     .dot.ok {
       background: var(--ok);
-      box-shadow: 0 0 10px rgba(16, 185, 129, 0.7);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
     }
+
     .dot.err {
       background: var(--err);
-      box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
     }
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
+
+    .api-url {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      word-break: break-all;
     }
-    button,
-    select,
-    input {
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text);
-      border-radius: 8px;
-      padding: 7px 10px;
-      font-size: 0.9rem;
-    }
-    button:hover,
-    select:hover,
-    input:hover {
-      border-color: rgba(255, 255, 255, 0.35);
-      background: rgba(255, 255, 255, 0.09);
-    }
-    button:focus-visible,
-    select:focus-visible,
-    input:focus-visible,
-    .card:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
-    }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(120px, 1fr));
-      gap: 10px;
-    }
-    .stat {
+
+    .panel {
       border: 1px solid var(--border);
       border-radius: var(--radius);
       background: var(--panel);
       padding: 10px;
+      display: grid;
+      gap: 8px;
     }
+
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.86rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .panel-grid {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      font-size: 0.76rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .panel-grid span {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 5px 6px;
+    }
+
+    .quick-nav {
+      display: grid;
+      gap: 4px;
+      grid-template-columns: 1fr;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: #d3e2f3;
+      border: 0;
+      background: transparent;
+      padding: 7px 2px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      transition: color 120ms ease;
+    }
+
+    .nav-link::before {
+      content: " ";
+      width: 10px;
+      display: inline-block;
+      color: var(--accent);
+    }
+
+    .nav-link:hover {
+      color: #f4fbff;
+    }
+
+    .nav-link.active {
+      color: var(--accent);
+    }
+
+    .nav-link.active::before {
+      content: ">";
+    }
+
+    .status-note {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .provider-settings-head {
+      font-size: 2rem;
+      line-height: 1.2;
+      margin: 2px 0 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      font-weight: 500;
+    }
+
+    .provider-card-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      align-content: start;
+    }
+
+    .provider-card {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      min-height: 154px;
+    }
+
+    .provider-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .provider-card-name {
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .provider-card-desc {
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
+
+    .provider-card-actions {
+      margin-top: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .provider-card-status {
+      color: var(--muted);
+      font-size: 0.72rem;
+    }
+
+    .provider-card.connected .provider-card-name {
+      color: #c9fce8;
+    }
+
+    .provider-card.active {
+      border-color: rgba(6, 182, 212, 0.6);
+      box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.45);
+    }
+
+    .provider-actions,
+    .override-controls {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .provider-actions button,
+    .override-controls button {
+      padding-inline: 8px;
+      font-size: 0.8rem;
+    }
+
+    .primary {
+      border-color: rgba(6, 182, 212, 0.58);
+      background: rgba(6, 182, 212, 0.2);
+      color: #bff4ff;
+      font-weight: 700;
+    }
+
+    .provider-api-key {
+      display: grid;
+      gap: 6px;
+    }
+
+    .project-actions {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .project-list {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    }
+
+    .project-tile {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+    }
+
+    .project-tile:hover {
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+
+    .collapsible-summary {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      padding: 8px 2px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .collapsible-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .collapsible-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .collapsible-caret {
+      color: var(--accent);
+      display: inline-block;
+      transition: transform 120ms ease;
+    }
+
+    details[open] > .collapsible-summary .collapsible-caret {
+      transform: rotate(90deg);
+    }
+
+    .collapsible-body {
+      display: grid;
+      gap: 8px;
+      padding: 6px 0 0;
+    }
+
+    .project-name {
+      font-weight: 700;
+    }
+
+    .project-repo {
+      font-size: 0.74rem;
+      color: #b3c1d4;
+      font-family: var(--mono);
+      word-break: break-all;
+    }
+
+    .project-meta {
+      font-size: 0.74rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .project-tile-actions {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .project-tile-actions button {
+      font-size: 0.74rem;
+      padding: 6px 8px;
+    }
+
+    .project-loop-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .project-loop-row {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 8px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .project-loop-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      font-family: var(--mono);
+    }
+
+    .project-loop-id {
+      color: #dbe8f7;
+      word-break: break-all;
+    }
+
+    .project-card-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .project-card-actions button {
+      font-size: 0.74rem;
+      padding: 5px 9px;
+    }
+
+    .project-action-icon {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    .advanced-auth {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .advanced-auth > summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      user-select: none;
+    }
+
+    .icon-button {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .danger {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.13);
+      color: #fecaca;
+    }
+
+    .workspace {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .page {
+      display: none;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .page.active {
+      display: grid;
+    }
+
+    .config-page {
+      border: 0;
+      border-radius: var(--radius);
+      background: transparent;
+      padding: 0;
+    }
+
+    .config-title {
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      font-size: 0.95rem;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 14px;
+      z-index: 4;
+      border: 0;
+      border-radius: 10px;
+      background: rgba(7, 9, 14, 0.9);
+      backdrop-filter: blur(8px);
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-toggle {
+      border: 0;
+      background: transparent;
+      color: #e6eef9;
+      font-size: 1.05rem;
+      padding: 4px 6px;
+      border-radius: 6px;
+      line-height: 1;
+    }
+
+    .sidebar-toggle:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .topbar-title {
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pod-create-actions {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .stats {
+      display: flex;
+      gap: 22px;
+      align-items: center;
+      margin-bottom: 0;
+      padding: 8px 4px;
+      background: transparent;
+      border-radius: 0;
+      border: 0;
+    }
+
+    .stat {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 0;
+      min-width: 96px;
+    }
+
     .stat small {
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.08em;
       font-size: 0.7rem;
     }
+
     .stat strong {
       display: block;
       margin-top: 6px;
-      font-size: 1.2rem;
+      font-size: 1rem;
       font-variant-numeric: tabular-nums;
     }
-    .main {
-      display: grid;
-      grid-template-columns: 1.3fr 1fr;
-      gap: 10px;
-      min-height: 64vh;
+
+    .stat-action {
+      min-width: 132px;
+      margin-left: auto;
+      text-align: right;
     }
-    .auth-panel {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--panel);
-      padding: 10px;
-      display: grid;
-      gap: 8px;
-    }
-    .auth-headline {
-      display: flex;
+
+    .stat-add-button {
+      display: inline-flex;
       align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      margin-top: 6px;
+      border-radius: 10px;
+      font-size: 1.7rem;
+      line-height: 1;
+      font-weight: 700;
+      padding: 0;
+      border-color: rgba(6, 182, 212, 0.58);
+      background: rgba(6, 182, 212, 0.2);
+      color: #bff4ff;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      min-height: 72vh;
+    }
+
+    .board.has-selection {
+      grid-template-columns: 1.2fr 0.95fr;
+    }
+
+    .tiles-shell,
+    .journal {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    .tiles-header,
+    .journal-header {
+      padding: 6px 2px;
+      border-bottom: 0;
+      display: flex;
       justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .pod-grid {
+      padding: 0;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      max-height: calc(72vh - 48px);
+      overflow: auto;
+      grid-template-columns: 1fr;
+    }
+
+    .pod-group {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .pod-group-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       gap: 8px;
       font-size: 0.9rem;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      cursor: pointer;
+      list-style: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 8px 2px;
     }
-    .auth-metrics {
+
+    .pod-group-head::-webkit-details-marker {
+      display: none;
+    }
+
+    .pod-group-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pod-group-caret {
+      color: var(--accent);
+      display: inline-block;
+      transition: transform 120ms ease;
+    }
+
+    .pod-group[open] > .pod-group-head .pod-group-caret {
+      transform: rotate(90deg);
+    }
+
+    .pod-group-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 6px;
-      font-size: 0.78rem;
+      gap: 12px;
+      padding: 10px 0 12px 20px;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
     }
-    .auth-metrics span {
-      display: flex;
-      justify-content: space-between;
-      gap: 6px;
-      padding: 5px 7px;
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.03);
-    }
-    .auth-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr auto auto auto auto;
-      gap: 6px;
-    }
-    .grid {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: rgba(255, 255, 255, 0.03);
+
+    .pod-tile {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+      color: var(--text);
       padding: 10px;
       display: grid;
       gap: 8px;
-      align-content: start;
-      max-height: 70vh;
-      overflow: auto;
-    }
-    .card {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--panel);
-      padding: 10px;
       cursor: pointer;
       transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
       position: relative;
       overflow: hidden;
+      min-height: 140px;
     }
-    .card::before {
+
+    .pod-tile::before {
       content: "";
       position: absolute;
       left: 0;
       top: 0;
       width: 100%;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.8), transparent);
       opacity: 0;
       transition: opacity 120ms ease;
     }
-    .card:hover {
+
+    .pod-tile:hover {
       transform: translateY(-1px);
-      border-color: rgba(255, 255, 255, 0.4);
-      background: var(--panel-strong);
+      border-color: rgba(6, 182, 212, 0.45);
+      background: rgba(255, 255, 255, 0.06);
     }
-    .card:hover::before {
+
+    .pod-tile:hover::before {
       opacity: 1;
     }
-    .card.selected {
-      border-color: var(--accent);
-      background: rgba(6, 182, 212, 0.12);
+
+    .pod-tile.selected {
+      box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.9);
+      border-color: rgba(6, 182, 212, 0.8);
     }
-    .row {
+
+    .tile-head {
       display: flex;
-      align-items: center;
       justify-content: space-between;
+      align-items: flex-start;
       gap: 8px;
-      margin-bottom: 6px;
     }
+
     .loop-id {
       font-family: var(--mono);
       font-size: 0.82rem;
-      color: #cbe4ff;
+      font-weight: 600;
+      color: #dbe8f7;
       word-break: break-all;
     }
+
+    .tile-title {
+      font-size: 0.92rem;
+      line-height: 1.2;
+      letter-spacing: 0.01em;
+      font-weight: 600;
+      color: #f1f6ff;
+    }
+
+    .tile-loop {
+      font-size: 0.74rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #8fa2b9;
+    }
+
     .badge {
-      font-size: 0.68rem;
+      font-size: 0.6rem;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      padding: 2px 6px;
+      padding: 2px 8px;
       border-radius: 999px;
       border: 1px solid transparent;
       white-space: nowrap;
+      font-weight: 700;
     }
+
     .state-unresolved,
     .state-overwriting {
       color: var(--warn);
       background: rgba(245, 158, 11, 0.18);
-      border-color: rgba(245, 158, 11, 0.35);
+      border-color: rgba(245, 158, 11, 0.42);
     }
+
     .state-synced {
       color: var(--ok);
-      background: rgba(16, 185, 129, 0.18);
-      border-color: rgba(16, 185, 129, 0.35);
+      background: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.45);
     }
+
     .state-flatline,
     .state-cancelled {
       color: var(--err);
-      background: rgba(239, 68, 68, 0.18);
-      border-color: rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.44);
     }
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 6px;
+
+    .tile-reason {
       font-size: 0.76rem;
-      color: var(--muted);
-      font-variant-numeric: tabular-nums;
+      color: #9bb0c9;
+      min-height: 32px;
     }
-    .metrics span {
-      display: flex;
-      justify-content: space-between;
-      gap: 6px;
-      padding: 4px 6px;
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.03);
-    }
-    .journal {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: rgba(0, 0, 0, 0.45);
-      display: grid;
-      grid-template-rows: auto 1fr;
-      min-height: 70vh;
-      overflow: hidden;
-    }
-    .journal-header {
-      border-bottom: 1px solid var(--border);
-      padding: 10px;
-      display: grid;
-      gap: 8px;
-    }
-    .journal-headline {
+
+    .tile-health {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: 0.9rem;
-    }
-    .override-bar {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr auto;
       gap: 6px;
     }
-    .override-bar .danger {
-      border-color: rgba(239, 68, 68, 0.45);
-      background: rgba(239, 68, 68, 0.12);
-      color: #fecaca;
+
+    .tile-health-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      background: #4dc89a;
+      box-shadow: 0 0 8px rgba(77, 200, 154, 0.5);
     }
-    .override-bar .danger:hover {
-      background: rgba(239, 68, 68, 0.2);
-      border-color: rgba(239, 68, 68, 0.7);
+
+    .tile-health-text {
+      font-size: 0.74rem;
+      color: #b7c5d8;
     }
-    .terminal {
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      line-height: 1.45;
-      color: #c6ddf5;
-      overflow: auto;
-      padding: 10px;
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
+
+    .tile-meta {
+      display: flex;
+      gap: 8px;
+      color: #95a8bf;
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
     }
-    .terminal .ts {
-      color: #93afcb;
-    }
-    .terminal .level-error {
-      color: #fda4af;
-    }
-    .terminal .level-warn {
-      color: #fcd34d;
-    }
-    .terminal .level-info {
-      color: #93c5fd;
-    }
+
     .muted {
       color: var(--muted);
     }
+
     .empty {
-      border: 1px dashed rgba(255, 255, 255, 0.2);
+      border: 1px dashed rgba(255, 255, 255, 0.22);
       border-radius: var(--radius);
-      padding: 12px;
+      padding: 14px;
       color: var(--muted);
       text-align: center;
     }
-    @media (max-width: 960px) {
-      .stats {
-        grid-template-columns: repeat(2, minmax(120px, 1fr));
+
+    .terminal {
+      margin: 0;
+      padding: 12px;
+      height: calc(72vh - 48px);
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: #cae2ff;
+      background: rgba(0, 0, 0, 0.35);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .journal.hidden {
+      display: none;
+    }
+
+    @media (max-width: 1180px) {
+      .sidebar {
+        left: 10px;
+        top: 10px;
+        bottom: 10px;
       }
-      .main {
+
+      .board {
         grid-template-columns: 1fr;
       }
-      .grid,
-      .journal {
-        min-height: 42vh;
+
+      .board.has-selection {
+        grid-template-columns: 1fr;
+      }
+
+      .pod-grid,
+      .terminal {
         max-height: none;
-      }
-      .metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-      .auth-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-      .auth-actions {
-        grid-template-columns: 1fr 1fr;
-      }
-      .override-bar {
-        grid-template-columns: 1fr 1fr;
+        height: 44vh;
       }
     }
+
+    @media (max-width: 760px) {
+      .stats {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .provider-actions,
+      .override-controls {
+        grid-template-columns: 1fr;
+      }
+
+      .project-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .project-meta {
+        flex-direction: column;
+      }
+
+      .project-tile-actions {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       * {
         animation: none !important;
@@ -375,92 +953,230 @@
   </style>
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
-      <div class="title">
-        <span id="api-dot" class="dot" aria-hidden="true"></span>
-        <span>Smith Operator Console</span>
-        <small class="muted" id="api-url"></small>
-      </div>
-      <div class="controls">
-        <select id="state-filter" aria-label="State filter">
-          <option value="all">All States</option>
-          <option value="active">Active Only</option>
-          <option value="unresolved">Unresolved</option>
-          <option value="overwriting">Overwriting</option>
-          <option value="synced">Synced</option>
-          <option value="flatline">Flatline</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <input id="search" type="search" placeholder="Filter loop id">
-        <input id="auth-token" type="password" placeholder="operator bearer token (optional)">
-        <label class="muted"><input id="auto-refresh" type="checkbox" checked> auto-refresh</label>
-        <button id="refresh">refresh</button>
-      </div>
-    </header>
+  <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Console sidebar">
+      <section class="brand">
+        <div class="brand-line">
+          <span id="api-dot" class="dot" aria-hidden="true"></span>
+          <span>SMITH</span>
+        </div>
+        <div class="api-url" id="api-url"></div>
+      </section>
 
-    <section class="stats">
-      <div class="stat"><small>Total</small><strong id="stat-total">0</strong></div>
-      <div class="stat"><small>Active</small><strong id="stat-active">0</strong></div>
-      <div class="stat"><small>Flatline</small><strong id="stat-flatline">0</strong></div>
-      <div class="stat"><small>Last Refresh</small><strong id="stat-refresh">-</strong></div>
-    </section>
+      <nav class="quick-nav" aria-label="Configuration pages">
+        <a id="nav-pods" class="nav-link active" data-page-link="pods" href="#pods">Pods</a>
+        <a id="nav-projects" class="nav-link" data-page-link="projects" href="#projects">Projects</a>
+        <a id="nav-providers" class="nav-link" data-page-link="providers" href="#providers">Providers</a>
+        <a id="nav-controls" class="nav-link" data-page-link="controls" href="#controls">Manual Controls</a>
+      </nav>
+    </aside>
 
-    <section class="auth-panel">
-      <div class="auth-headline">
-        <strong>Provider Auth (Codex)</strong>
-        <span id="auth-status" class="muted">status idle</span>
-      </div>
-      <div class="auth-metrics">
-        <span><b>Connected</b><i id="auth-connected">--</i></span>
-        <span><b>Account</b><i id="auth-account">--</i></span>
-        <span><b>Expires</b><i id="auth-expires">--</i></span>
-        <span><b>Last Refresh</b><i id="auth-refresh">--</i></span>
-      </div>
-      <div class="auth-actions">
-        <input id="auth-actor" type="text" placeholder="actor (default: operator)">
-        <input id="auth-device-code" type="text" placeholder="device code">
-        <button id="auth-status-refresh">status</button>
-        <button id="auth-connect-start">connect</button>
-        <button id="auth-connect-complete">complete</button>
-        <button id="auth-reconnect">reconnect</button>
-        <button id="auth-disconnect">disconnect</button>
-        <button id="auth-open-verify">open verify URL</button>
-      </div>
-      <div class="muted" id="auth-flow-message"></div>
-    </section>
+    <main class="workspace">
+      <section id="page-pods" class="page active">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Pods</div>
+          </div>
+          <div class="controls">
+            <select id="state-filter" aria-label="State filter">
+              <option value="all">All States</option>
+              <option value="active">Active Only</option>
+              <option value="unresolved">Unresolved</option>
+              <option value="overwriting">Overwriting</option>
+              <option value="synced">Synced</option>
+              <option value="flatline">Flatline</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <input id="search" type="search" placeholder="Filter loop id">
+            <label class="muted"><input id="auto-refresh" type="checkbox" checked> auto-refresh</label>
+            <button id="refresh">refresh</button>
+          </div>
+        </header>
 
-    <section class="main">
-      <div id="grid" class="grid" role="list" aria-label="Anomaly grid"></div>
-      <div class="journal">
-        <div class="journal-header">
-          <div class="journal-headline">
-            <strong id="journal-title">Live Journal</strong>
-            <span id="journal-latency" class="muted">p95 --</span>
+        <section id="pod-create-panel" class="panel hidden">
+          <div class="panel-title">
+            <span>New Workspace</span>
+            <button id="pod-create-close" type="button">back</button>
+          </div>
+          <select id="pod-create-project" aria-label="Project">
+            <option value="">Select project</option>
+          </select>
+          <div class="pod-create-actions">
+            <button id="pod-create-load-issues" type="button">load issues</button>
+            <button id="pod-create-refresh-issues" type="button">refresh</button>
+          </div>
+          <select id="pod-create-issue" aria-label="Issue" disabled>
+            <option value="">Select issue</option>
+          </select>
+          <input id="pod-create-branch" type="text" placeholder="branch name (required)">
+          <input id="pod-create-source-branch" type="text" placeholder="source branch (default: main)">
+          <select id="pod-create-agent" aria-label="Agent">
+            <option value="codex">codex</option>
+            <option value="claude_code_cli">claude_code_cli</option>
+            <option value="gemini_cli">gemini_cli</option>
+          </select>
+          <textarea id="pod-create-prompt" rows="6" placeholder="optional prompt"></textarea>
+          <div id="pod-create-issue-preview" class="status-note">Select a project and load issues.</div>
+          <div class="pod-create-actions">
+            <button id="pod-create-submit" type="button" class="primary">create workspace</button>
+            <button id="pod-create-cancel" type="button">cancel</button>
+          </div>
+          <div id="pod-create-status" class="status-note"></div>
+        </section>
+
+        <section class="stats">
+          <div class="stat"><small>Total</small><strong id="stat-total">0</strong></div>
+          <div class="stat"><small>Active</small><strong id="stat-active">0</strong></div>
+          <div class="stat"><small>Flatline</small><strong id="stat-flatline">0</strong></div>
+          <div class="stat"><small>Last Refresh</small><strong id="stat-refresh">-</strong></div>
+          <div class="stat stat-action">
+            <small>New Workspace</small>
+            <button id="pod-create-toggle" type="button" class="stat-add-button" aria-label="Start loop">+</button>
+          </div>
+        </section>
+
+        <section class="board">
+          <section class="tiles-shell">
+            <div class="tiles-header">
+              <strong>Pods By Project</strong>
+              <span class="muted">select a pod tile to stream journal</span>
+            </div>
+            <div id="grid" class="pod-grid" role="list" aria-label="Pods grouped by project"></div>
+          </section>
+
+          <section id="pod-detail" class="journal hidden">
+            <div class="journal-header">
+              <strong id="journal-title">Pod Detail Journal</strong>
+              <span id="journal-latency" class="muted">p95 --</span>
+            </div>
+            <pre id="terminal" class="terminal">[journal] select a pod tile to open pod detail view
+</pre>
+          </section>
+        </section>
+      </section>
+
+      <section id="page-providers" class="page config-page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Provider Configuration</div>
+          </div>
+        </header>
+        <section id="provider-list-panel">
+          <div class="provider-settings-head">Provider Configuration Settings</div>
+          <div id="provider-list" class="provider-card-grid" role="list" aria-label="Provider configuration catalog"></div>
+          <div id="provider-catalog-status" class="status-note"></div>
+          <div id="provider-empty" class="status-note hidden">No providers available.</div>
+        </section>
+        <section id="provider-config-panel" class="hidden">
+          <div class="panel-title">
+            <span id="provider-config-title">Provider Configuration</span>
+            <button id="provider-back" type="button">back</button>
+          </div>
+          <section id="provider-codex-panel" class="panel hidden">
+          <div class="panel-title">
+            <span>Codex Authentication</span>
+            <span id="auth-status" class="muted">not connected</span>
+          </div>
+          <div class="status-note">Choose an authentication method for Codex.</div>
+          <div class="provider-actions">
+            <button id="auth-sign-in" class="primary">sign in with OpenAI</button>
+            <button id="auth-use-api-key">use API key</button>
+            <button id="auth-disconnect">sign out</button>
+          </div>
+          <div id="auth-api-key-panel" class="provider-api-key hidden">
+            <input id="auth-api-key" type="password" placeholder="OpenAI API key">
+            <input id="auth-account-id" type="text" placeholder="account label (optional)">
+            <button id="auth-save-api-key">save API key</button>
+          </div>
+          <div class="panel-grid">
+            <span><b>Connected</b><i id="auth-connected">--</i></span>
+            <span><b>Account</b><i id="auth-account">--</i></span>
+            <span><b>Method</b><i id="auth-method">--</i></span>
+            <span><b>Expires</b><i id="auth-expires">--</i></span>
+            <span><b>Refresh</b><i id="auth-refresh">--</i></span>
+          </div>
+          <div id="auth-flow-message" class="status-note"></div>
+          <details class="advanced-auth">
+            <summary>advanced</summary>
+            <input id="auth-token" type="password" placeholder="operator bearer token (optional)">
+            <input id="auth-actor" type="text" placeholder="actor (default: operator)">
+          </details>
+          </section>
+        </section>
+      </section>
+
+      <section id="page-controls" class="page config-page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Manual Controls</div>
+          </div>
+        </header>
+        <section class="panel">
+          <div class="panel-title">
+            <span>Loop Override</span>
             <span id="journal-status" class="muted">idle</span>
           </div>
-          <div class="override-bar">
-            <select id="override-state" aria-label="Override target state">
-              <option value="unresolved">unresolved</option>
-              <option value="overwriting">overwriting</option>
-              <option value="synced">synced</option>
-              <option value="flatline">flatline</option>
-              <option value="cancelled">cancelled</option>
-            </select>
-            <input id="override-reason" type="text" placeholder="override reason (required)">
-            <input id="override-actor" type="text" placeholder="actor (default: operator)">
-            <input id="override-confirm" type="text" placeholder="type APPLY to confirm">
+          <div id="override-loop" class="status-note">selected loop: --</div>
+          <select id="override-state" aria-label="Override target state">
+            <option value="unresolved">unresolved</option>
+            <option value="overwriting">overwriting</option>
+            <option value="synced">synced</option>
+            <option value="flatline">flatline</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+          <input id="override-reason" type="text" placeholder="override reason (required)">
+          <input id="override-actor" type="text" placeholder="actor (default: operator)">
+          <input id="override-confirm" type="text" placeholder="type APPLY to confirm">
+          <div class="override-controls">
             <button id="override-apply" class="danger">apply override</button>
           </div>
-        </div>
-        <pre id="terminal" class="terminal"></pre>
-      </div>
-    </section>
+        </section>
+      </section>
+
+      <section id="page-projects" class="page config-page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Projects</div>
+          </div>
+          <button id="project-add" type="button" class="icon-button" aria-label="Add project">+</button>
+        </header>
+        <section id="project-config-panel" class="panel hidden">
+          <div class="panel-title"><span>Project Configuration</span></div>
+          <input id="project-name" type="text" placeholder="project name">
+          <input id="project-repo-url" type="url" placeholder="repository URL (https://github.com/org/repo.git)">
+          <input id="project-github-user" type="text" placeholder="GitHub username or app/bot name">
+          <input id="project-github-credential" type="password" placeholder="GitHub credential (PAT or token)">
+          <div class="status-note">
+            GitHub credential is stored in this browser session only until backend secret storage is wired.
+          </div>
+          <div class="project-actions">
+            <button id="project-save" class="primary">save project</button>
+            <button id="project-cancel" type="button">back</button>
+          </div>
+          <div id="project-form-status" class="status-note"></div>
+        </section>
+        <section id="project-list-panel">
+          <div id="project-list" class="project-list"></div>
+          <div id="project-action-status" class="status-note"></div>
+          <div id="project-empty" class="status-note">
+            No projects configured yet.
+          </div>
+        </section>
+      </section>
+    </main>
   </div>
 
   <script>
     const config = window.__SMITH_CONFIG__ || {};
     const apiBase = String(config.apiBaseUrl || "").replace(/\/+$/, "");
+    const showComingSoonProviders = /^(1|true|yes|on)$/i.test(
+      String(config.showComingSoonProviders || ""),
+    );
     const state = {
       loops: [],
       selectedLoop: "",
@@ -469,29 +1185,197 @@
       latencySamplesMs: [],
       journalSource: null,
       reconnectTimer: null,
-      authSession: null
+      authSession: null,
+      authBusy: false,
+      activeProvider: "",
+      projects: [],
+      projectCredentials: {},
+      loopWorkflow: {},
+      editingProjectID: "",
+      podProjectIssues: {},
+      podCreateBusy: false,
+      providerStatus: {
+        codex: {
+          connected: false,
+          account_id: "",
+          expires_at: "",
+          last_refresh_at: "",
+          auth_method: "",
+        },
+      },
     };
 
     const gridEl = document.getElementById("grid");
     const terminalEl = document.getElementById("terminal");
+    const boardEl = document.querySelector(".board");
+    const podDetailEl = document.getElementById("pod-detail");
+    const podCreateToggleEl = document.getElementById("pod-create-toggle");
+    const podCreatePanelEl = document.getElementById("pod-create-panel");
+    const podCreateProjectEl = document.getElementById("pod-create-project");
+    const podCreateLoadIssuesEl = document.getElementById("pod-create-load-issues");
+    const podCreateRefreshIssuesEl = document.getElementById("pod-create-refresh-issues");
+    const podCreateIssueEl = document.getElementById("pod-create-issue");
+    const podCreateBranchEl = document.getElementById("pod-create-branch");
+    const podCreateSourceBranchEl = document.getElementById("pod-create-source-branch");
+    const podCreateAgentEl = document.getElementById("pod-create-agent");
+    const podCreatePromptEl = document.getElementById("pod-create-prompt");
+    const podCreateIssuePreviewEl = document.getElementById("pod-create-issue-preview");
+    const podCreateSubmitEl = document.getElementById("pod-create-submit");
+    const podCreateCancelEl = document.getElementById("pod-create-cancel");
+    const podCreateCloseEl = document.getElementById("pod-create-close");
+    const podCreateStatusEl = document.getElementById("pod-create-status");
     const apiDotEl = document.getElementById("api-dot");
     const journalLatencyEl = document.getElementById("journal-latency");
     const journalStatusEl = document.getElementById("journal-status");
     const authStatusEl = document.getElementById("auth-status");
     const authConnectedEl = document.getElementById("auth-connected");
     const authAccountEl = document.getElementById("auth-account");
+    const authMethodEl = document.getElementById("auth-method");
     const authExpiresEl = document.getElementById("auth-expires");
     const authRefreshEl = document.getElementById("auth-refresh");
     const authFlowMessageEl = document.getElementById("auth-flow-message");
+    const authApiKeyPanelEl = document.getElementById("auth-api-key-panel");
+    const providerBackEl = document.getElementById("provider-back");
+    const providerListPanelEl = document.getElementById("provider-list-panel");
+    const providerConfigPanelEl = document.getElementById("provider-config-panel");
+    const providerConfigTitleEl = document.getElementById("provider-config-title");
+    const providerListEl = document.getElementById("provider-list");
+    const providerCatalogStatusEl = document.getElementById("provider-catalog-status");
+    const providerEmptyEl = document.getElementById("provider-empty");
+    const providerCodexPanelEl = document.getElementById("provider-codex-panel");
+    const projectAddEl = document.getElementById("project-add");
+    const projectListPanelEl = document.getElementById("project-list-panel");
+    const projectConfigPanelEl = document.getElementById("project-config-panel");
+    const projectListEl = document.getElementById("project-list");
+    const projectActionStatusEl = document.getElementById("project-action-status");
+    const projectEmptyEl = document.getElementById("project-empty");
+    const projectFormStatusEl = document.getElementById("project-form-status");
+    const overrideLoopEl = document.getElementById("override-loop");
+    const sidebarEl = document.querySelector(".sidebar");
+    const sidebarOverlayEl = document.getElementById("sidebar-overlay");
+    const sidebarToggleButtons = Array.from(document.querySelectorAll(".sidebar-toggle"));
+    const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
+    const pages = {
+      pods: document.getElementById("page-pods"),
+      projects: document.getElementById("page-projects"),
+      providers: document.getElementById("page-providers"),
+      controls: document.getElementById("page-controls"),
+    };
+    const providerCatalog = [
+      {
+        id: "anthropic",
+        label: "Anthropic",
+        subtitle: "Claude and other models from Anthropic.",
+      },
+      {
+        id: "amazon_bedrock",
+        label: "Amazon Bedrock",
+        subtitle: "Run models through Amazon Bedrock.",
+      },
+      {
+        id: "azure_openai",
+        label: "Azure OpenAI",
+        subtitle: "Models through Azure OpenAI Service.",
+      },
+      {
+        id: "claude_code_cli",
+        label: "Claude Code CLI",
+        subtitle: "Execute Claude models via Claude Code CLI.",
+      },
+      {
+        id: "codex",
+        label: "OpenAI Codex CLI",
+        subtitle: "Execute OpenAI models via Codex CLI.",
+      },
+      {
+        id: "cursor_agent",
+        label: "Cursor Agent",
+        subtitle: "Execute AI models via cursor-agent CLI.",
+      },
+      {
+        id: "deepseek",
+        label: "DeepSeek",
+        subtitle: "Custom DeepSeek provider.",
+      },
+      {
+        id: "databricks",
+        label: "Databricks",
+        subtitle: "Models on Databricks AI Gateway.",
+      },
+      {
+        id: "gcp_vertex_ai",
+        label: "GCP Vertex AI",
+        subtitle: "Access models through Vertex AI.",
+      },
+      {
+        id: "gemini_cli",
+        label: "Gemini CLI",
+        subtitle: "Execute Gemini models via CLI.",
+      },
+      {
+        id: "github_copilot",
+        label: "GitHub Copilot",
+        subtitle: "Run and configure GitHub Copilot.",
+      },
+      {
+        id: "google_gemini",
+        label: "Google Gemini",
+        subtitle: "Gemini models from Google AI.",
+      },
+    ];
+    const projectStorageKey = "smith.console.projects.v1";
+
     document.getElementById("api-url").textContent = apiBase || "(api unset)";
     document.getElementById("auth-token").value = config.operatorToken || "";
+
+    function pageFromHash() {
+      const raw = String(window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
+      return pages[raw] ? raw : "pods";
+    }
+
+    function setSidebarOpen(open) {
+      const isOpen = Boolean(open);
+      document.body.classList.toggle("sidebar-open", isOpen);
+      sidebarEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      sidebarToggleButtons.forEach((btn) => {
+        btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      });
+    }
+
+    function setActivePage(page, updateHash) {
+      const target = pages[page] ? page : "pods";
+      for (const [name, el] of Object.entries(pages)) {
+        el.classList.toggle("active", name === target);
+      }
+      for (const link of pageLinks) {
+        link.classList.toggle("active", link.getAttribute("data-page-link") === target);
+      }
+      if (updateHash) {
+        window.location.hash = "#" + target;
+      }
+      if (target === "providers") {
+        setProviderConfigOpen(false);
+      }
+    }
+
+    function renderSelectedLoop() {
+      overrideLoopEl.textContent = "selected loop: " + (state.selectedLoop || "--");
+      const hasSelection = Boolean(state.selectedLoop);
+      boardEl.classList.toggle("has-selection", hasSelection);
+      podDetailEl.classList.toggle("hidden", !hasSelection);
+      if (!hasSelection) {
+        document.getElementById("journal-title").textContent = "Pod Detail Journal";
+        terminalEl.textContent = "[journal] select a pod tile to open pod detail view\n";
+        journalLatencyEl.textContent = "p95 --";
+      }
+    }
 
     function isActive(status) {
       return status === "unresolved" || status === "overwriting";
     }
 
     async function fetchJSON(path) {
-      const headers = { "Accept": "application/json" };
+      const headers = { Accept: "application/json" };
       const token = document.getElementById("auth-token").value.trim();
       if (token) headers.Authorization = "Bearer " + token;
       const res = await fetch(apiBase + path, { headers });
@@ -503,19 +1387,19 @@
 
     async function postJSON(path, payload) {
       const headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
+        Accept: "application/json",
+        "Content-Type": "application/json",
       };
       const token = document.getElementById("auth-token").value.trim();
       if (token) headers.Authorization = "Bearer " + token;
       const res = await fetch(apiBase + path, {
         method: "POST",
         headers,
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = body.error || ("HTTP " + res.status);
+        const msg = body.error || "HTTP " + res.status;
         const err = new Error(msg);
         err.status = res.status;
         throw err;
@@ -536,17 +1420,138 @@
     function setAuthStatus(message, level) {
       authStatusEl.textContent = message;
       authStatusEl.style.color =
-        level === "ok" ? "var(--ok)" :
-        level === "err" ? "var(--err)" :
-        "var(--muted)";
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+    }
+
+    function authMethodLabel(raw) {
+      const method = String(raw || "").trim().toLowerCase();
+      if (!method) return "--";
+      if (method === "api_key") return "API key";
+      if (method === "openai_sign_in") return "OpenAI sign-in";
+      return method.replace(/_/g, " ");
+    }
+
+    function setProviderConfigOpen(open) {
+      const isOpen = Boolean(open);
+      providerListPanelEl.classList.toggle("hidden", isOpen);
+      providerConfigPanelEl.classList.toggle("hidden", !isOpen);
+      if (!isOpen) {
+        providerCodexPanelEl.classList.add("hidden");
+        state.activeProvider = "";
+        renderProviderList();
+      }
+    }
+
+    function visibleProviderCatalog() {
+      return providerCatalog.filter((providerInfo) => {
+        if (providerInfo.id === "codex") return true;
+        return showComingSoonProviders;
+      });
+    }
+
+    function renderProviderList() {
+      providerListEl.innerHTML = "";
+      providerCatalogStatusEl.textContent = "";
+      const visibleProviders = visibleProviderCatalog();
+      providerEmptyEl.classList.toggle("hidden", visibleProviders.length > 0);
+      for (const providerInfo of visibleProviders) {
+        const providerID = providerInfo.id;
+        const isCodex = providerID === "codex";
+        const providerStatus = state.providerStatus[providerID] || {};
+        const connected = Boolean(providerStatus.connected);
+        const card = document.createElement("article");
+        card.className =
+          "provider-card" +
+          (connected ? " connected" : "") +
+          (state.activeProvider === providerID ? " active" : "");
+        card.setAttribute("role", "listitem");
+        card.innerHTML =
+          '<div class="provider-card-head">' +
+          '<span class="provider-card-name">' +
+          escapeHtml(providerInfo.label) +
+          "</span>" +
+          (connected ? '<span class="badge state-synced">connected</span>' : "") +
+          "</div>" +
+          '<div class="provider-card-desc">' +
+          escapeHtml(providerInfo.subtitle || "") +
+          "</div>" +
+          '<div class="provider-card-actions">' +
+          '<button type="button" class="' +
+          (isCodex ? "primary" : "") +
+          '" data-provider-config="' +
+          escapeHtml(providerID) +
+          '">configure</button>' +
+          '<span class="provider-card-status">' +
+          escapeHtml(connected ? "configured" : isCodex ? "available" : "coming soon") +
+          "</span>" +
+          "</div>";
+        providerListEl.appendChild(card);
+      }
+    }
+
+    function setActiveProvider(providerID) {
+      const next = String(providerID || "").trim().toLowerCase();
+      state.activeProvider = next;
+      renderProviderList();
+      setProviderConfigOpen(true);
+      const info = providerCatalog.find((item) => item.id === next);
+      providerConfigTitleEl.textContent = (info ? info.label : next || "Provider") + " Configuration";
+      providerCodexPanelEl.classList.toggle("hidden", next !== "codex");
+      if (next === "codex") {
+        void refreshAuthStatus();
+      }
+    }
+
+    function configureProvider(providerID) {
+      const target = String(providerID || "").trim().toLowerCase();
+      if (target !== "codex") {
+        providerCatalogStatusEl.textContent =
+          (providerCatalog.find((p) => p.id === target)?.label || target) +
+          " configuration is coming soon.";
+        return;
+      }
+      providerCatalogStatusEl.textContent = "";
+      setActiveProvider(target);
+    }
+
+    function setAuthBusy(busy) {
+      state.authBusy = Boolean(busy);
+      const ids = [
+        "auth-sign-in",
+        "auth-use-api-key",
+        "auth-save-api-key",
+        "auth-disconnect",
+      ];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = state.authBusy;
+      }
+    }
+
+    function toggleApiKeyPanel(open) {
+      authApiKeyPanelEl.classList.toggle("hidden", !open);
     }
 
     function renderAuthStatus(payload) {
       const connected = Boolean(payload && payload.connected);
+      const method = payload && payload.auth_method ? String(payload.auth_method) : "";
       authConnectedEl.textContent = connected ? "yes" : "no";
       authAccountEl.textContent = connected ? String(payload.account_id || "--") : "--";
+      authMethodEl.textContent = connected ? authMethodLabel(method) : "--";
       authExpiresEl.textContent = connected ? shortTime(payload.expires_at) : "--";
       authRefreshEl.textContent = connected ? shortTime(payload.last_refresh_at) : "--";
+      state.providerStatus.codex = {
+        connected,
+        account_id: connected ? String(payload.account_id || "") : "",
+        expires_at: connected ? String(payload.expires_at || "") : "",
+        last_refresh_at: connected ? String(payload.last_refresh_at || "") : "",
+        auth_method: connected ? method : "",
+      };
+      renderProviderList();
       setAuthStatus(connected ? "connected" : "disconnected", connected ? "ok" : "muted");
     }
 
@@ -555,6 +1560,7 @@
         const status = await fetchJSON("/v1/auth/codex/status");
         renderAuthStatus(status);
       } catch (err) {
+        renderAuthStatus({ connected: false });
         if (err && err.message && err.message.includes("HTTP 401")) {
           setAuthStatus("unauthorized", "err");
         } else {
@@ -563,70 +1569,755 @@
       }
     }
 
-    async function startConnect() {
-      try {
-        const session = await postJSON("/v1/auth/codex/connect/start", { actor: authActor() });
-        state.authSession = session;
-        document.getElementById("auth-device-code").value = session.device_code || "";
-        authFlowMessageEl.textContent =
-          "Enter code " + (session.user_code || "--") +
-          " at " + (session.verification_uri || "--") +
-          " then click complete.";
-        setAuthStatus("connect started", "ok");
-      } catch (err) {
-        setAuthStatus("connect start failed", "err");
-        authFlowMessageEl.textContent = err.message || "connect start error";
+    function isRetryableConnectError(err) {
+      const msg = String((err && err.message) || "").toLowerCase();
+      return (
+        msg.includes("authorization_pending") ||
+        msg.includes("authorization pending") ||
+        msg.includes("slow_down") ||
+        msg.includes("slow down") ||
+        msg.includes("pending")
+      );
+    }
+
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function completeConnectWithPolling(deviceCode, intervalSeconds, maxAttempts) {
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          await postJSON("/v1/auth/codex/connect/complete", {
+            actor: authActor(),
+            device_code: deviceCode,
+          });
+          return;
+        } catch (err) {
+          const retry = isRetryableConnectError(err) && attempt < maxAttempts - 1;
+          if (!retry) throw err;
+          await delay(Math.max(1, intervalSeconds) * 1000);
+        }
       }
     }
 
-    async function completeConnect() {
-      const deviceCode = document.getElementById("auth-device-code").value.trim() || (state.authSession && state.authSession.device_code) || "";
-      if (!deviceCode) {
-        setAuthStatus("device code required", "err");
+    async function signInWithOpenAI() {
+      if (state.activeProvider !== "codex") {
+        authFlowMessageEl.textContent = "Select Codex in the provider list first.";
         return;
       }
+      toggleApiKeyPanel(false);
+      setAuthBusy(true);
+      setAuthStatus("starting sign-in", "muted");
       try {
-        await postJSON("/v1/auth/codex/connect/complete", {
-          actor: authActor(),
-          device_code: deviceCode
-        });
-        authFlowMessageEl.textContent = "Provider connected.";
+        const session = await postJSON("/v1/auth/codex/connect/start", { actor: authActor() });
+        state.authSession = session;
+        const userCode = session.user_code || "--";
+        const verifyURL = session.verification_uri || "";
+        authFlowMessageEl.textContent =
+          "Browser sign-in started. If prompted, enter code " + userCode + ".";
+        if (verifyURL) {
+          window.open(verifyURL, "_blank", "noopener,noreferrer");
+        }
+        const deviceCode = String(session.device_code || "").trim();
+        if (!deviceCode) {
+          throw new Error("missing device code");
+        }
+        await completeConnectWithPolling(deviceCode, Number(session.interval_seconds) || 3, 30);
         state.authSession = null;
+        authFlowMessageEl.textContent = "Provider connected with OpenAI sign-in.";
         await refreshAuthStatus();
       } catch (err) {
-        setAuthStatus("connect complete failed", "err");
-        authFlowMessageEl.textContent = err.message || "connect complete error";
+        setAuthStatus("sign-in failed", "err");
+        authFlowMessageEl.textContent = err.message || "sign-in error";
+      } finally {
+        setAuthBusy(false);
+      }
+    }
+
+    async function saveAPIKey() {
+      if (state.activeProvider !== "codex") {
+        authFlowMessageEl.textContent = "Select Codex in the provider list first.";
+        return;
+      }
+      const apiKey = document.getElementById("auth-api-key").value.trim();
+      if (!apiKey) {
+        setAuthStatus("API key required", "err");
+        return;
+      }
+      setAuthBusy(true);
+      try {
+        await postJSON("/v1/auth/codex/connect/api-key", {
+          actor: authActor(),
+          api_key: apiKey,
+          account_id: document.getElementById("auth-account-id").value.trim(),
+        });
+        document.getElementById("auth-api-key").value = "";
+        document.getElementById("auth-account-id").value = "";
+        authFlowMessageEl.textContent = "API key saved and provider connected.";
+        toggleApiKeyPanel(false);
+        await refreshAuthStatus();
+      } catch (err) {
+        setAuthStatus("API key save failed", "err");
+        authFlowMessageEl.textContent = err.message || "API key auth error";
+      } finally {
+        setAuthBusy(false);
       }
     }
 
     async function disconnectProvider() {
+      setAuthBusy(true);
       try {
         await postJSON("/v1/auth/codex/disconnect", { actor: authActor() });
         state.authSession = null;
-        authFlowMessageEl.textContent = "Provider disconnected.";
+        authFlowMessageEl.textContent = "Provider signed out.";
         await refreshAuthStatus();
-        return true;
       } catch (err) {
-        setAuthStatus("disconnect failed", "err");
-        authFlowMessageEl.textContent = err.message || "disconnect error";
-        return false;
+        setAuthStatus("sign out failed", "err");
+        authFlowMessageEl.textContent = err.message || "sign out error";
+      } finally {
+        setAuthBusy(false);
       }
     }
 
-    async function reconnectProvider() {
-      const disconnected = await disconnectProvider();
-      if (disconnected) {
-        await startConnect();
+    function setPodCreateStatus(message, level) {
+      podCreateStatusEl.textContent = message;
+      podCreateStatusEl.style.color =
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+    }
+
+    function setPodCreateBusy(busy) {
+      state.podCreateBusy = Boolean(busy);
+      podCreateLoadIssuesEl.disabled = state.podCreateBusy;
+      podCreateRefreshIssuesEl.disabled = state.podCreateBusy;
+      podCreateProjectEl.disabled = state.podCreateBusy;
+      podCreateIssueEl.disabled = state.podCreateBusy || podCreateIssueEl.options.length <= 1;
+      podCreateBranchEl.disabled = state.podCreateBusy;
+      podCreateSourceBranchEl.disabled = state.podCreateBusy;
+      podCreateAgentEl.disabled = state.podCreateBusy;
+      podCreatePromptEl.disabled = state.podCreateBusy;
+      podCreateSubmitEl.disabled = state.podCreateBusy;
+    }
+
+    function resetPodCreateWorkflow() {
+      podCreateBranchEl.value = "";
+      podCreateSourceBranchEl.value = "main";
+      podCreateAgentEl.value = "codex";
+      podCreatePromptEl.value = "";
+      podCreateIssuePreviewEl.textContent = "Select a project and load issues.";
+    }
+
+    function setPodCreateOpen(open) {
+      const isOpen = Boolean(open);
+      podCreatePanelEl.classList.toggle("hidden", !isOpen);
+      if (isOpen) {
+        renderPodProjectOptions();
+        resetPodCreateWorkflow();
+      }
+      setPodCreateStatus("", "muted");
+    }
+
+    function slugifySegment(value) {
+      const out = String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      return out || "loop";
+    }
+
+    function parseGitHubRepository(repoURL) {
+      const raw = String(repoURL || "").trim();
+      if (!raw) return "";
+      const ssh = raw.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i);
+      if (ssh) {
+        return ssh[1] + "/" + ssh[2];
+      }
+      try {
+        const url = new URL(raw);
+        if (!/github\.com$/i.test(url.hostname)) return "";
+        const parts = url.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+        if (parts.length < 2) return "";
+        return parts[0] + "/" + parts[1].replace(/\.git$/i, "");
+      } catch (_) {
+        return "";
       }
     }
 
-    function openVerifyURL() {
-      const uri = state.authSession && state.authSession.verification_uri;
-      if (!uri) {
-        authFlowMessageEl.textContent = "No active device flow. Click connect first.";
+    function normalizeBranchName(raw) {
+      const value = String(raw || "")
+        .trim()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-zA-Z0-9._/-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^[-/]+|[-/]+$/g, "");
+      return value;
+    }
+
+    function selectedPodProject() {
+      const projectID = String(podCreateProjectEl.value || "").trim();
+      if (!projectID) return null;
+      return state.projects.find((item) => item.id === projectID) || null;
+    }
+
+    function renderPodIssuePreview() {
+      const project = selectedPodProject();
+      if (!project) {
+        podCreateIssuePreviewEl.textContent = "Select a project and load issues.";
         return;
       }
-      window.open(uri, "_blank", "noopener,noreferrer");
+      const issueNumber = Number(podCreateIssueEl.value || 0);
+      if (!Number.isFinite(issueNumber) || issueNumber <= 0) {
+        podCreateIssuePreviewEl.textContent = "Select an issue for this workspace.";
+        return;
+      }
+      const issues = state.podProjectIssues[project.id] || [];
+      const issue = issues.find((item) => item.number === issueNumber);
+      if (!issue) {
+        podCreateIssuePreviewEl.textContent = "Issue not found in current list.";
+        return;
+      }
+      podCreateIssuePreviewEl.textContent =
+        "#" + String(issue.number) + " " + String(issue.title || "").trim();
+      if (!podCreateBranchEl.value.trim()) {
+        podCreateBranchEl.value =
+          "issue-" + String(issue.number) + "-" + slugifySegment(issue.title || "workspace");
+      }
+    }
+
+    function selectedPodIssue() {
+      const project = selectedPodProject();
+      if (!project) return null;
+      const issueNumber = Number(podCreateIssueEl.value || 0);
+      if (!Number.isFinite(issueNumber) || issueNumber <= 0) return null;
+      const issues = state.podProjectIssues[project.id] || [];
+      return issues.find((item) => item.number === issueNumber) || null;
+    }
+
+    function renderPodIssueOptions(projectID) {
+      const project = state.projects.find((item) => item.id === projectID);
+      const previous = Number(podCreateIssueEl.value || 0);
+      podCreateIssueEl.innerHTML = '<option value="">Select issue</option>';
+      if (!project) {
+        podCreateIssueEl.disabled = true;
+        resetPodCreateWorkflow();
+        renderPodIssuePreview();
+        return;
+      }
+      const issues = state.podProjectIssues[project.id] || [];
+      podCreateIssueEl.disabled = issues.length === 0;
+      for (const issue of issues) {
+        const option = document.createElement("option");
+        option.value = String(issue.number);
+        option.textContent = "#" + String(issue.number) + " " + String(issue.title || "").trim();
+        podCreateIssueEl.appendChild(option);
+      }
+      if (issues.some((item) => item.number === previous)) {
+        podCreateIssueEl.value = String(previous);
+      }
+      renderPodIssuePreview();
+    }
+
+    function renderPodProjectOptions() {
+      const selected = String(podCreateProjectEl.value || "").trim();
+      podCreateProjectEl.innerHTML = '<option value="">Select project</option>';
+      const sorted = state.projects.slice().sort((a, b) => a.name.localeCompare(b.name));
+      for (const project of sorted) {
+        const option = document.createElement("option");
+        option.value = project.id;
+        option.textContent = project.name;
+        podCreateProjectEl.appendChild(option);
+      }
+      if (selected && sorted.some((item) => item.id === selected)) {
+        podCreateProjectEl.value = selected;
+      } else if (sorted.length > 0) {
+        podCreateProjectEl.value = sorted[0].id;
+      } else {
+        podCreateProjectEl.value = "";
+      }
+      renderPodIssueOptions(podCreateProjectEl.value);
+    }
+
+    async function loadProjectIssues(refresh) {
+      const project = selectedPodProject();
+      if (!project) {
+        setPodCreateStatus("Select a project first.", "err");
+        return;
+      }
+      if (!refresh && Array.isArray(state.podProjectIssues[project.id])) {
+        renderPodIssueOptions(project.id);
+        return;
+      }
+      const repository = parseGitHubRepository(project.repo_url);
+      if (!repository) {
+        setPodCreateStatus("Project repository URL must be a valid github.com repo.", "err");
+        return;
+      }
+      setPodCreateBusy(true);
+      setPodCreateStatus("Loading issues...", "muted");
+      try {
+        const headers = { Accept: "application/vnd.github+json" };
+        const credential = String(state.projectCredentials[project.id] || "").trim();
+        if (credential) {
+          headers.Authorization = "Bearer " + credential;
+        }
+        const res = await fetch(
+          "https://api.github.com/repos/" + repository + "/issues?state=open&per_page=50",
+          { headers },
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = body && body.message ? String(body.message) : "issue fetch failed";
+          throw new Error(msg);
+        }
+        const issues = Array.isArray(body)
+          ? body
+              .filter((item) => item && !item.pull_request)
+              .map((item) => ({
+                number: Number(item.number || 0),
+                title: String(item.title || "").trim(),
+                body: String(item.body || ""),
+                url: String(item.html_url || ""),
+                labels: Array.isArray(item.labels)
+                  ? item.labels
+                      .map((label) =>
+                        typeof label === "string"
+                          ? label
+                          : label && typeof label.name === "string"
+                          ? label.name
+                          : "",
+                      )
+                      .filter(Boolean)
+                  : [],
+              }))
+              .filter((item) => Number.isFinite(item.number) && item.number > 0 && item.title)
+          : [];
+        state.podProjectIssues[project.id] = issues;
+        renderPodIssueOptions(project.id);
+        setPodCreateStatus("Loaded " + String(issues.length) + " open issue(s).", "ok");
+      } catch (err) {
+        setPodCreateStatus(err.message || "failed to load issues", "err");
+      } finally {
+        setPodCreateBusy(false);
+      }
+    }
+
+    async function startLoopFromIssue() {
+      const project = selectedPodProject();
+      if (!project) {
+        setPodCreateStatus("Select a project first.", "err");
+        return;
+      }
+      const issue = selectedPodIssue();
+      if (!issue) {
+        setPodCreateStatus("Select an issue first.", "err");
+        return;
+      }
+      const repository = parseGitHubRepository(project.repo_url);
+      if (!repository) {
+        setPodCreateStatus("Project repository URL must be a valid github.com repo.", "err");
+        return;
+      }
+      const branch = normalizeBranchName(podCreateBranchEl.value);
+      if (!branch) {
+        setPodCreateStatus("Workspace branch is required.", "err");
+        return;
+      }
+      const sourceBranch = normalizeBranchName(podCreateSourceBranchEl.value) || "main";
+      const agent = String(podCreateAgentEl.value || "codex").trim().toLowerCase() || "codex";
+      const prompt = String(podCreatePromptEl.value || "").trim();
+      const loopID = slugifySegment(project.name || project.id || "project") + "/" + branch;
+      const sourceRef = repository + "#" + String(issue.number);
+      const descriptionParts = [
+        "Workspace request from console",
+        "",
+        "Branch: " + branch,
+        "Base branch: " + sourceBranch,
+        "Agent: " + agent,
+        "Issue: " + sourceRef,
+      ];
+      if (prompt) {
+        descriptionParts.push("", "Prompt:", prompt);
+      }
+      if (issue.body) {
+        descriptionParts.push("", "Issue Body:", issue.body.trim());
+      }
+
+      setPodCreateBusy(true);
+      setPodCreateStatus("Creating workspace loop...", "muted");
+      try {
+        const payload = {
+          loop_id: loopID,
+          idempotency_key: "github:" + repository + "#" + String(issue.number),
+          title: "Workspace " + branch + ": " + issue.title,
+          description: descriptionParts.join("\n"),
+          source_type: "github_issue",
+          source_ref: sourceRef,
+          metadata: {
+            project_id: project.id,
+            project_name: project.name,
+            github_repository: repository,
+            github_issue_number: String(issue.number),
+            github_issue_url: issue.url,
+            github_labels: issue.labels.join(","),
+            workspace_branch: branch,
+            workspace_source_branch: sourceBranch,
+            workspace_agent: agent,
+            workspace_prompt: prompt,
+          },
+        };
+        const result = await postJSON("/v1/loops", payload);
+        setPodCreateStatus("Workspace loop started for issue #" + String(issue.number) + ".", "ok");
+        setPodCreateOpen(false);
+        await refreshLoops();
+        if (result && result.loop_id) {
+          selectLoop(String(result.loop_id));
+        }
+      } catch (err) {
+        setPodCreateStatus(err.message || "failed to create loop", "err");
+      } finally {
+        setPodCreateBusy(false);
+      }
+    }
+
+    function projectInput(id) {
+      return document.getElementById(id);
+    }
+
+    function loadProjectsFromStorage() {
+      try {
+        const raw = window.localStorage.getItem(projectStorageKey);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+          .map((item) => ({
+            id: String(item.id || "").trim(),
+            name: String(item.name || "").trim(),
+            repo_url: String(item.repo_url || "").trim(),
+            github_user: String(item.github_user || "").trim(),
+            credential_set: Boolean(item.credential_set),
+            updated_at: String(item.updated_at || ""),
+            workflow_status: String(item.workflow_status || "new").trim() || "new",
+            last_action_at: String(item.last_action_at || ""),
+          }))
+          .filter((item) => item.id && item.name && item.repo_url);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function persistProjects() {
+      const payload = state.projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        repo_url: project.repo_url,
+        github_user: project.github_user,
+        credential_set: Boolean(project.credential_set),
+        updated_at: project.updated_at,
+        workflow_status: project.workflow_status || "new",
+        last_action_at: project.last_action_at || "",
+      }));
+      try {
+        window.localStorage.setItem(projectStorageKey, JSON.stringify(payload));
+      } catch (_) {}
+    }
+
+    function setProjectEditorOpen(open) {
+      const isOpen = Boolean(open);
+      projectConfigPanelEl.classList.toggle("hidden", !isOpen);
+      projectListPanelEl.classList.toggle("hidden", isOpen);
+      projectAddEl.classList.toggle("hidden", isOpen);
+    }
+
+    function openProjectEditor() {
+      clearProjectForm();
+      setProjectActionStatus("", "muted");
+      setProjectEditorOpen(true);
+      projectInput("project-name").focus();
+    }
+
+    function clearProjectForm() {
+      state.editingProjectID = "";
+      projectInput("project-name").value = "";
+      projectInput("project-repo-url").value = "";
+      projectInput("project-github-user").value = "";
+      projectInput("project-github-credential").value = "";
+      projectFormStatusEl.textContent = "";
+      document.getElementById("project-save").textContent = "save project";
+    }
+
+    function setProjectFormStatus(message, level) {
+      projectFormStatusEl.textContent = message;
+      projectFormStatusEl.style.color =
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+    }
+
+    function setProjectActionStatus(message, level) {
+      projectActionStatusEl.textContent = message;
+      projectActionStatusEl.style.color =
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+    }
+
+    function projectWorkflowLabel(raw) {
+      const value = String(raw || "new").trim().toLowerCase();
+      if (value === "in_review") return "in review";
+      if (value === "approved") return "approved";
+      if (value === "pr_submitted") return "pr submitted";
+      return "new";
+    }
+
+    function isCompletedLoopStatus(status) {
+      const value = String(status || "").trim().toLowerCase();
+      return value === "synced" || value === "flatline" || value === "cancelled";
+    }
+
+    function renderProjects() {
+      projectListEl.innerHTML = "";
+      projectEmptyEl.classList.toggle("hidden", state.projects.length > 0);
+      renderPodProjectOptions();
+      if (state.projects.length === 0) return;
+
+      const sorted = state.projects.slice().sort((a, b) => a.name.localeCompare(b.name));
+      for (const project of sorted) {
+        const projectNameKey = String(project.name || "").trim().toLowerCase();
+        const completedLoops = state.loops.filter((loop) => {
+          const loopProject = String(loop.project || "").trim().toLowerCase();
+          return loopProject === projectNameKey && isCompletedLoopStatus(loop.status);
+        });
+        const completedCount = completedLoops.length;
+        const loopRows = completedLoops.map((loop) => {
+          const workflow = String(state.loopWorkflow[loop.loopID] || "new").toLowerCase();
+          const workflowClass =
+            workflow === "approved"
+              ? "state-synced"
+              : workflow === "pr_submitted"
+              ? "state-overwriting"
+              : workflow === "in_review"
+              ? "state-unresolved"
+              : "state-flatline";
+          return (
+            '<article class="project-loop-row">' +
+            '<div class="project-loop-head">' +
+            '<span class="project-loop-id">' + escapeHtml(loop.loopID) + "</span>" +
+            '<span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + "</span>" +
+            "</div>" +
+            '<div class="project-tile-actions">' +
+            '<button type="button" data-project-action="review-work" data-project-id="' + escapeHtml(project.id) + '" data-loop-id="' + escapeHtml(loop.loopID) + '">review</button>' +
+            '<button type="button" data-project-action="approve" data-project-id="' + escapeHtml(project.id) + '" data-loop-id="' + escapeHtml(loop.loopID) + '">approve</button>' +
+            '<button type="button" class="primary" data-project-action="submit-pr" data-project-id="' + escapeHtml(project.id) + '" data-loop-id="' + escapeHtml(loop.loopID) + '">submit PR</button>' +
+            "</div>" +
+            '<div class="project-meta"><span>Workflow</span><span class="badge ' + workflowClass + '">' + escapeHtml(projectWorkflowLabel(workflow)) + "</span></div>" +
+            "</article>"
+          );
+        }).join("");
+        const section = document.createElement("details");
+        section.className = "project-tile";
+        section.setAttribute("role", "listitem");
+        section.open = true;
+        section.innerHTML =
+          '<summary class="collapsible-summary">' +
+          '<span class="collapsible-label"><span class="collapsible-caret">&gt;</span>' +
+          '<span class="project-name">' +
+          escapeHtml(project.name) +
+          "</span></span>" +
+          '<span class="muted">' + String(completedCount) + " completed</span></summary>" +
+          '<div class="collapsible-body">' +
+          '<div class="project-repo">' +
+          escapeHtml(project.repo_url) +
+          "</div>" +
+          '<div class="project-meta">' +
+          "<span>GitHub: " +
+          escapeHtml(project.github_user || "--") +
+          "</span>" +
+          "<span>Updated " +
+          escapeHtml(shortTime(project.updated_at)) +
+          "</span></div>" +
+          '<div class="project-meta">' +
+          "<span>Credential " +
+          escapeHtml(project.credential_set ? "set" : "missing") +
+          "</span>" +
+          "<span>Last action " +
+          escapeHtml(shortTime(project.last_action_at)) +
+          "</span></div>" +
+          (completedCount > 0
+            ? '<div class="project-loop-list">' + loopRows + "</div>"
+            : '<div class="status-note">No completed loops for this project yet.</div>') +
+          '<div class="project-card-actions">' +
+          '<button type="button" class="project-action-icon" aria-label="Edit project" title="Edit project" data-project-action="edit" data-project-id="' +
+          escapeHtml(project.id) +
+          '">&#9998;</button>' +
+          '<button type="button" class="project-action-icon danger" aria-label="Remove project" title="Remove project" data-project-action="remove" data-project-id="' +
+          escapeHtml(project.id) +
+          '">&#128465;</button>' +
+          "</div>" +
+          "</div>";
+        projectListEl.appendChild(section);
+      }
+    }
+
+    function editProject(projectID) {
+      const project = state.projects.find((item) => item.id === projectID);
+      if (!project) return;
+      setProjectEditorOpen(true);
+      state.editingProjectID = project.id;
+      projectInput("project-name").value = project.name;
+      projectInput("project-repo-url").value = project.repo_url;
+      projectInput("project-github-user").value = project.github_user;
+      projectInput("project-github-credential").value = "";
+      document.getElementById("project-save").textContent = "update project";
+      setProjectFormStatus("Editing " + project.name + ".", "muted");
+    }
+
+    function removeProject(projectID) {
+      const removed = state.projects.find((item) => item.id === projectID);
+      state.projects = state.projects.filter((item) => item.id !== projectID);
+      delete state.projectCredentials[projectID];
+      if (state.editingProjectID === projectID) {
+        clearProjectForm();
+      }
+      persistProjects();
+      renderProjects();
+      if (removed) {
+        setProjectActionStatus("Removed project " + removed.name + ".", "ok");
+      }
+    }
+
+    function runProjectWorkflowAction(projectID, loopID, action) {
+      const project = state.projects.find((item) => item.id === projectID);
+      if (!project) return;
+      const loopRef = String(loopID || "").trim();
+      if (!loopRef) return;
+
+      const next = String(action || "").trim().toLowerCase();
+      if (next === "review-work") {
+        state.loopWorkflow[loopRef] = "in_review";
+        project.last_action_at = new Date().toISOString();
+        setProjectActionStatus("Review started for " + loopRef + ".", "ok");
+      } else if (next === "approve") {
+        state.loopWorkflow[loopRef] = "approved";
+        project.last_action_at = new Date().toISOString();
+        setProjectActionStatus("Approved work for " + loopRef + ".", "ok");
+      } else if (next === "submit-pr") {
+        if (!project.credential_set) {
+          setProjectActionStatus(
+            "Cannot submit PR for " + project.name + ": missing GitHub credential.",
+            "err",
+          );
+          return;
+        }
+        state.loopWorkflow[loopRef] = "pr_submitted";
+        project.last_action_at = new Date().toISOString();
+        setProjectActionStatus("PR submitted for " + loopRef + ".", "ok");
+      } else {
+        return;
+      }
+      project.updated_at = new Date().toISOString();
+      persistProjects();
+      renderProjects();
+    }
+
+    function saveProject() {
+      const name = projectInput("project-name").value.trim();
+      const repoURL = projectInput("project-repo-url").value.trim();
+      const githubUser = projectInput("project-github-user").value.trim();
+      const githubCredential = projectInput("project-github-credential").value.trim();
+
+      if (!name) {
+        setProjectFormStatus("project name is required", "err");
+        return;
+      }
+      if (!repoURL) {
+        setProjectFormStatus("repository URL is required", "err");
+        return;
+      }
+      if (!repoURL.includes("github.com")) {
+        setProjectFormStatus("repository URL must target github.com", "err");
+        return;
+      }
+      if (!githubUser) {
+        setProjectFormStatus("GitHub username or app/bot name is required", "err");
+        return;
+      }
+
+      const existing = state.editingProjectID
+        ? state.projects.find((item) => item.id === state.editingProjectID)
+        : null;
+      const projectID =
+        state.editingProjectID ||
+        ("proj-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1000).toString(36));
+      const credentialSet = Boolean(githubCredential) || Boolean(existing && existing.credential_set);
+
+      if (!credentialSet) {
+        setProjectFormStatus("GitHub credential is required", "err");
+        return;
+      }
+
+      if (githubCredential) {
+        state.projectCredentials[projectID] = githubCredential;
+      }
+
+      const project = {
+        id: projectID,
+        name,
+        repo_url: repoURL,
+        github_user: githubUser,
+        credential_set: credentialSet,
+        updated_at: new Date().toISOString(),
+        workflow_status: existing && existing.workflow_status ? existing.workflow_status : "new",
+        last_action_at: existing && existing.last_action_at ? existing.last_action_at : "",
+      };
+
+      const index = state.projects.findIndex((item) => item.id === projectID);
+      if (index >= 0) {
+        state.projects[index] = project;
+      } else {
+        state.projects.push(project);
+      }
+
+      persistProjects();
+      renderProjects();
+      clearProjectForm();
+      setProjectEditorOpen(false);
+      setProjectActionStatus("Saved project " + project.name + ".", "ok");
+    }
+
+    function initProjects() {
+      state.projects = loadProjectsFromStorage();
+      renderProjects();
+      setProjectEditorOpen(false);
+    }
+
+    function projectFromLoop(item, record, loopID) {
+      const candidates = [
+        item.project_id,
+        item.project,
+        record.project_id,
+        record.project,
+        record.project_name,
+      ];
+      for (const value of candidates) {
+        const trimmed = String(value || "").trim();
+        if (trimmed) return trimmed;
+      }
+      if (loopID.includes("/")) {
+        return loopID.split("/")[0];
+      }
+      if (loopID.includes(":")) {
+        return loopID.split(":")[0];
+      }
+      return "default";
     }
 
     function normalizeLoop(item) {
@@ -638,19 +2329,20 @@
       const revision = Number(item.revision || item.Revision || record.observed_revision || 0);
       return {
         loopID,
+        project: projectFromLoop(item, record, loopID),
         status,
         attempt,
         reason,
         revision,
         cpu: "--",
-        memory: "--"
+        memory: "--",
       };
     }
 
     function updateStats(loops) {
       const total = loops.length;
-      const active = loops.filter(l => isActive(l.status)).length;
-      const flatline = loops.filter(l => l.status === "flatline").length;
+      const active = loops.filter((l) => isActive(l.status)).length;
+      const flatline = loops.filter((l) => l.status === "flatline").length;
       document.getElementById("stat-total").textContent = String(total);
       document.getElementById("stat-active").textContent = String(active);
       document.getElementById("stat-flatline").textContent = String(flatline);
@@ -660,7 +2352,7 @@
     function filteredLoops() {
       const filter = document.getElementById("state-filter").value;
       const query = document.getElementById("search").value.trim().toLowerCase();
-      return state.loops.filter(loop => {
+      return state.loops.filter((loop) => {
         if (filter === "active" && !isActive(loop.status)) return false;
         if (filter !== "all" && filter !== "active" && loop.status !== filter) return false;
         if (query && !loop.loopID.toLowerCase().includes(query)) return false;
@@ -670,36 +2362,104 @@
 
     function renderGrid() {
       const loops = filteredLoops();
-      if (loops.length === 0) {
-        gridEl.innerHTML = '<div class="empty">No anomalies for selected filter.</div>';
+      gridEl.innerHTML = "";
+
+      const grouped = new Map();
+      for (const loop of loops) {
+        const label = String(loop.project || "default").trim() || "default";
+        const key = label.toLowerCase();
+        if (!grouped.has(key)) grouped.set(key, { label, loops: [] });
+        grouped.get(key).loops.push(loop);
+      }
+
+      const knownProjects = new Map();
+      for (const project of state.projects) {
+        const label = String(project.name || "").trim();
+        if (!label) continue;
+        knownProjects.set(label.toLowerCase(), label);
+      }
+      for (const [key, value] of grouped.entries()) {
+        if (!knownProjects.has(key)) knownProjects.set(key, value.label);
+      }
+
+      if (knownProjects.size === 0) {
+        gridEl.innerHTML = '<div class="empty">No pods for selected filter.</div>';
         return;
       }
-      gridEl.innerHTML = "";
-      for (const loop of loops) {
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "card" + (state.selectedLoop === loop.loopID ? " selected" : "");
-        card.setAttribute("role", "listitem");
-        card.innerHTML = [
-          '<div class="row">',
-          '  <span class="loop-id">' + escapeHtml(loop.loopID) + '</span>',
-          '  <span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + '</span>',
-          "</div>",
-          '<div class="metrics">',
-          '  <span><b>CPU</b><i>' + escapeHtml(loop.cpu) + "</i></span>",
-          '  <span><b>MEM</b><i>' + escapeHtml(loop.memory) + "</i></span>",
-          '  <span><b>ATT</b><i>' + String(loop.attempt) + "</i></span>",
-          '  <span><b>REV</b><i>' + String(loop.revision) + "</i></span>",
-          "</div>",
-          loop.reason ? '<div class="muted" style="margin-top:6px;font-size:.76rem;">' + escapeHtml(loop.reason) + "</div>" : ""
-        ].join("");
-        card.addEventListener("click", () => selectLoop(loop.loopID));
-        gridEl.appendChild(card);
+
+      const groups = Array.from(knownProjects.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+      for (const [projectKey, projectLabel] of groups) {
+        const projectGroup = grouped.get(projectKey);
+        const projectLoops = projectGroup ? projectGroup.loops : [];
+        const groupEl = document.createElement("details");
+        groupEl.className = "pod-group";
+        groupEl.open = true;
+        groupEl.innerHTML =
+          '<summary class="pod-group-head">' +
+          '<span class="pod-group-label"><span class="pod-group-caret">&gt;</span>' +
+          "<strong>" +
+          escapeHtml(projectLabel) +
+          "</strong></span>" +
+          '<span class="muted">' +
+          String(projectLoops.length) +
+          " pod(s)</span></summary>" +
+          '<div class="pod-group-grid"></div>';
+        const groupGridEl = groupEl.querySelector(".pod-group-grid");
+
+        if (projectLoops.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "status-note";
+          empty.textContent = "No pods running.";
+          groupGridEl.appendChild(empty);
+        } else {
+          for (const loop of projectLoops) {
+            const tile = document.createElement("article");
+            tile.className = "pod-tile" + (state.selectedLoop === loop.loopID ? " selected" : "");
+            tile.setAttribute("role", "listitem");
+            tile.tabIndex = 0;
+
+            tile.innerHTML = [
+              '<div class="tile-head">',
+              '  <div class="tile-title loop-id">' + escapeHtml(loop.loopID) + "</div>",
+              '  <span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + "</span>",
+              "</div>",
+              '<div class="tile-loop">' + escapeHtml(loop.project) + "</div>",
+              '<div class="tile-reason">' +
+                escapeHtml(loop.reason || "no recent update") +
+              "</div>",
+              '<div class="tile-health">',
+              '  <span class="tile-health-dot" aria-hidden="true"></span>',
+              '  <span class="tile-health-text">1/1 containers ready</span>',
+              "</div>",
+              '<div class="tile-meta">',
+              '  <span>ATT ' + String(loop.attempt) + "</span>",
+              '  <span>REV ' + String(loop.revision) + "</span>",
+              "</div>",
+            ].join("");
+
+            tile.addEventListener("click", () => selectLoop(loop.loopID));
+            tile.addEventListener("keydown", (ev) => {
+              if (ev.key === "Enter" || ev.key === " ") {
+                ev.preventDefault();
+                selectLoop(loop.loopID);
+              }
+            });
+
+            groupGridEl.appendChild(tile);
+          }
+        }
+        gridEl.appendChild(groupEl);
       }
     }
 
     function escapeHtml(v) {
-      return String(v).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+      return String(v).replace(/[&<>"']/g, (m) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[m]));
     }
 
     async function refreshLoops() {
@@ -708,14 +2468,14 @@
         state.loops = Array.isArray(raw) ? raw.map(normalizeLoop) : [];
         updateStats(state.loops);
         renderGrid();
+        renderProjects();
         apiDotEl.className = "dot ok";
-        if (!state.selectedLoop && state.loops.length > 0) {
-          selectLoop(state.loops[0].loopID);
-        } else if (state.selectedLoop && !state.loops.some(l => l.loopID === state.selectedLoop)) {
-          clearJournal("selected anomaly no longer present");
+        if (state.selectedLoop && !state.loops.some((l) => l.loopID === state.selectedLoop)) {
+          clearJournal("selected pod no longer present");
           state.selectedLoop = "";
+          renderSelectedLoop();
         }
-      } catch (err) {
+      } catch (_) {
         apiDotEl.className = "dot err";
       }
     }
@@ -742,7 +2502,8 @@
         journalLatencyEl.textContent = "p95 --";
         return;
       }
-      journalLatencyEl.textContent = "p95 " + Math.round(p95) + "ms (n=" + state.latencySamplesMs.length + ")";
+      journalLatencyEl.textContent =
+        "p95 " + Math.round(p95) + "ms (n=" + state.latencySamplesMs.length + ")";
     }
 
     function appendJournal(entry) {
@@ -774,7 +2535,7 @@
         terminalEl.textContent = "[journal] waiting for entries...\n";
         return;
       }
-      const lines = state.journalEntries.map(entry => {
+      const lines = state.journalEntries.map((entry) => {
         const ts = String(entry.timestamp || entry.Timestamp || "");
         const level = String(entry.level || entry.Level || "info").toLowerCase();
         const phase = String(entry.phase || entry.Phase || "-");
@@ -788,6 +2549,7 @@
 
     function selectLoop(loopID) {
       state.selectedLoop = loopID;
+      renderSelectedLoop();
       document.getElementById("journal-title").textContent = "Live Journal: " + loopID;
       renderGrid();
       clearJournal("attaching to stream...");
@@ -813,7 +2575,7 @@
         return;
       }
       const confirm = window.confirm(
-        "Apply override?\n\nLoop: " + loopID + "\nTarget: " + targetState + "\nReason: " + reason
+        "Apply override?\n\nLoop: " + loopID + "\nTarget: " + targetState + "\nReason: " + reason,
       );
       if (!confirm) return;
       try {
@@ -821,10 +2583,11 @@
           loop_id: loopID,
           target_state: targetState,
           reason,
-          actor
+          actor,
         });
         journalStatusEl.textContent = "override applied";
-        terminalEl.textContent += "[override] state -> " + targetState + " (revision " + (res.revision || "?") + ")\n";
+        terminalEl.textContent +=
+          "[override] state -> " + targetState + " (revision " + (res.revision || "?") + ")\n";
         terminalEl.scrollTop = terminalEl.scrollHeight;
         document.getElementById("override-confirm").value = "";
         await refreshLoops();
@@ -857,7 +2620,12 @@
         state.reconnectTimer = setTimeout(() => attachStream(loopID, 0), delayMs);
         return;
       }
-      const streamURL = apiBase + "/v1/loops/" + encodeURIComponent(loopID) + "/journal/stream?since_seq=" + state.journalLastSeq;
+      const streamURL =
+        apiBase +
+        "/v1/loops/" +
+        encodeURIComponent(loopID) +
+        "/journal/stream?since_seq=" +
+        state.journalLastSeq;
       journalStatusEl.textContent = "connecting";
       try {
         const source = new EventSource(streamURL);
@@ -865,7 +2633,7 @@
         source.addEventListener("ready", () => {
           journalStatusEl.textContent = "connected";
         });
-        source.addEventListener("entry", ev => {
+        source.addEventListener("entry", (ev) => {
           try {
             const parsed = JSON.parse(ev.data);
             appendJournal(parsed.entry || parsed);
@@ -883,7 +2651,9 @@
 
     async function pollJournal(loopID) {
       try {
-        const entries = await fetchJSON("/v1/loops/" + encodeURIComponent(loopID) + "/journal?limit=500");
+        const entries = await fetchJSON(
+          "/v1/loops/" + encodeURIComponent(loopID) + "/journal?limit=500",
+        );
         if (Array.isArray(entries)) {
           for (const entry of entries) appendJournal(entry);
         }
@@ -897,15 +2667,102 @@
     document.getElementById("refresh").addEventListener("click", refreshLoops);
     document.getElementById("state-filter").addEventListener("change", renderGrid);
     document.getElementById("search").addEventListener("input", renderGrid);
+    podCreateToggleEl.addEventListener("click", () => setPodCreateOpen(true));
+    podCreateCloseEl.addEventListener("click", () => setPodCreateOpen(false));
+    podCreateCancelEl.addEventListener("click", () => setPodCreateOpen(false));
+    podCreateProjectEl.addEventListener("change", () => {
+      resetPodCreateWorkflow();
+      renderPodIssueOptions(podCreateProjectEl.value);
+    });
+    podCreateIssueEl.addEventListener("change", () => {
+      renderPodIssuePreview();
+    });
+    podCreateLoadIssuesEl.addEventListener("click", () => {
+      void loadProjectIssues(false);
+    });
+    podCreateRefreshIssuesEl.addEventListener("click", () => {
+      void loadProjectIssues(true);
+    });
+    podCreateSubmitEl.addEventListener("click", () => {
+      void startLoopFromIssue();
+    });
     document.getElementById("auth-token").addEventListener("change", refreshAuthStatus);
     document.getElementById("override-apply").addEventListener("click", applyOverride);
-    document.getElementById("auth-status-refresh").addEventListener("click", refreshAuthStatus);
-    document.getElementById("auth-connect-start").addEventListener("click", startConnect);
-    document.getElementById("auth-connect-complete").addEventListener("click", completeConnect);
+    document.getElementById("provider-back").addEventListener("click", () => setProviderConfigOpen(false));
+    providerListEl.addEventListener("click", (ev) => {
+      const target = ev.target;
+      if (!(target instanceof HTMLElement)) return;
+      const control = target.closest("[data-provider-config]");
+      if (!(control instanceof HTMLElement)) return;
+      const providerID = control.getAttribute("data-provider-config") || "";
+      if (providerID) {
+        configureProvider(providerID);
+      }
+    });
+    document.getElementById("auth-sign-in").addEventListener("click", signInWithOpenAI);
+    document.getElementById("auth-use-api-key").addEventListener("click", () => toggleApiKeyPanel(true));
+    document.getElementById("auth-save-api-key").addEventListener("click", saveAPIKey);
     document.getElementById("auth-disconnect").addEventListener("click", disconnectProvider);
-    document.getElementById("auth-reconnect").addEventListener("click", reconnectProvider);
-    document.getElementById("auth-open-verify").addEventListener("click", openVerifyURL);
+    document.getElementById("project-add").addEventListener("click", openProjectEditor);
+    document.getElementById("project-save").addEventListener("click", saveProject);
+    document.getElementById("project-cancel").addEventListener("click", () => {
+      clearProjectForm();
+      setProjectEditorOpen(false);
+    });
+    projectListEl.addEventListener("click", (ev) => {
+      const target = ev.target;
+      if (!(target instanceof HTMLElement)) return;
+      const control = target.closest("[data-project-action]");
+      if (!(control instanceof HTMLElement)) return;
+      const action = control.getAttribute("data-project-action");
+      const projectID = control.getAttribute("data-project-id") || "";
+      const loopID = control.getAttribute("data-loop-id") || "";
+      if (action === "edit") {
+        editProject(projectID);
+      } else if (action === "remove") {
+        removeProject(projectID);
+      } else if (action === "review-work" || action === "approve" || action === "submit-pr") {
+        runProjectWorkflowAction(projectID, loopID, action);
+      }
+    });
+    sidebarToggleButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setSidebarOpen(!document.body.classList.contains("sidebar-open"));
+      });
+    });
+    sidebarOverlayEl.addEventListener("click", () => setSidebarOpen(false));
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") setSidebarOpen(false);
+      if (ev.key.toLowerCase() === "n") {
+        const target = ev.target;
+        const editing =
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target instanceof HTMLSelectElement ||
+          (target instanceof HTMLElement && target.isContentEditable);
+        if (!editing && pageFromHash() === "pods") {
+          ev.preventDefault();
+          setPodCreateOpen(true);
+        }
+      }
+    });
+    pageLinks.forEach((link) => {
+      link.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        setActivePage(link.getAttribute("data-page-link"), true);
+        setSidebarOpen(false);
+      });
+    });
+    window.addEventListener("hashchange", () => {
+      setActivePage(pageFromHash(), false);
+    });
 
+    setSidebarOpen(false);
+    initProjects();
+    renderProviderList();
+    setProviderConfigOpen(false);
+    setActivePage(pageFromHash(), false);
+    renderSelectedLoop();
     refreshLoops();
     refreshAuthStatus();
     setInterval(() => {
