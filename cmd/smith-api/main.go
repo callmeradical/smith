@@ -50,6 +50,7 @@ type server struct {
 	cfg         config
 	store       *store.Store
 	auth        *provider.AuthManager
+	projectCred provider.ProjectCredentialStore
 	presets     *presetCatalog
 	skillPolicy model.SkillPolicy
 	term        *terminalSessionStore
@@ -87,6 +88,18 @@ type authAPIKeyRequest struct {
 	AccountID string `json:"account_id"`
 }
 
+type projectCredentialUpsertRequest struct {
+	Actor      string `json:"actor"`
+	ProjectID  string `json:"project_id"`
+	GitHubUser string `json:"github_user"`
+	Credential string `json:"credential"`
+}
+
+type projectCredentialDeleteRequest struct {
+	Actor     string `json:"actor"`
+	ProjectID string `json:"project_id"`
+}
+
 type terminalAttachRequest struct {
 	Actor    string `json:"actor"`
 	Terminal string `json:"terminal"`
@@ -99,6 +112,10 @@ type terminalDetachRequest struct {
 type terminalCommandRequest struct {
 	Actor   string `json:"actor"`
 	Command string `json:"command"`
+}
+
+type loopDeleteRequest struct {
+	Actor string `json:"actor"`
 }
 
 type loopCreateRequest struct {
@@ -242,6 +259,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("smith-api auth store init failed: %v", err)
 	}
+	projectCredStore, ok := tokenStore.(provider.ProjectCredentialStore)
+	if !ok {
+		log.Fatalf("smith-api auth store does not support project credentials")
+	}
 
 	authManager := provider.NewAuthManager(
 		provider.ProviderCodex,
@@ -254,6 +275,7 @@ func main() {
 		cfg:         cfg,
 		store:       es,
 		auth:        authManager,
+		projectCred: projectCredStore,
 		presets:     newPresetCatalog(cfg.defaultPreset),
 		skillPolicy: cfg.skillPolicy,
 		term:        newTerminalSessionStore(),
@@ -276,6 +298,7 @@ func main() {
 	mux.HandleFunc("/v1/auth/codex/status", s.handleCodexAuthStatus)
 	mux.HandleFunc("/v1/auth/codex/credential", s.handleCodexAuthCredential)
 	mux.HandleFunc("/v1/auth/codex/disconnect", s.handleCodexAuthDisconnect)
+	mux.HandleFunc("/v1/projects/credentials/github", s.handleProjectGitHubCredential)
 
 	addr := fmt.Sprintf(":%d", cfg.port)
 	httpServer := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
@@ -632,45 +655,88 @@ func (s *server) handleEnvironmentPresetByName(w http.ResponseWriter, r *http.Re
 }
 
 func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/loops/"), "/")
-	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+	loopID, route := splitLoopRoute(r.URL.Path)
+	if strings.TrimSpace(loopID) == "" {
 		writeErr(w, http.StatusBadRequest, "loop id is required")
 		return
 	}
-	loopID := parts[0]
-
-	if len(parts) == 1 {
-		if r.Method != http.MethodGet {
+	if route == "" {
+		switch r.Method {
+		case http.MethodGet:
+			state, found, err := s.store.GetState(r.Context(), loopID)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if !found {
+				writeErr(w, http.StatusNotFound, "loop not found")
+				return
+			}
+			anomaly, anomalyFound, err := s.store.GetAnomaly(r.Context(), loopID)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if !anomalyFound {
+				writeJSON(w, http.StatusOK, map[string]any{"state": state})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"state":       state,
+				"anomaly":     anomaly,
+				"environment": anomaly.Environment,
+			})
+			return
+		case http.MethodDelete:
+			if !s.authorized(r) {
+				writeErr(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			state, found, err := s.store.GetState(r.Context(), loopID)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if !found {
+				writeErr(w, http.StatusNotFound, "loop not found")
+				return
+			}
+			if isActiveLoopState(state.Record.State) {
+				writeErr(w, http.StatusConflict, "cannot delete active loop")
+				return
+			}
+			var req loopDeleteRequest
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			actor := strings.TrimSpace(req.Actor)
+			if actor == "" {
+				actor = "operator"
+			}
+			if err := s.store.DeleteLoop(r.Context(), loopID); err != nil {
+				writeErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
+				Actor:         actor,
+				Action:        "delete-loop",
+				TargetLoopID:  loopID,
+				CorrelationID: state.Record.CorrelationID,
+				Metadata: map[string]string{
+					"final_state": string(state.Record.State),
+				},
+			})
+			writeJSON(w, http.StatusOK, map[string]any{
+				"loop_id": loopID,
+				"status":  "deleted",
+				"actor":   actor,
+			})
+			return
+		default:
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		state, found, err := s.store.GetState(r.Context(), loopID)
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if !found {
-			writeErr(w, http.StatusNotFound, "loop not found")
-			return
-		}
-		anomaly, anomalyFound, err := s.store.GetAnomaly(r.Context(), loopID)
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if !anomalyFound {
-			writeJSON(w, http.StatusOK, map[string]any{"state": state})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"state":       state,
-			"anomaly":     anomaly,
-			"environment": anomaly.Environment,
-		})
-		return
 	}
 
-	if len(parts) == 2 && parts[1] == "journal" {
+	if route == "journal" {
 		if r.Method != http.MethodGet {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
@@ -684,20 +750,19 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, journal)
 		return
 	}
-	if len(parts) == 3 && parts[1] == "control" {
-		switch parts[2] {
-		case "attach":
-			s.handleLoopAttach(w, r, loopID)
-			return
-		case "detach":
-			s.handleLoopDetach(w, r, loopID)
-			return
-		case "command":
-			s.handleLoopControlCommand(w, r, loopID)
-			return
-		}
+	if route == "control/attach" {
+		s.handleLoopAttach(w, r, loopID)
+		return
 	}
-	if len(parts) == 2 && parts[1] == "handoffs" {
+	if route == "control/detach" {
+		s.handleLoopDetach(w, r, loopID)
+		return
+	}
+	if route == "control/command" {
+		s.handleLoopControlCommand(w, r, loopID)
+		return
+	}
+	if route == "handoffs" {
 		if r.Method != http.MethodGet {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
@@ -711,7 +776,7 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, handoffs)
 		return
 	}
-	if len(parts) == 2 && parts[1] == "overrides" {
+	if route == "overrides" {
 		if r.Method != http.MethodGet {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
@@ -725,7 +790,7 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, overrides)
 		return
 	}
-	if len(parts) == 2 && parts[1] == "trace" {
+	if route == "trace" {
 		if r.Method != http.MethodGet {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
@@ -733,7 +798,7 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 		s.handleLoopTrace(w, r, loopID)
 		return
 	}
-	if len(parts) == 3 && parts[1] == "journal" && parts[2] == "stream" {
+	if route == "journal/stream" {
 		if r.Method != http.MethodGet {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
@@ -743,6 +808,31 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeErr(w, http.StatusNotFound, "endpoint not found")
+}
+
+func splitLoopRoute(path string) (loopID string, route string) {
+	remainder := strings.TrimPrefix(path, "/v1/loops/")
+	remainder = strings.TrimPrefix(remainder, "/")
+	if remainder == "" {
+		return "", ""
+	}
+	for _, suffix := range []string{
+		"/journal/stream",
+		"/control/attach",
+		"/control/detach",
+		"/control/command",
+		"/handoffs",
+		"/overrides",
+		"/journal",
+		"/trace",
+	} {
+		if strings.HasSuffix(remainder, suffix) {
+			loopID = strings.TrimSuffix(remainder, suffix)
+			loopID = strings.TrimSuffix(loopID, "/")
+			return loopID, strings.TrimPrefix(suffix, "/")
+		}
+	}
+	return remainder, ""
 }
 
 func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID string) {
@@ -1432,6 +1522,96 @@ func (s *server) handleCodexAuthDisconnect(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"connected": false})
+}
+
+func (s *server) handleProjectGitHubCredential(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if s.projectCred == nil {
+		writeErr(w, http.StatusInternalServerError, "project credential store unavailable")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+		if projectID == "" {
+			writeErr(w, http.StatusBadRequest, "project_id is required")
+			return
+		}
+		cred, found, err := s.projectCred.GetProjectCredential(r.Context(), projectID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		out := map[string]any{
+			"project_id":     projectID,
+			"credential_set": found,
+		}
+		if found {
+			out["github_user"] = strings.TrimSpace(cred.GitHubUser)
+			out["credential_masked"] = maskCredentialValue(cred.PAT)
+			out["updated_at"] = formatRFC3339OrEmpty(cred.UpdatedAt)
+			if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("reveal")), "true") {
+				out["credential"] = cred.PAT
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
+	case http.MethodPost:
+		var req projectCredentialUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		projectID := strings.TrimSpace(req.ProjectID)
+		if projectID == "" {
+			writeErr(w, http.StatusBadRequest, "project_id is required")
+			return
+		}
+		credential := strings.TrimSpace(req.Credential)
+		if credential == "" {
+			writeErr(w, http.StatusBadRequest, "credential is required")
+			return
+		}
+		cred := provider.ProjectCredential{
+			GitHubUser: strings.TrimSpace(req.GitHubUser),
+			PAT:        credential,
+			UpdatedAt:  time.Now().UTC(),
+		}
+		if err := s.projectCred.PutProjectCredential(r.Context(), projectID, cred); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"project_id":        projectID,
+			"credential_set":    true,
+			"github_user":       cred.GitHubUser,
+			"credential_masked": maskCredentialValue(cred.PAT),
+			"updated_at":        formatRFC3339OrEmpty(cred.UpdatedAt),
+		})
+	case http.MethodDelete:
+		projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+		if projectID == "" {
+			var req projectCredentialDeleteRequest
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			projectID = strings.TrimSpace(req.ProjectID)
+		}
+		if projectID == "" {
+			writeErr(w, http.StatusBadRequest, "project_id is required")
+			return
+		}
+		if err := s.projectCred.DeleteProjectCredential(r.Context(), projectID); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"project_id":     projectID,
+			"credential_set": false,
+		})
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 func (s *server) authorized(r *http.Request) bool {

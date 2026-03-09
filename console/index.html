@@ -117,12 +117,18 @@
       pointer-events: none;
       transition: opacity 180ms ease;
       z-index: 31;
+      backdrop-filter: blur(0);
+      -webkit-backdrop-filter: blur(0);
     }
 
-    body.provider-drawer-open .provider-drawer-overlay {
+    body.provider-drawer-open .provider-drawer-overlay,
+    body.project-drawer-open .provider-drawer-overlay,
+    body.pod-drawer-open .provider-drawer-overlay {
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
     }
 
     .toast-region {
@@ -268,19 +274,10 @@
       font-size: 0.78rem;
     }
 
-    .provider-settings-head {
-      font-size: 2rem;
-      line-height: 1.2;
-      margin: 2px 0 10px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-      font-weight: 500;
-    }
-
     .provider-card-grid {
       display: grid;
       gap: 12px;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       align-content: start;
     }
 
@@ -291,7 +288,6 @@
       padding: 10px;
       display: grid;
       gap: 8px;
-      min-height: 154px;
     }
 
     .provider-card-head {
@@ -307,8 +303,8 @@
     }
 
     .provider-card-desc {
-      color: var(--muted);
-      font-size: 0.78rem;
+      color: #b3c1d4;
+      font-size: 0.74rem;
       line-height: 1.35;
     }
 
@@ -322,7 +318,12 @@
 
     .provider-card-status {
       color: var(--muted);
-      font-size: 0.72rem;
+      font-size: 0.74rem;
+    }
+
+    .provider-card-actions button {
+      font-size: 0.74rem;
+      padding: 6px 8px;
     }
 
     .provider-card.connected .provider-card-name {
@@ -359,6 +360,37 @@
 
     .provider-drawer.open {
       transform: translateX(0);
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .pod-create-modal {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: min(75vw, calc(100vw - 28px));
+      min-width: min(520px, calc(100vw - 28px));
+      max-height: calc(100vh - 28px);
+      border: 0;
+      border-radius: 14px;
+      background: rgba(7, 9, 14, 0.98);
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+      padding: 12px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      overflow: auto;
+      transform: translate(-50%, -46%) scale(0.98);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform 180ms ease, opacity 180ms ease;
+      z-index: 33;
+    }
+
+    .pod-create-modal.open {
+      transform: translate(-50%, -50%) scale(1);
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
@@ -473,6 +505,11 @@
       display: grid;
       gap: 6px;
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .drawer-delete-action {
+      width: 100%;
+      margin-top: 8px;
     }
 
     .project-list {
@@ -717,6 +754,141 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .pod-create-step-indicators {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      margin-bottom: 2px;
+    }
+
+    .pod-create-step-chip {
+      position: relative;
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      color: #8fa3ba;
+    }
+
+    .pod-create-step-chip::after {
+      content: "";
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      width: 100%;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateX(10px);
+    }
+
+    .pod-create-step-chip:last-child::after {
+      display: none;
+    }
+
+    .pod-create-step-node {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      color: #afc0d4;
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.78rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .pod-create-step-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pod-create-step-chip.active {
+      color: #e3f7ff;
+    }
+
+    .pod-create-step-chip.active::after {
+      background: rgba(6, 182, 212, 0.45);
+    }
+
+    .pod-create-step-chip.active .pod-create-step-node {
+      border-color: rgba(6, 182, 212, 0.95);
+      background: rgba(6, 182, 212, 0.24);
+      color: #ecfdff;
+    }
+
+    .pod-create-step-chip.complete {
+      color: #c8f5e6;
+    }
+
+    .pod-create-step-chip.complete::after {
+      background: rgba(16, 185, 129, 0.45);
+    }
+
+    .pod-create-step-chip.complete .pod-create-step-node {
+      border-color: rgba(16, 185, 129, 0.9);
+      background: rgba(16, 185, 129, 0.2);
+      color: #ecfdf5;
+    }
+
+    .pod-create-step-panel {
+      display: grid;
+      gap: 8px;
+    }
+
+    .pod-create-method-options {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .pod-create-method-button {
+      text-align: left;
+      min-height: 88px;
+      display: grid;
+      gap: 6px;
+      align-content: start;
+      padding: 10px;
+    }
+
+    .pod-create-method-button strong {
+      font-size: 0.82rem;
+      letter-spacing: 0.02em;
+    }
+
+    .pod-create-method-button span {
+      color: var(--muted);
+      font-size: 0.74rem;
+      line-height: 1.3;
+    }
+
+    .pod-create-method-button.selected {
+      border-color: rgba(6, 182, 212, 0.72);
+      box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.5);
+      background: rgba(6, 182, 212, 0.16);
+    }
+
+    .pod-create-method-button[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pod-create-footer {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .pod-create-footer .primary {
+      grid-column: span 2;
+    }
+
     .stats {
       display: flex;
       gap: 22px;
@@ -804,6 +976,18 @@
       color: var(--muted);
     }
 
+    .tiles-header-meta {
+      display: grid;
+      justify-items: end;
+      gap: 2px;
+      text-align: right;
+    }
+
+    .pods-notice {
+      min-height: 0;
+      font-size: 0.74rem;
+    }
+
     .pod-grid {
       padding: 0;
       display: grid;
@@ -811,7 +995,7 @@
       align-content: start;
       max-height: calc(72vh - 48px);
       overflow: auto;
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     }
 
     .pod-group {
@@ -907,10 +1091,16 @@
     }
 
     .tile-head {
+      display: block;
+      min-width: 0;
+    }
+
+    .tile-actions-top {
+      min-height: 26px;
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 8px;
+      justify-content: flex-end;
+      align-items: center;
+      margin-bottom: 4px;
     }
 
     .loop-id {
@@ -918,7 +1108,11 @@
       font-size: 0.82rem;
       font-weight: 600;
       color: #dbe8f7;
-      word-break: break-all;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      word-break: normal;
     }
 
     .tile-title {
@@ -927,6 +1121,8 @@
       letter-spacing: 0.01em;
       font-weight: 600;
       color: #f1f6ff;
+      min-width: 0;
+      flex: 1 1 auto;
     }
 
     .tile-loop {
@@ -1001,6 +1197,39 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .tile-footer {
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tile-action-button {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.04);
+      color: #d9e7f8;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: lowercase;
+      cursor: pointer;
+      transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+    }
+
+    .tile-action-button:hover:not(:disabled) {
+      border-color: rgba(6, 182, 212, 0.55);
+      background: rgba(6, 182, 212, 0.14);
+      color: #f0fbff;
+    }
+
+    .tile-action-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
     .muted {
       color: var(--muted);
     }
@@ -1044,6 +1273,12 @@
         bottom: 10px;
       }
 
+      .pod-create-modal {
+        width: min(75vw, calc(100vw - 20px));
+        min-width: min(460px, calc(100vw - 20px));
+        max-height: calc(100vh - 20px);
+      }
+
       .toast-region {
         right: 10px;
         bottom: 10px;
@@ -1078,6 +1313,11 @@
         width: calc(100vw - 20px);
       }
 
+      .pod-create-modal {
+        width: calc(100vw - 20px);
+        max-height: calc(100vh - 20px);
+      }
+
       .toast-region {
         right: 10px;
         bottom: 10px;
@@ -1091,6 +1331,22 @@
 
       .project-actions {
         grid-template-columns: 1fr;
+      }
+
+      .pod-create-method-options {
+        grid-template-columns: 1fr;
+      }
+
+      .pod-create-step-indicators {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .pod-create-footer {
+        grid-template-columns: 1fr;
+      }
+
+      .pod-create-footer .primary {
+        grid-column: auto;
       }
 
       .project-meta {
@@ -1155,36 +1411,83 @@
           </div>
         </header>
 
-        <section id="pod-create-panel" class="panel hidden">
-          <div class="panel-title">
-            <span>New Workspace</span>
-            <button id="pod-create-close" type="button">back</button>
+        <aside id="pod-create-panel" class="pod-create-modal" aria-hidden="true">
+          <div class="provider-drawer-head">
+            <div class="provider-drawer-title">New Loop</div>
+            <button id="pod-create-close" type="button" class="provider-drawer-close" aria-label="Close loop creation">&times;</button>
           </div>
-          <select id="pod-create-project" aria-label="Project">
-            <option value="">Select project</option>
-          </select>
-          <div class="pod-create-actions">
-            <button id="pod-create-load-issues" type="button">load issues</button>
-            <button id="pod-create-refresh-issues" type="button">refresh</button>
-          </div>
-          <select id="pod-create-issue" aria-label="Issue" disabled>
-            <option value="">Select issue</option>
-          </select>
-          <input id="pod-create-branch" type="text" placeholder="branch name (required)">
-          <input id="pod-create-source-branch" type="text" placeholder="source branch (default: main)">
-          <select id="pod-create-agent" aria-label="Agent">
-            <option value="codex">codex</option>
-            <option value="claude_code_cli">claude_code_cli</option>
-            <option value="gemini_cli">gemini_cli</option>
-          </select>
-          <textarea id="pod-create-prompt" rows="6" placeholder="optional prompt"></textarea>
-          <div id="pod-create-issue-preview" class="status-note">Select a project and load issues.</div>
-          <div class="pod-create-actions">
-            <button id="pod-create-submit" type="button" class="primary">create workspace</button>
-            <button id="pod-create-cancel" type="button">cancel</button>
-          </div>
-          <div id="pod-create-status" class="status-note"></div>
-        </section>
+          <section class="panel">
+            <div class="pod-create-step-indicators" aria-hidden="true">
+              <div id="pod-create-step-chip-1" class="pod-create-step-chip active">
+                <span class="pod-create-step-node">1</span>
+                <span class="pod-create-step-label">Method</span>
+              </div>
+              <div id="pod-create-step-chip-2" class="pod-create-step-chip">
+                <span class="pod-create-step-node">2</span>
+                <span class="pod-create-step-label">Source</span>
+              </div>
+              <div id="pod-create-step-chip-3" class="pod-create-step-chip">
+                <span class="pod-create-step-node">3</span>
+                <span class="pod-create-step-label">Details</span>
+              </div>
+            </div>
+
+            <section id="pod-create-step-1" class="pod-create-step-panel" data-pod-create-step="1">
+              <div class="status-note">How should this loop start?</div>
+              <div class="pod-create-method-options">
+                <button type="button" class="pod-create-method-button selected" data-pod-create-method="issue">
+                  <strong>Create from Issue</strong>
+                  <span>Select a GitHub issue from a project and create a loop.</span>
+                </button>
+                <button type="button" class="pod-create-method-button" data-pod-create-method="generate_prd" disabled aria-disabled="true" title="Coming soon">
+                  <strong>Generate a PRD</strong>
+                  <span>Build a PRD before loop creation.</span>
+                </button>
+                <button type="button" class="pod-create-method-button" data-pod-create-method="load_prd" disabled aria-disabled="true" title="Coming soon">
+                  <strong>Load a PRD</strong>
+                  <span>Use an existing PRD as loop source.</span>
+                </button>
+              </div>
+            </section>
+
+            <section id="pod-create-step-2" class="pod-create-step-panel hidden" data-pod-create-step="2">
+              <div id="pod-create-method-issue" data-pod-create-method-panel="issue">
+                <select id="pod-create-project" aria-label="Project">
+                  <option value="">Select project</option>
+                </select>
+                <input id="pod-create-issue-filter" type="search" placeholder="Filter issue (number/title)">
+                <select id="pod-create-issue" aria-label="Issue" disabled>
+                  <option value="">Select issue</option>
+                </select>
+                <div id="pod-create-issue-preview" class="status-note">Select a project to load issues.</div>
+              </div>
+              <div id="pod-create-method-generate-prd" class="status-note hidden" data-pod-create-method-panel="generate_prd">
+                Generate a PRD flow is coming soon.
+              </div>
+              <div id="pod-create-method-load-prd" class="status-note hidden" data-pod-create-method-panel="load_prd">
+                Load a PRD flow is coming soon.
+              </div>
+            </section>
+
+            <section id="pod-create-step-3" class="pod-create-step-panel hidden" data-pod-create-step="3">
+              <input id="pod-create-loop-name" type="text" placeholder="loop name (optional)">
+              <input id="pod-create-branch" type="text" placeholder="branch name (default: project-issue-#)">
+              <input id="pod-create-source-branch" type="text" placeholder="source branch (default: main)">
+              <select id="pod-create-provider" aria-label="Provider">
+                <option value="">Select provider</option>
+              </select>
+              <textarea id="pod-create-prompt" rows="6" placeholder="optional prompt"></textarea>
+            </section>
+
+            <div class="pod-create-footer">
+              <button id="pod-create-back" type="button">back</button>
+              <button id="pod-create-next" type="button" class="primary">next</button>
+              <button id="pod-create-submit" type="button" class="primary hidden">create loop</button>
+              <button id="pod-create-cancel" type="button">cancel</button>
+            </div>
+            <div id="pod-create-status" class="status-note"></div>
+          </section>
+        </aside>
 
         <section class="stats">
           <div class="stat"><small>Total</small><strong id="stat-total">0</strong></div>
@@ -1192,7 +1495,7 @@
           <div class="stat"><small>Flatline</small><strong id="stat-flatline">0</strong></div>
           <div class="stat"><small>Last Refresh</small><strong id="stat-refresh">-</strong></div>
           <div class="stat stat-action">
-            <small>New Workspace</small>
+            <small>New Loop</small>
             <button id="pod-create-toggle" type="button" class="stat-add-button" aria-label="Start loop">+</button>
           </div>
         </section>
@@ -1200,20 +1503,36 @@
         <section class="board">
           <section class="tiles-shell">
             <div class="tiles-header">
-              <strong>Pods By Project</strong>
-              <span class="muted">select a pod tile to stream journal</span>
+              <strong>Pods</strong>
+              <div class="tiles-header-meta">
+                <span class="muted">click a tile to open pod detail</span>
+                <span id="pods-notice" class="status-note pods-notice hidden" aria-live="polite"></span>
+              </div>
             </div>
             <div id="grid" class="pod-grid" role="list" aria-label="Pods grouped by project"></div>
           </section>
+        </section>
+      </section>
 
-          <section id="pod-detail" class="journal hidden">
-            <div class="journal-header">
-              <strong id="journal-title">Pod Detail Journal</strong>
-              <span id="journal-latency" class="muted">p95 --</span>
-            </div>
-            <pre id="terminal" class="terminal">[journal] select a pod tile to open pod detail view
+      <section id="page-pod-view" class="page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <button id="pod-view-back" type="button" aria-label="Back to pods">&larr;</button>
+            <div id="pod-view-title" class="topbar-title">Pod Detail</div>
+          </div>
+          <div class="controls">
+            <button id="pod-view-attach" type="button">attach</button>
+            <button id="pod-view-delete" type="button" class="danger">delete loop</button>
+          </div>
+        </header>
+        <section class="journal">
+          <div class="journal-header">
+            <strong id="journal-title">Pod Detail Journal</strong>
+            <span id="journal-latency" class="muted">p95 --</span>
+          </div>
+          <pre id="terminal" class="terminal">[journal] select a pod tile to open pod detail view
 </pre>
-          </section>
         </section>
       </section>
 
@@ -1221,11 +1540,10 @@
         <header class="topbar">
           <div class="topbar-left">
             <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
-            <div class="topbar-title">Provider Configuration</div>
+            <div class="topbar-title">Providers</div>
           </div>
         </header>
         <section id="provider-list-panel">
-          <div class="provider-settings-head">Provider Configuration Settings</div>
           <div id="provider-list" class="provider-card-grid" role="list" aria-label="Provider configuration catalog"></div>
           <div id="provider-catalog-status" class="status-note"></div>
           <div id="provider-empty" class="status-note hidden">No providers available.</div>
@@ -1298,21 +1616,6 @@
           </div>
           <button id="project-add" type="button" class="icon-button" aria-label="Add project">+</button>
         </header>
-        <section id="project-config-panel" class="panel hidden">
-          <div class="panel-title"><span>Project Configuration</span></div>
-          <input id="project-name" type="text" placeholder="project name">
-          <input id="project-repo-url" type="url" placeholder="repository URL (https://github.com/org/repo.git)">
-          <input id="project-github-user" type="text" placeholder="GitHub username or app/bot name">
-          <input id="project-github-credential" type="password" placeholder="GitHub credential (PAT or token)">
-          <div class="status-note">
-            GitHub credential is stored in this browser session only until backend secret storage is wired.
-          </div>
-          <div class="project-actions">
-            <button id="project-save" class="primary">save project</button>
-            <button id="project-cancel" type="button">back</button>
-          </div>
-          <div id="project-form-status" class="status-note"></div>
-        </section>
         <section id="project-list-panel">
           <div id="project-list" class="project-list"></div>
           <div id="project-action-status" class="status-note"></div>
@@ -1320,6 +1623,27 @@
             No projects configured yet.
           </div>
         </section>
+        <aside id="project-config-panel" class="provider-drawer" aria-hidden="true">
+          <div class="provider-drawer-head">
+            <div class="provider-drawer-title">Project Configuration</div>
+            <button id="project-back" type="button" class="provider-drawer-close" aria-label="Close project configuration">&times;</button>
+          </div>
+          <section class="panel">
+            <input id="project-name" type="text" placeholder="project name">
+            <input id="project-repo-url" type="url" placeholder="repository URL (https://github.com/org/repo.git)">
+            <input id="project-github-user" type="text" placeholder="GitHub username or app/bot name">
+            <input id="project-github-credential" type="password" placeholder="GitHub credential (PAT or token)">
+            <div class="status-note">
+              Credential is saved to backend secret storage.
+            </div>
+            <div class="project-actions">
+              <button id="project-save" class="primary">save project</button>
+              <button id="project-delete-credential" class="danger hidden" type="button">delete credential</button>
+            </div>
+            <div id="project-form-status" class="status-note"></div>
+          </section>
+          <button id="project-delete" class="danger drawer-delete-action hidden" type="button">delete project</button>
+        </aside>
       </section>
     </main>
   </div>
@@ -1345,10 +1669,16 @@
       providerCredentialRevealed: false,
       projects: [],
       projectCredentials: {},
+      projectFormBusy: false,
       loopWorkflow: {},
       editingProjectID: "",
       podProjectIssues: {},
       podCreateBusy: false,
+      podCreateStep: 1,
+      podCreateMethod: "issue",
+      attachBusyLoopID: "",
+      loopDeleteBusy: false,
+      pendingPodViewLoopID: "",
       providerStatus: {
         codex: {
           connected: false,
@@ -1364,23 +1694,36 @@
 
     const gridEl = document.getElementById("grid");
     const terminalEl = document.getElementById("terminal");
-    const boardEl = document.querySelector(".board");
-    const podDetailEl = document.getElementById("pod-detail");
+    const podViewBackEl = document.getElementById("pod-view-back");
+    const podViewAttachEl = document.getElementById("pod-view-attach");
+    const podViewDeleteEl = document.getElementById("pod-view-delete");
+    const podViewTitleEl = document.getElementById("pod-view-title");
+    const podsNoticeEl = document.getElementById("pods-notice");
     const podCreateToggleEl = document.getElementById("pod-create-toggle");
     const podCreatePanelEl = document.getElementById("pod-create-panel");
     const podCreateProjectEl = document.getElementById("pod-create-project");
-    const podCreateLoadIssuesEl = document.getElementById("pod-create-load-issues");
-    const podCreateRefreshIssuesEl = document.getElementById("pod-create-refresh-issues");
+    const podCreateIssueFilterEl = document.getElementById("pod-create-issue-filter");
     const podCreateIssueEl = document.getElementById("pod-create-issue");
+    const podCreateLoopNameEl = document.getElementById("pod-create-loop-name");
     const podCreateBranchEl = document.getElementById("pod-create-branch");
     const podCreateSourceBranchEl = document.getElementById("pod-create-source-branch");
-    const podCreateAgentEl = document.getElementById("pod-create-agent");
+    const podCreateProviderEl = document.getElementById("pod-create-provider");
     const podCreatePromptEl = document.getElementById("pod-create-prompt");
     const podCreateIssuePreviewEl = document.getElementById("pod-create-issue-preview");
+    const podCreateBackEl = document.getElementById("pod-create-back");
+    const podCreateNextEl = document.getElementById("pod-create-next");
     const podCreateSubmitEl = document.getElementById("pod-create-submit");
     const podCreateCancelEl = document.getElementById("pod-create-cancel");
     const podCreateCloseEl = document.getElementById("pod-create-close");
     const podCreateStatusEl = document.getElementById("pod-create-status");
+    const podCreateStepChips = {
+      1: document.getElementById("pod-create-step-chip-1"),
+      2: document.getElementById("pod-create-step-chip-2"),
+      3: document.getElementById("pod-create-step-chip-3"),
+    };
+    const podCreateStepPanels = Array.from(document.querySelectorAll("[data-pod-create-step]"));
+    const podCreateMethodButtons = Array.from(document.querySelectorAll("[data-pod-create-method]"));
+    const podCreateMethodPanels = Array.from(document.querySelectorAll("[data-pod-create-method-panel]"));
     const apiDotEl = document.getElementById("api-dot");
     const journalLatencyEl = document.getElementById("journal-latency");
     const journalStatusEl = document.getElementById("journal-status");
@@ -1394,6 +1737,7 @@
     const authAPIKeyEl = document.getElementById("auth-api-key");
     const authAccountIDEl = document.getElementById("auth-account-id");
     const authRevealAPIKeyEl = document.getElementById("auth-reveal-api-key");
+    const projectBackEl = document.getElementById("project-back");
     const projectAddEl = document.getElementById("project-add");
     const projectListPanelEl = document.getElementById("project-list-panel");
     const projectConfigPanelEl = document.getElementById("project-config-panel");
@@ -1410,6 +1754,7 @@
     const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
     const pages = {
       pods: document.getElementById("page-pods"),
+      podView: document.getElementById("page-pod-view"),
       projects: document.getElementById("page-projects"),
       providers: document.getElementById("page-providers"),
       controls: document.getElementById("page-controls"),
@@ -1481,11 +1826,26 @@
       },
     ];
     const projectStorageKey = "smith.console.projects.v1";
+    let podsNoticeTimer = null;
 
     document.getElementById("api-url").textContent = apiBase || "(api unset)";
 
     function pageFromHash() {
-      const raw = String(window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
+      const rawValue = String(window.location.hash || "").replace(/^#/, "").trim();
+      const raw = rawValue.toLowerCase();
+      if (raw.startsWith("pod-view/")) {
+        const encoded = rawValue.slice("pod-view/".length);
+        try {
+          state.pendingPodViewLoopID = decodeURIComponent(encoded);
+        } catch (_) {
+          state.pendingPodViewLoopID = encoded;
+        }
+        return "podView";
+      }
+      if (raw === "pod-view") {
+        state.pendingPodViewLoopID = "";
+        return "podView";
+      }
       return pages[raw] ? raw : "pods";
     }
 
@@ -1499,31 +1859,78 @@
     }
 
     function setActivePage(page, updateHash) {
-      const target = pages[page] ? page : "pods";
+      let target = pages[page] ? page : "pods";
+      const requestedPodViewLoopID =
+        target === "podView" ? String(state.pendingPodViewLoopID || "").trim() : "";
+      if (
+        target === "podView" &&
+        !requestedPodViewLoopID &&
+        !String(state.selectedLoop || "").trim()
+      ) {
+        target = "pods";
+      }
       for (const [name, el] of Object.entries(pages)) {
         el.classList.toggle("active", name === target);
       }
+      const navTarget = target === "podView" ? "pods" : target;
       for (const link of pageLinks) {
-        link.classList.toggle("active", link.getAttribute("data-page-link") === target);
+        link.classList.toggle("active", link.getAttribute("data-page-link") === navTarget);
       }
       if (updateHash) {
-        window.location.hash = "#" + target;
+        if (target === "podView") {
+          const selected = String(state.selectedLoop || "").trim();
+          window.location.hash = selected
+            ? "#pod-view/" + encodeURIComponent(selected)
+            : "#pods";
+        } else {
+          window.location.hash = "#" + target;
+        }
       }
       if (target !== "providers") {
         setProviderConfigOpen(false);
       }
+      if (target !== "projects") {
+        setProjectEditorOpen(false);
+      }
+      if (target !== "pods" && target !== "podView") {
+        setPodCreateOpen(false);
+      }
+      if (target === "podView" && requestedPodViewLoopID && requestedPodViewLoopID !== state.selectedLoop) {
+        selectLoop(requestedPodViewLoopID);
+      }
+      state.pendingPodViewLoopID = "";
+    }
+
+    function selectedLoopRecord() {
+      const loopID = String(state.selectedLoop || "").trim();
+      if (!loopID) return null;
+      return state.loops.find((item) => item.loopID === loopID) || null;
+    }
+
+    function syncPodViewActions() {
+      const selected = selectedLoopRecord();
+      const hasSelection = Boolean(selected);
+      const canAttach = hasSelection && isActive(selected.status);
+      const attachBusy = hasSelection && state.attachBusyLoopID === selected.loopID;
+      podViewAttachEl.disabled = !canAttach || state.loopDeleteBusy || attachBusy;
+      podViewAttachEl.textContent = attachBusy ? "attaching..." : "attach";
+      const canDelete = hasSelection && !isActive(selected.status) && !state.loopDeleteBusy;
+      podViewDeleteEl.disabled = !canDelete;
+      podViewDeleteEl.textContent = state.loopDeleteBusy ? "deleting..." : "delete loop";
     }
 
     function renderSelectedLoop() {
       overrideLoopEl.textContent = "selected loop: " + (state.selectedLoop || "--");
       const hasSelection = Boolean(state.selectedLoop);
-      boardEl.classList.toggle("has-selection", hasSelection);
-      podDetailEl.classList.toggle("hidden", !hasSelection);
       if (!hasSelection) {
+        podViewTitleEl.textContent = "Pod Detail";
         document.getElementById("journal-title").textContent = "Pod Detail Journal";
         terminalEl.textContent = "[journal] select a pod tile to open pod detail view\n";
         journalLatencyEl.textContent = "p95 --";
+      } else {
+        podViewTitleEl.textContent = "Pod: " + String(state.selectedLoop || "");
       }
+      syncPodViewActions();
     }
 
     function isActive(status) {
@@ -1541,15 +1948,23 @@
     }
 
     async function postJSON(path, payload) {
+      return requestJSON(path, "POST", payload);
+    }
+
+    async function deleteJSON(path, payload) {
+      return requestJSON(path, "DELETE", payload);
+    }
+
+    async function requestJSON(path, method, payload) {
       const headers = {
         Accept: "application/json",
         "Content-Type": "application/json",
       };
       if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
       const res = await fetch(apiBase + path, {
-        method: "POST",
+        method,
         headers,
-        body: JSON.stringify(payload),
+        body: payload === undefined ? undefined : JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -1574,6 +1989,8 @@
     function pushToast(message, level) {
       const text = String(message || "").trim();
       if (!text) return;
+      // TODO(td-f6f789): normalize toast color semantics across console actions.
+      // Save should always use green; delete should always use red (even on success) per UX direction.
       const tone = level === "ok" ? "ok" : level === "err" ? "err" : "muted";
       const toast = document.createElement("div");
       toast.className = "toast " + tone;
@@ -1644,7 +2061,7 @@
       document.body.classList.toggle("provider-drawer-open", isOpen);
       providerConfigPanelEl.classList.toggle("open", isOpen);
       providerConfigPanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
-      providerDrawerOverlayEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      syncRightDrawerOverlay();
       if (!isOpen) {
         providerCodexPanelEl.classList.add("hidden");
         state.activeProvider = "";
@@ -1808,6 +2225,7 @@
           }
         }
       }
+      renderPodProviderOptions();
     }
 
     async function toggleStoredCredentialReveal() {
@@ -1887,35 +2305,258 @@
           : "var(--muted)";
     }
 
+    function setPodsNotice(message, level, timeoutMs) {
+      const text = String(message || "").trim();
+      if (!podsNoticeEl) return;
+      if (podsNoticeTimer) {
+        window.clearTimeout(podsNoticeTimer);
+        podsNoticeTimer = null;
+      }
+      if (!text) {
+        podsNoticeEl.textContent = "";
+        podsNoticeEl.classList.add("hidden");
+        podsNoticeEl.style.color = "var(--muted)";
+        return;
+      }
+      podsNoticeEl.classList.remove("hidden");
+      podsNoticeEl.textContent = text;
+      podsNoticeEl.style.color =
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+      const duration = Number(timeoutMs || 0);
+      if (Number.isFinite(duration) && duration > 0) {
+        podsNoticeTimer = window.setTimeout(() => {
+          setPodsNotice("", "muted");
+        }, duration);
+      }
+    }
+
     function setPodCreateBusy(busy) {
       state.podCreateBusy = Boolean(busy);
-      podCreateLoadIssuesEl.disabled = state.podCreateBusy;
-      podCreateRefreshIssuesEl.disabled = state.podCreateBusy;
       podCreateProjectEl.disabled = state.podCreateBusy;
+      podCreateIssueFilterEl.disabled = state.podCreateBusy;
       podCreateIssueEl.disabled = state.podCreateBusy || podCreateIssueEl.options.length <= 1;
+      podCreateLoopNameEl.disabled = state.podCreateBusy;
       podCreateBranchEl.disabled = state.podCreateBusy;
       podCreateSourceBranchEl.disabled = state.podCreateBusy;
-      podCreateAgentEl.disabled = state.podCreateBusy;
+      podCreateProviderEl.disabled = state.podCreateBusy || podCreateProviderEl.options.length <= 1;
       podCreatePromptEl.disabled = state.podCreateBusy;
-      podCreateSubmitEl.disabled = state.podCreateBusy;
+      podCreateBackEl.disabled = state.podCreateBusy;
+      podCreateNextEl.disabled = state.podCreateBusy;
+      podCreateSubmitEl.disabled = state.podCreateBusy || state.podCreateStep !== 3;
+      for (const methodButton of podCreateMethodButtons) {
+        const method = String(methodButton.getAttribute("data-pod-create-method") || "");
+        methodButton.disabled = state.podCreateBusy || !podCreateMethodEnabled(method);
+      }
+    }
+
+    function normalizePodCreateMethod(method) {
+      const next = String(method || "")
+        .trim()
+        .toLowerCase();
+      if (next === "issue" || next === "generate_prd" || next === "load_prd") {
+        return next;
+      }
+      return "issue";
+    }
+
+    function podCreateMethodEnabled(method) {
+      return normalizePodCreateMethod(method) === "issue";
+    }
+
+    function setPodCreateMethod(method) {
+      const next = normalizePodCreateMethod(method);
+      if (!podCreateMethodEnabled(next)) {
+        return;
+      }
+      state.podCreateMethod = next;
+      syncPodCreateWorkflow();
+    }
+
+    function syncPodCreateWorkflow() {
+      const step = Math.max(1, Math.min(3, Number(state.podCreateStep || 1)));
+      state.podCreateStep = step;
+      for (const panel of podCreateStepPanels) {
+        const panelStep = Number(panel.getAttribute("data-pod-create-step") || 0);
+        panel.classList.toggle("hidden", panelStep !== step);
+      }
+      Object.entries(podCreateStepChips).forEach(([rawStep, chip]) => {
+        if (!chip) return;
+        const chipStep = Number(rawStep);
+        chip.classList.toggle("active", chipStep === step);
+        chip.classList.toggle("complete", chipStep < step);
+      });
+      for (const button of podCreateMethodButtons) {
+        const method = normalizePodCreateMethod(button.getAttribute("data-pod-create-method") || "");
+        button.classList.toggle("selected", method === state.podCreateMethod);
+      }
+      for (const panel of podCreateMethodPanels) {
+        const method = normalizePodCreateMethod(panel.getAttribute("data-pod-create-method-panel") || "");
+        panel.classList.toggle("hidden", method !== state.podCreateMethod);
+      }
+      podCreateBackEl.classList.toggle("hidden", step <= 1);
+      podCreateNextEl.classList.toggle("hidden", step >= 3);
+      podCreateSubmitEl.classList.toggle("hidden", step !== 3);
+      if (step === 3) {
+        preparePodCreateDetails();
+      }
+      setPodCreateBusy(state.podCreateBusy);
+    }
+
+    function setPodCreateStep(step) {
+      state.podCreateStep = Math.max(1, Math.min(3, Number(step || 1)));
+      syncPodCreateWorkflow();
+    }
+
+    function configuredLoopProviders() {
+      const labelByID = providerCatalog.reduce((acc, provider) => {
+        acc[provider.id] = provider.label;
+        return acc;
+      }, {});
+      return Object.entries(state.providerStatus)
+        .filter(([, status]) => Boolean(status && status.connected))
+        .map(([id]) => ({
+          id,
+          label: String(labelByID[id] || id),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    function renderPodProviderOptions() {
+      const providers = configuredLoopProviders();
+      const selected = String(podCreateProviderEl.value || "").trim().toLowerCase();
+      podCreateProviderEl.innerHTML = "";
+      if (providers.length === 0) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No configured providers";
+        podCreateProviderEl.appendChild(option);
+        podCreateProviderEl.value = "";
+        podCreateProviderEl.disabled = true;
+        return providers;
+      }
+      if (providers.length > 1) {
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select provider";
+        podCreateProviderEl.appendChild(placeholder);
+      }
+      for (const provider of providers) {
+        const option = document.createElement("option");
+        option.value = provider.id;
+        option.textContent = provider.label;
+        podCreateProviderEl.appendChild(option);
+      }
+      if (selected && providers.some((provider) => provider.id === selected)) {
+        podCreateProviderEl.value = selected;
+      } else if (providers.length === 1) {
+        podCreateProviderEl.value = providers[0].id;
+      } else {
+        podCreateProviderEl.value = "";
+      }
+      podCreateProviderEl.disabled = state.podCreateBusy || providers.length <= 1;
+      return providers;
+    }
+
+    function defaultPodLoopName(issue) {
+      if (!issue) {
+        return "";
+      }
+      return "issue-" + String(issue.number) + "-" + slugifySegment(issue.title || "loop");
+    }
+
+    function defaultPodBranchName(project, issue) {
+      if (!project || !issue) {
+        return "";
+      }
+      const projectSlug = slugifySegment(project.name || project.id || "project");
+      const issuePart = "issue-" + String(issue.number);
+      return normalizeBranchName(projectSlug + "-" + issuePart) || normalizeBranchName(issuePart);
+    }
+
+    function preparePodCreateDetails() {
+      const project = selectedPodProject();
+      const issue = selectedPodIssue();
+      if (!podCreateSourceBranchEl.value.trim()) {
+        podCreateSourceBranchEl.value = "main";
+      }
+      if (!podCreateBranchEl.value.trim()) {
+        podCreateBranchEl.value = defaultPodBranchName(project, issue);
+      }
+      renderPodProviderOptions();
+    }
+
+    function validatePodCreateStep(step) {
+      if (step === 1) {
+        if (!podCreateMethodEnabled(state.podCreateMethod)) {
+          return "Select a supported loop start method.";
+        }
+        return "";
+      }
+      if (step === 2) {
+        if (state.podCreateMethod === "issue") {
+          if (!selectedPodProject()) return "Select a project first.";
+          if (!selectedPodIssue()) return "Select an issue first.";
+          return "";
+        }
+        return "This flow is not available yet.";
+      }
+      if (step === 3) {
+        if (!selectedPodProject()) return "Select a project first.";
+        if (!selectedPodIssue()) return "Select an issue first.";
+        const configuredProviders = configuredLoopProviders();
+        if (configuredProviders.length === 0) {
+          return "Configure at least one provider before starting a loop.";
+        }
+        const provider = String(podCreateProviderEl.value || "").trim().toLowerCase();
+        if (!configuredProviders.some((item) => item.id === provider)) {
+          return "Select a configured provider.";
+        }
+      }
+      return "";
+    }
+
+    function goToNextPodCreateStep() {
+      const error = validatePodCreateStep(state.podCreateStep);
+      if (error) {
+        setPodCreateStatus(error, "err");
+        return;
+      }
+      setPodCreateStatus("", "muted");
+      setPodCreateStep(state.podCreateStep + 1);
     }
 
     function resetPodCreateWorkflow() {
+      state.podCreateMethod = "issue";
+      state.podCreateStep = 1;
+      podCreateIssueFilterEl.value = "";
+      podCreateIssueEl.value = "";
+      podCreateLoopNameEl.value = "";
       podCreateBranchEl.value = "";
       podCreateSourceBranchEl.value = "main";
-      podCreateAgentEl.value = "codex";
+      podCreateProviderEl.value = "";
       podCreatePromptEl.value = "";
-      podCreateIssuePreviewEl.textContent = "Select a project and load issues.";
+      podCreateIssuePreviewEl.textContent = "Select a project to load issues.";
+      setPodCreateStatus("", "muted");
+      syncPodCreateWorkflow();
     }
 
     function setPodCreateOpen(open) {
       const isOpen = Boolean(open);
-      podCreatePanelEl.classList.toggle("hidden", !isOpen);
+      document.body.classList.toggle("pod-drawer-open", isOpen);
+      podCreatePanelEl.classList.toggle("open", isOpen);
+      podCreatePanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      syncRightDrawerOverlay();
       if (isOpen) {
         renderPodProjectOptions();
         resetPodCreateWorkflow();
+        void loadProjectIssues(false);
+      } else {
+        setPodCreateStatus("", "muted");
       }
-      setPodCreateStatus("", "muted");
     }
 
     function slugifySegment(value) {
@@ -1964,12 +2605,12 @@
     function renderPodIssuePreview() {
       const project = selectedPodProject();
       if (!project) {
-        podCreateIssuePreviewEl.textContent = "Select a project and load issues.";
+        podCreateIssuePreviewEl.textContent = "Select a project to load issues.";
         return;
       }
       const issueNumber = Number(podCreateIssueEl.value || 0);
       if (!Number.isFinite(issueNumber) || issueNumber <= 0) {
-        podCreateIssuePreviewEl.textContent = "Select an issue for this workspace.";
+        podCreateIssuePreviewEl.textContent = "Select an issue for this loop.";
         return;
       }
       const issues = state.podProjectIssues[project.id] || [];
@@ -1981,8 +2622,8 @@
       podCreateIssuePreviewEl.textContent =
         "#" + String(issue.number) + " " + String(issue.title || "").trim();
       if (!podCreateBranchEl.value.trim()) {
-        podCreateBranchEl.value =
-          "issue-" + String(issue.number) + "-" + slugifySegment(issue.title || "workspace");
+        const project = selectedPodProject();
+        podCreateBranchEl.value = defaultPodBranchName(project, issue);
       }
     }
 
@@ -1995,17 +2636,29 @@
       return issues.find((item) => item.number === issueNumber) || null;
     }
 
+    function filteredProjectIssues(projectID) {
+      const issues = state.podProjectIssues[projectID] || [];
+      const query = String(podCreateIssueFilterEl.value || "").trim().toLowerCase();
+      if (!query) return issues;
+      return issues.filter((issue) => {
+        const numberText = String(issue.number || "");
+        const titleText = String(issue.title || "").toLowerCase();
+        return numberText.includes(query) || titleText.includes(query);
+      });
+    }
+
     function renderPodIssueOptions(projectID) {
       const project = state.projects.find((item) => item.id === projectID);
       const previous = Number(podCreateIssueEl.value || 0);
       podCreateIssueEl.innerHTML = '<option value="">Select issue</option>';
       if (!project) {
         podCreateIssueEl.disabled = true;
-        resetPodCreateWorkflow();
+        podCreateIssuePreviewEl.textContent = "Select a project to load issues.";
         renderPodIssuePreview();
         return;
       }
-      const issues = state.podProjectIssues[project.id] || [];
+      const allIssues = state.podProjectIssues[project.id] || [];
+      const issues = filteredProjectIssues(project.id);
       podCreateIssueEl.disabled = issues.length === 0;
       for (const issue of issues) {
         const option = document.createElement("option");
@@ -2016,7 +2669,13 @@
       if (issues.some((item) => item.number === previous)) {
         podCreateIssueEl.value = String(previous);
       }
+      if (allIssues.length === 0) {
+        podCreateIssuePreviewEl.textContent = "No open issues found for this project.";
+      } else if (issues.length === 0) {
+        podCreateIssuePreviewEl.textContent = "No issues match current filter.";
+      }
       renderPodIssuePreview();
+      setPodCreateBusy(state.podCreateBusy);
     }
 
     function renderPodProjectOptions() {
@@ -2058,7 +2717,7 @@
       setPodCreateStatus("Loading issues...", "muted");
       try {
         const headers = { Accept: "application/vnd.github+json" };
-        const credential = String(state.projectCredentials[project.id] || "").trim();
+        const credential = await ensureProjectCredential(project.id);
         if (credential) {
           headers.Authorization = "Bearer " + credential;
         }
@@ -2104,6 +2763,10 @@
     }
 
     async function startLoopFromIssue() {
+      if (state.podCreateMethod !== "issue") {
+        setPodCreateStatus("Only issue-based loop creation is available right now.", "err");
+        return;
+      }
       const project = selectedPodProject();
       if (!project) {
         setPodCreateStatus("Select a project first.", "err");
@@ -2119,22 +2782,34 @@
         setPodCreateStatus("Project repository URL must be a valid github.com repo.", "err");
         return;
       }
-      const branch = normalizeBranchName(podCreateBranchEl.value);
-      if (!branch) {
-        setPodCreateStatus("Workspace branch is required.", "err");
+      const configuredProviders = configuredLoopProviders();
+      if (configuredProviders.length === 0) {
+        setPodCreateStatus("Configure at least one provider before starting a loop.", "err");
         return;
       }
+      const provider = String(podCreateProviderEl.value || "").trim().toLowerCase();
+      const providerInfo = configuredProviders.find((item) => item.id === provider);
+      if (!providerInfo) {
+        setPodCreateStatus("Select a configured provider.", "err");
+        return;
+      }
+      const enteredLoopName = String(podCreateLoopNameEl.value || "").trim();
+      const loopName = enteredLoopName || defaultPodLoopName(issue);
+      const loopNameSlug = slugifySegment(loopName);
+      const branchDefault = defaultPodBranchName(project, issue) || loopNameSlug;
+      const branch = normalizeBranchName(podCreateBranchEl.value) || branchDefault;
       const sourceBranch = normalizeBranchName(podCreateSourceBranchEl.value) || "main";
-      const agent = String(podCreateAgentEl.value || "codex").trim().toLowerCase() || "codex";
       const prompt = String(podCreatePromptEl.value || "").trim();
-      const loopID = slugifySegment(project.name || project.id || "project") + "/" + branch;
+      const loopID =
+        slugifySegment(project.name || project.id || "project") + "-" + loopNameSlug;
       const sourceRef = repository + "#" + String(issue.number);
       const descriptionParts = [
-        "Workspace request from console",
+        "Loop request from console",
         "",
+        "Loop Name: " + loopName,
         "Branch: " + branch,
         "Base branch: " + sourceBranch,
-        "Agent: " + agent,
+        "Provider: " + providerInfo.label,
         "Issue: " + sourceRef,
       ];
       if (prompt) {
@@ -2145,12 +2820,12 @@
       }
 
       setPodCreateBusy(true);
-      setPodCreateStatus("Creating workspace loop...", "muted");
+      setPodCreateStatus("Creating loop...", "muted");
       try {
         const payload = {
           loop_id: loopID,
           idempotency_key: "github:" + repository + "#" + String(issue.number),
-          title: "Workspace " + branch + ": " + issue.title,
+          title: "Loop " + loopName + ": " + issue.title,
           description: descriptionParts.join("\n"),
           source_type: "github_issue",
           source_ref: sourceRef,
@@ -2163,12 +2838,13 @@
             github_labels: issue.labels.join(","),
             workspace_branch: branch,
             workspace_source_branch: sourceBranch,
-            workspace_agent: agent,
+            workspace_agent: provider,
+            workspace_provider: provider,
             workspace_prompt: prompt,
           },
         };
         const result = await postJSON("/v1/loops", payload);
-        setPodCreateStatus("Workspace loop started for issue #" + String(issue.number) + ".", "ok");
+        setPodCreateStatus("Loop started for issue #" + String(issue.number) + ".", "ok");
         setPodCreateOpen(false);
         await refreshLoops();
         if (result && result.loop_id) {
@@ -2224,11 +2900,60 @@
       } catch (_) {}
     }
 
+    function syncRightDrawerOverlay() {
+      const open =
+        document.body.classList.contains("provider-drawer-open") ||
+        document.body.classList.contains("project-drawer-open") ||
+        document.body.classList.contains("pod-drawer-open");
+      providerDrawerOverlayEl.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+
+    function setProjectFormBusy(busy) {
+      state.projectFormBusy = Boolean(busy);
+      const disabled = state.projectFormBusy;
+      const ids = [
+        "project-name",
+        "project-repo-url",
+        "project-github-user",
+        "project-github-credential",
+        "project-save",
+        "project-delete",
+        "project-back",
+        "project-delete-credential",
+      ];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+      }
+    }
+
+    function syncProjectCredentialControl(projectID, hasCredential) {
+      const button = document.getElementById("project-delete-credential");
+      if (!button) return;
+      const hasProject = String(projectID || "").trim() !== "";
+      button.classList.toggle("hidden", !hasProject);
+      button.disabled = state.projectFormBusy || !hasProject || !hasCredential;
+    }
+
+    function syncProjectDeleteControl(projectID) {
+      const button = document.getElementById("project-delete");
+      if (!button) return;
+      const hasProject = String(projectID || "").trim() !== "";
+      button.classList.toggle("hidden", !hasProject);
+      button.disabled = state.projectFormBusy || !hasProject;
+    }
+
     function setProjectEditorOpen(open) {
       const isOpen = Boolean(open);
-      projectConfigPanelEl.classList.toggle("hidden", !isOpen);
-      projectListPanelEl.classList.toggle("hidden", isOpen);
+      document.body.classList.toggle("project-drawer-open", isOpen);
+      projectConfigPanelEl.classList.toggle("open", isOpen);
+      projectConfigPanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
       projectAddEl.classList.toggle("hidden", isOpen);
+      syncRightDrawerOverlay();
+      if (!isOpen) {
+        setProjectFormBusy(false);
+        clearProjectForm();
+      }
     }
 
     function openProjectEditor() {
@@ -2246,6 +2971,54 @@
       projectInput("project-github-credential").value = "";
       projectFormStatusEl.textContent = "";
       document.getElementById("project-save").textContent = "save project";
+      syncProjectDeleteControl("");
+      syncProjectCredentialControl("", false);
+    }
+
+    async function fetchProjectCredential(projectID, reveal) {
+      const id = String(projectID || "").trim();
+      if (!id) {
+        return { credential_set: false };
+      }
+      const query =
+        "/v1/projects/credentials/github?project_id=" +
+        encodeURIComponent(id) +
+        (reveal ? "&reveal=true" : "");
+      return fetchJSON(query);
+    }
+
+    async function hasStoredProjectCredential(projectID) {
+      try {
+        const payload = await fetchProjectCredential(projectID, false);
+        return Boolean(payload && payload.credential_set);
+      } catch (_) {
+        return false;
+      }
+    }
+
+    async function ensureProjectCredential(projectID) {
+      const id = String(projectID || "").trim();
+      if (!id) return "";
+      const cached = String(state.projectCredentials[id] || "").trim();
+      if (cached) return cached;
+      try {
+        const payload = await fetchProjectCredential(id, true);
+        const value = String(payload && payload.credential ? payload.credential : "").trim();
+        if (value) {
+          state.projectCredentials[id] = value;
+          const project = state.projects.find((item) => item.id === id);
+          if (project) {
+            project.credential_set = true;
+            if (payload && payload.github_user && !project.github_user) {
+              project.github_user = String(payload.github_user);
+            }
+            persistProjects();
+            renderProjects();
+          }
+          return value;
+        }
+      } catch (_) {}
+      return "";
     }
 
     function setProjectFormStatus(message, level) {
@@ -2332,23 +3105,6 @@
           "</span></span>" +
           '<span class="muted">' + String(completedCount) + " completed</span></summary>" +
           '<div class="collapsible-body">' +
-          '<div class="project-repo">' +
-          escapeHtml(project.repo_url) +
-          "</div>" +
-          '<div class="project-meta">' +
-          "<span>GitHub: " +
-          escapeHtml(project.github_user || "--") +
-          "</span>" +
-          "<span>Updated " +
-          escapeHtml(shortTime(project.updated_at)) +
-          "</span></div>" +
-          '<div class="project-meta">' +
-          "<span>Credential " +
-          escapeHtml(project.credential_set ? "set" : "missing") +
-          "</span>" +
-          "<span>Last action " +
-          escapeHtml(shortTime(project.last_action_at)) +
-          "</span></div>" +
           (completedCount > 0
             ? '<div class="project-loop-list">' + loopRows + "</div>"
             : '<div class="status-note">No completed loops for this project yet.</div>') +
@@ -2356,16 +3112,13 @@
           '<button type="button" class="project-action-icon" aria-label="Edit project" title="Edit project" data-project-action="edit" data-project-id="' +
           escapeHtml(project.id) +
           '">&#9998;</button>' +
-          '<button type="button" class="project-action-icon danger" aria-label="Remove project" title="Remove project" data-project-action="remove" data-project-id="' +
-          escapeHtml(project.id) +
-          '">&#128465;</button>' +
           "</div>" +
           "</div>";
         projectListEl.appendChild(section);
       }
     }
 
-    function editProject(projectID) {
+    async function editProject(projectID) {
       const project = state.projects.find((item) => item.id === projectID);
       if (!project) return;
       setProjectEditorOpen(true);
@@ -2375,20 +3128,121 @@
       projectInput("project-github-user").value = project.github_user;
       projectInput("project-github-credential").value = "";
       document.getElementById("project-save").textContent = "update project";
+      syncProjectDeleteControl(project.id);
+      syncProjectCredentialControl(project.id, Boolean(project.credential_set));
       setProjectFormStatus("Editing " + project.name + ".", "muted");
+      try {
+        const stored = await fetchProjectCredential(project.id, false);
+        project.credential_set = Boolean(stored && stored.credential_set);
+        if (stored && stored.github_user) {
+          projectInput("project-github-user").value = String(stored.github_user);
+        }
+        if (project.credential_set) {
+          setProjectFormStatus("Credential already stored in secret manager.", "muted");
+        } else {
+          setProjectFormStatus("Enter GitHub credential to save.", "muted");
+        }
+        syncProjectCredentialControl(project.id, project.credential_set);
+        persistProjects();
+        renderProjects();
+      } catch (_) {
+        setProjectFormStatus("Could not verify stored credential. You can still update project details.", "muted");
+        syncProjectCredentialControl(project.id, Boolean(project.credential_set));
+      }
     }
 
-    function removeProject(projectID) {
+    async function deleteProjectFromEditor() {
+      const projectID = String(state.editingProjectID || "").trim();
+      if (!projectID) {
+        setProjectFormStatus("Save this project first before deleting.", "err");
+        return;
+      }
+      const project = state.projects.find((item) => item.id === projectID) || null;
+      const label = project ? project.name : projectID;
+      const confirmed = window.confirm("Are you sure you wish to delete project " + label + "?");
+      if (!confirmed) {
+        return;
+      }
+      setProjectEditorOpen(false);
+      await removeProject(projectID);
+    }
+
+    async function deleteProjectCredentialFromEditor() {
+      const projectID = String(state.editingProjectID || "").trim();
+      if (!projectID) {
+        setProjectFormStatus("Save this project first before deleting credential.", "err");
+        return;
+      }
+      const project = state.projects.find((item) => item.id === projectID) || null;
+      const confirmed = window.confirm("Are you sure you wish to delete this project credential?");
+      if (!confirmed) {
+        return;
+      }
+      setProjectFormBusy(true);
+      try {
+        await deleteJSON(
+          "/v1/projects/credentials/github?project_id=" + encodeURIComponent(projectID),
+          { actor: authActor(), project_id: projectID },
+        );
+        delete state.projectCredentials[projectID];
+        projectInput("project-github-credential").value = "";
+        if (project) {
+          project.credential_set = false;
+          project.updated_at = new Date().toISOString();
+        }
+        persistProjects();
+        renderProjects();
+        setProjectFormStatus("Credential deleted from secret manager.", "ok");
+        setProjectActionStatus(
+          "Credential deleted for " + (project ? project.name : projectID) + ".",
+          "ok",
+        );
+        pushToast("Project credential deleted.", "err");
+        setProjectEditorOpen(false);
+      } catch (err) {
+        setProjectFormStatus(
+          err && err.message ? err.message : "Failed to delete project credential.",
+          "err",
+        );
+        pushToast("Failed to delete project credential.", "err");
+      } finally {
+        setProjectFormBusy(false);
+        syncProjectCredentialControl(projectID, false);
+      }
+    }
+
+    async function removeProject(projectID) {
       const removed = state.projects.find((item) => item.id === projectID);
+      let credentialDeleteError = "";
+      try {
+        await deleteJSON(
+          "/v1/projects/credentials/github?project_id=" + encodeURIComponent(String(projectID || "").trim()),
+          { actor: authActor(), project_id: projectID },
+        );
+      } catch (err) {
+        credentialDeleteError = err && err.message ? String(err.message) : "credential delete failed";
+      }
       state.projects = state.projects.filter((item) => item.id !== projectID);
       delete state.projectCredentials[projectID];
       if (state.editingProjectID === projectID) {
-        clearProjectForm();
+        setProjectEditorOpen(false);
       }
       persistProjects();
       renderProjects();
       if (removed) {
-        setProjectActionStatus("Removed project " + removed.name + ".", "ok");
+        if (credentialDeleteError) {
+          setProjectActionStatus(
+            "Removed project " + removed.name + ", but secret delete failed: " + credentialDeleteError + ".",
+            "err",
+          );
+          pushToast(
+            "Project removed, but credential delete failed for " + removed.name + ".",
+            "err",
+          );
+        } else {
+          setProjectActionStatus("Removed project " + removed.name + ".", "ok");
+          pushToast("Project removed: " + removed.name + ".", "err");
+        }
       }
     }
 
@@ -2426,7 +3280,7 @@
       renderProjects();
     }
 
-    function saveProject() {
+    async function saveProject() {
       const name = projectInput("project-name").value.trim();
       const repoURL = projectInput("project-repo-url").value.trim();
       const githubUser = projectInput("project-github-user").value.trim();
@@ -2455,46 +3309,86 @@
       const projectID =
         state.editingProjectID ||
         ("proj-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1000).toString(36));
-      const credentialSet = Boolean(githubCredential) || Boolean(existing && existing.credential_set);
+      let credentialSet = Boolean(githubCredential) || Boolean(existing && existing.credential_set);
+      if (!githubCredential && !credentialSet) {
+        credentialSet = await hasStoredProjectCredential(projectID);
+      }
 
       if (!credentialSet) {
         setProjectFormStatus("GitHub credential is required", "err");
         return;
       }
 
-      if (githubCredential) {
-        state.projectCredentials[projectID] = githubCredential;
+      setProjectFormBusy(true);
+      try {
+        if (githubCredential) {
+          await postJSON("/v1/projects/credentials/github", {
+            actor: authActor(),
+            project_id: projectID,
+            github_user: githubUser,
+            credential: githubCredential,
+          });
+          state.projectCredentials[projectID] = githubCredential;
+          credentialSet = true;
+        } else {
+          delete state.projectCredentials[projectID];
+        }
+
+        const project = {
+          id: projectID,
+          name,
+          repo_url: repoURL,
+          github_user: githubUser,
+          credential_set: credentialSet,
+          updated_at: new Date().toISOString(),
+          workflow_status: existing && existing.workflow_status ? existing.workflow_status : "new",
+          last_action_at: existing && existing.last_action_at ? existing.last_action_at : "",
+        };
+
+        const index = state.projects.findIndex((item) => item.id === projectID);
+        if (index >= 0) {
+          state.projects[index] = project;
+        } else {
+          state.projects.push(project);
+        }
+
+        persistProjects();
+        renderProjects();
+        setProjectEditorOpen(false);
+        setProjectActionStatus("Saved project " + project.name + ".", "ok");
+        pushToast("Project saved: " + project.name + ".", "ok");
+      } catch (err) {
+        setProjectFormStatus(err && err.message ? err.message : "Failed to save project credential", "err");
+        pushToast("Failed to save project.", "err");
+      } finally {
+        setProjectFormBusy(false);
+        syncProjectCredentialControl(
+          state.editingProjectID || "",
+          Boolean(
+            state.editingProjectID &&
+              state.projects.find((item) => item.id === state.editingProjectID)?.credential_set,
+          ),
+        );
       }
-
-      const project = {
-        id: projectID,
-        name,
-        repo_url: repoURL,
-        github_user: githubUser,
-        credential_set: credentialSet,
-        updated_at: new Date().toISOString(),
-        workflow_status: existing && existing.workflow_status ? existing.workflow_status : "new",
-        last_action_at: existing && existing.last_action_at ? existing.last_action_at : "",
-      };
-
-      const index = state.projects.findIndex((item) => item.id === projectID);
-      if (index >= 0) {
-        state.projects[index] = project;
-      } else {
-        state.projects.push(project);
-      }
-
-      persistProjects();
-      renderProjects();
-      clearProjectForm();
-      setProjectEditorOpen(false);
-      setProjectActionStatus("Saved project " + project.name + ".", "ok");
     }
 
     function initProjects() {
       state.projects = loadProjectsFromStorage();
       renderProjects();
       setProjectEditorOpen(false);
+    }
+
+    function resolveProjectLabel(value) {
+      const trimmed = String(value || "").trim();
+      if (!trimmed) return "";
+      const key = trimmed.toLowerCase();
+      const matched =
+        state.projects.find((project) => String(project.id || "").trim().toLowerCase() === key) ||
+        state.projects.find((project) => String(project.name || "").trim().toLowerCase() === key);
+      if (matched) {
+        return String(matched.name || matched.id || trimmed).trim() || trimmed;
+      }
+      return trimmed;
     }
 
     function projectFromLoop(item, record, loopID) {
@@ -2506,14 +3400,34 @@
         record.project_name,
       ];
       for (const value of candidates) {
-        const trimmed = String(value || "").trim();
-        if (trimmed) return trimmed;
+        const resolved = resolveProjectLabel(value);
+        if (resolved) return resolved;
+      }
+      const loopLower = String(loopID || "").trim().toLowerCase();
+      if (loopLower) {
+        for (const project of state.projects) {
+          const display = String(project.name || project.id || "").trim();
+          if (!display) continue;
+          const keys = [project.id, project.name];
+          for (const raw of keys) {
+            const token = slugifySegment(raw).toLowerCase();
+            if (!token) continue;
+            if (
+              loopLower === token ||
+              loopLower.startsWith(token + "-") ||
+              loopLower.startsWith(token + "/") ||
+              loopLower.startsWith(token + ":")
+            ) {
+              return display;
+            }
+          }
+        }
       }
       if (loopID.includes("/")) {
-        return loopID.split("/")[0];
+        return resolveProjectLabel(loopID.split("/")[0]);
       }
       if (loopID.includes(":")) {
-        return loopID.split(":")[0];
+        return resolveProjectLabel(loopID.split(":")[0]);
       }
       return "default";
     }
@@ -2562,91 +3476,69 @@
       const loops = filteredLoops();
       gridEl.innerHTML = "";
 
-      const grouped = new Map();
-      for (const loop of loops) {
-        const label = String(loop.project || "default").trim() || "default";
-        const key = label.toLowerCase();
-        if (!grouped.has(key)) grouped.set(key, { label, loops: [] });
-        grouped.get(key).loops.push(loop);
-      }
-
-      const knownProjects = new Map();
-      for (const project of state.projects) {
-        const label = String(project.name || "").trim();
-        if (!label) continue;
-        knownProjects.set(label.toLowerCase(), label);
-      }
-      for (const [key, value] of grouped.entries()) {
-        if (!knownProjects.has(key)) knownProjects.set(key, value.label);
-      }
-
-      if (knownProjects.size === 0) {
+      if (loops.length === 0) {
         gridEl.innerHTML = '<div class="empty">No pods for selected filter.</div>';
         return;
       }
 
-      const groups = Array.from(knownProjects.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-      for (const [projectKey, projectLabel] of groups) {
-        const projectGroup = grouped.get(projectKey);
-        const projectLoops = projectGroup ? projectGroup.loops : [];
-        const groupEl = document.createElement("details");
-        groupEl.className = "pod-group";
-        groupEl.open = true;
-        groupEl.innerHTML =
-          '<summary class="pod-group-head">' +
-          '<span class="pod-group-label"><span class="pod-group-caret">&gt;</span>' +
-          "<strong>" +
-          escapeHtml(projectLabel) +
-          "</strong></span>" +
-          '<span class="muted">' +
-          String(projectLoops.length) +
-          " pod(s)</span></summary>" +
-          '<div class="pod-group-grid"></div>';
-        const groupGridEl = groupEl.querySelector(".pod-group-grid");
+      const sortedLoops = loops.slice().sort((a, b) => {
+        const projectCmp = String(a.project || "").localeCompare(String(b.project || ""));
+        if (projectCmp !== 0) return projectCmp;
+        return String(a.loopID || "").localeCompare(String(b.loopID || ""));
+      });
+      for (const loop of sortedLoops) {
+        const tile = document.createElement("article");
+        tile.className = "pod-tile" + (state.selectedLoop === loop.loopID ? " selected" : "");
+        tile.setAttribute("role", "listitem");
+        tile.tabIndex = 0;
+        const canAttach = isActive(loop.status);
+        const attaching = state.attachBusyLoopID === loop.loopID;
 
-        if (projectLoops.length === 0) {
-          const empty = document.createElement("div");
-          empty.className = "status-note";
-          empty.textContent = "No pods running.";
-          groupGridEl.appendChild(empty);
-        } else {
-          for (const loop of projectLoops) {
-            const tile = document.createElement("article");
-            tile.className = "pod-tile" + (state.selectedLoop === loop.loopID ? " selected" : "");
-            tile.setAttribute("role", "listitem");
-            tile.tabIndex = 0;
+        tile.innerHTML = [
+          '<div class="tile-actions-top">',
+          '  <button type="button" class="tile-action-button" data-tile-attach="1" ' +
+            (canAttach && !attaching ? "" : "disabled ") +
+            'aria-label="Attach to ' + escapeHtml(loop.loopID) + '">' +
+            (attaching ? "attaching..." : "attach") +
+          "</button>",
+          "</div>",
+          '<div class="tile-head">',
+          '  <div class="tile-title loop-id" title="' + escapeHtml(loop.loopID) + '">' + escapeHtml(loop.loopID) + "</div>",
+          "</div>",
+          '<div class="tile-loop">' + escapeHtml(loop.project) + "</div>",
+          '<div class="tile-reason">' +
+            escapeHtml(loop.reason || "no recent update") +
+          "</div>",
+          '<div class="tile-health">',
+          '  <span class="tile-health-dot" aria-hidden="true"></span>',
+          '  <span class="tile-health-text">1/1 containers ready</span>',
+          "</div>",
+          '<div class="tile-footer">',
+          '  <span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + "</span>",
+          '<div class="tile-meta">',
+          '  <span>ATT ' + String(loop.attempt) + "</span>",
+          '  <span>REV ' + String(loop.revision) + "</span>",
+          "</div>",
+          "</div>",
+        ].join("");
 
-            tile.innerHTML = [
-              '<div class="tile-head">',
-              '  <div class="tile-title loop-id">' + escapeHtml(loop.loopID) + "</div>",
-              '  <span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + "</span>",
-              "</div>",
-              '<div class="tile-loop">' + escapeHtml(loop.project) + "</div>",
-              '<div class="tile-reason">' +
-                escapeHtml(loop.reason || "no recent update") +
-              "</div>",
-              '<div class="tile-health">',
-              '  <span class="tile-health-dot" aria-hidden="true"></span>',
-              '  <span class="tile-health-text">1/1 containers ready</span>',
-              "</div>",
-              '<div class="tile-meta">',
-              '  <span>ATT ' + String(loop.attempt) + "</span>",
-              '  <span>REV ' + String(loop.revision) + "</span>",
-              "</div>",
-            ].join("");
-
-            tile.addEventListener("click", () => selectLoop(loop.loopID));
-            tile.addEventListener("keydown", (ev) => {
-              if (ev.key === "Enter" || ev.key === " ") {
-                ev.preventDefault();
-                selectLoop(loop.loopID);
-              }
-            });
-
-            groupGridEl.appendChild(tile);
+        tile.addEventListener("click", () => openPodView(loop.loopID));
+        tile.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            openPodView(loop.loopID);
           }
+        });
+        const attachButton = tile.querySelector("[data-tile-attach]");
+        if (attachButton instanceof HTMLButtonElement) {
+          attachButton.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            void attachLoopTerminal(loop.loopID);
+          });
         }
-        gridEl.appendChild(groupEl);
+
+        gridEl.appendChild(tile);
       }
     }
 
@@ -2667,11 +3559,15 @@
         updateStats(state.loops);
         renderGrid();
         renderProjects();
+        syncPodViewActions();
         apiDotEl.className = "dot ok";
         if (state.selectedLoop && !state.loops.some((l) => l.loopID === state.selectedLoop)) {
           clearJournal("selected pod no longer present");
           state.selectedLoop = "";
           renderSelectedLoop();
+          if (pages.podView.classList.contains("active")) {
+            setActivePage("pods", true);
+          }
         }
       } catch (_) {
         apiDotEl.className = "dot err";
@@ -2752,6 +3648,87 @@
       renderGrid();
       clearJournal("attaching to stream...");
       attachStream(loopID);
+    }
+
+    function openPodView(loopID) {
+      const next = String(loopID || "").trim();
+      if (!next) return;
+      selectLoop(next);
+      setActivePage("podView", true);
+    }
+
+    async function attachLoopTerminal(loopID) {
+      const id = String(loopID || "").trim();
+      if (!id) return;
+      const loop = state.loops.find((item) => item.loopID === id);
+      if (!loop || !isActive(loop.status)) {
+        pushToast("Attach is only available for active loops.", "err");
+        return;
+      }
+      if (state.attachBusyLoopID) {
+        return;
+      }
+      state.attachBusyLoopID = id;
+      renderGrid();
+      syncPodViewActions();
+      try {
+        await postJSON("/v1/loops/" + encodeURIComponent(id) + "/control/attach", {
+          actor: authActor(),
+          terminal: "console-pods",
+        });
+        pushToast("Attached to " + id + ".", "ok");
+        selectLoop(id);
+      } catch (err) {
+        const message = err && err.message ? err.message : "attach failed";
+        pushToast("Failed to attach to " + id + ": " + message, "err");
+      } finally {
+        state.attachBusyLoopID = "";
+        renderGrid();
+        syncPodViewActions();
+      }
+    }
+
+    async function deleteSelectedLoop() {
+      const selected = selectedLoopRecord();
+      if (!selected) {
+        pushToast("Select a loop first.", "err");
+        return;
+      }
+      if (isActive(selected.status)) {
+        pushToast("Only completed loops can be deleted.", "err");
+        return;
+      }
+      const confirmed = window.confirm(
+        "Delete loop " + selected.loopID + "? This removes loop state and history.",
+      );
+      if (!confirmed) {
+        return;
+      }
+      const loopID = String(selected.loopID || "").trim();
+      state.loopDeleteBusy = true;
+      syncPodViewActions();
+      setPodsNotice("Deleting loop " + loopID + "...", "muted");
+      setActivePage("pods", true);
+      detachStream();
+      clearJournal("deleting loop...");
+      state.selectedLoop = "";
+      renderSelectedLoop();
+      renderGrid();
+      try {
+        await deleteJSON("/v1/loops/" + encodeURIComponent(loopID), {
+          actor: authActor(),
+        });
+        pushToast("Loop deleted: " + loopID + ".", "err");
+        setPodsNotice("Deleted loop " + loopID + ".", "ok", 4000);
+        await refreshLoops();
+      } catch (err) {
+        const message = err && err.message ? err.message : "delete failed";
+        setPodsNotice("Failed to delete " + loopID + ": " + message, "err", 7000);
+        pushToast("Failed to delete loop: " + message, "err");
+      } finally {
+        state.loopDeleteBusy = false;
+        syncPodViewActions();
+      }
     }
 
     async function applyOverride() {
@@ -2865,21 +3842,47 @@
     document.getElementById("refresh").addEventListener("click", refreshLoops);
     document.getElementById("state-filter").addEventListener("change", renderGrid);
     document.getElementById("search").addEventListener("input", renderGrid);
+    podViewBackEl.addEventListener("click", () => {
+      setActivePage("pods", true);
+    });
+    podViewAttachEl.addEventListener("click", () => {
+      if (state.selectedLoop) {
+        void attachLoopTerminal(state.selectedLoop);
+      }
+    });
+    podViewDeleteEl.addEventListener("click", () => {
+      void deleteSelectedLoop();
+    });
     podCreateToggleEl.addEventListener("click", () => setPodCreateOpen(true));
     podCreateCloseEl.addEventListener("click", () => setPodCreateOpen(false));
     podCreateCancelEl.addEventListener("click", () => setPodCreateOpen(false));
     podCreateProjectEl.addEventListener("change", () => {
-      resetPodCreateWorkflow();
+      podCreateIssueFilterEl.value = "";
+      podCreateIssueEl.value = "";
+      podCreateIssuePreviewEl.textContent = "Loading issues...";
+      if (!podCreateSourceBranchEl.value.trim()) {
+        podCreateSourceBranchEl.value = "main";
+      }
+      void loadProjectIssues(false);
+    });
+    podCreateMethodButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const method = button.getAttribute("data-pod-create-method") || "";
+        setPodCreateMethod(method);
+      });
+    });
+    podCreateBackEl.addEventListener("click", () => {
+      setPodCreateStatus("", "muted");
+      setPodCreateStep(state.podCreateStep - 1);
+    });
+    podCreateNextEl.addEventListener("click", () => {
+      goToNextPodCreateStep();
+    });
+    podCreateIssueFilterEl.addEventListener("input", () => {
       renderPodIssueOptions(podCreateProjectEl.value);
     });
     podCreateIssueEl.addEventListener("change", () => {
       renderPodIssuePreview();
-    });
-    podCreateLoadIssuesEl.addEventListener("click", () => {
-      void loadProjectIssues(false);
-    });
-    podCreateRefreshIssuesEl.addEventListener("click", () => {
-      void loadProjectIssues(true);
     });
     podCreateSubmitEl.addEventListener("click", () => {
       void startLoopFromIssue();
@@ -2909,9 +3912,16 @@
       void toggleStoredCredentialReveal();
     });
     document.getElementById("project-add").addEventListener("click", openProjectEditor);
-    document.getElementById("project-save").addEventListener("click", saveProject);
-    document.getElementById("project-cancel").addEventListener("click", () => {
-      clearProjectForm();
+    document.getElementById("project-save").addEventListener("click", () => {
+      void saveProject();
+    });
+    document.getElementById("project-delete").addEventListener("click", () => {
+      void deleteProjectFromEditor();
+    });
+    document.getElementById("project-delete-credential").addEventListener("click", () => {
+      void deleteProjectCredentialFromEditor();
+    });
+    projectBackEl.addEventListener("click", () => {
       setProjectEditorOpen(false);
     });
     projectListEl.addEventListener("click", (ev) => {
@@ -2923,9 +3933,7 @@
       const projectID = control.getAttribute("data-project-id") || "";
       const loopID = control.getAttribute("data-loop-id") || "";
       if (action === "edit") {
-        editProject(projectID);
-      } else if (action === "remove") {
-        removeProject(projectID);
+        void editProject(projectID);
       } else if (action === "review-work" || action === "approve" || action === "submit-pr") {
         runProjectWorkflowAction(projectID, loopID, action);
       }
@@ -2936,10 +3944,16 @@
       });
     });
     sidebarOverlayEl.addEventListener("click", () => setSidebarOpen(false));
-    providerDrawerOverlayEl.addEventListener("click", () => setProviderConfigOpen(false));
+    providerDrawerOverlayEl.addEventListener("click", () => {
+      setProviderConfigOpen(false);
+      setProjectEditorOpen(false);
+      setPodCreateOpen(false);
+    });
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") setSidebarOpen(false);
       if (ev.key === "Escape") setProviderConfigOpen(false);
+      if (ev.key === "Escape") setProjectEditorOpen(false);
+      if (ev.key === "Escape") setPodCreateOpen(false);
       if (ev.key.toLowerCase() === "n") {
         const target = ev.target;
         const editing =

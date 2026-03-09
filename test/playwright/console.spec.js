@@ -54,6 +54,7 @@ async function mockConsoleApi(page) {
     last_refresh_at: '',
     api_key: '',
   };
+  const projectCredentialState = {};
   const overridePayloads = [];
   const createdLoopPayloads = [];
 
@@ -135,6 +136,31 @@ async function mockConsoleApi(page) {
     await jsonResponse(route, { error: 'method not allowed' }, 405);
   });
 
+  await page.route(/\/v1\/loops\/[^/]+$/, async (route) => {
+    const method = route.request().method();
+    const id = decodeURIComponent(route.request().url().split('/v1/loops/')[1] || '').trim();
+    if (method === 'DELETE') {
+      const index = loopsState.findIndex((item) => item?.record?.loop_id === id);
+      if (index < 0) {
+        await jsonResponse(route, { error: 'loop not found' }, 404);
+        return;
+      }
+      loopsState.splice(index, 1);
+      await jsonResponse(route, { loop_id: id, status: 'deleted' });
+      return;
+    }
+    if (method === 'GET') {
+      const current = loopsState.find((item) => item?.record?.loop_id === id);
+      if (!current) {
+        await jsonResponse(route, { error: 'loop not found' }, 404);
+        return;
+      }
+      await jsonResponse(route, { state: current });
+      return;
+    }
+    await jsonResponse(route, { error: 'method not allowed' }, 405);
+  });
+
   await page.route(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+\/issues.*$/, async (route) => {
     await jsonResponse(route, [
       {
@@ -205,6 +231,61 @@ async function mockConsoleApi(page) {
     await jsonResponse(route, { ok: true });
   });
 
+  await page.route(/\/v1\/projects\/credentials\/github(\?.*)?$/, async (route) => {
+    const method = route.request().method();
+    const url = new URL(route.request().url());
+    const projectID = String(url.searchParams.get('project_id') || '').trim();
+    if (method === 'GET') {
+      if (!projectID || !projectCredentialState[projectID]) {
+        await jsonResponse(route, { project_id: projectID, credential_set: false });
+        return;
+      }
+      const reveal = String(url.searchParams.get('reveal') || '').toLowerCase() === 'true';
+      const entry = projectCredentialState[projectID];
+      const key = String(entry.credential || '');
+      const masked = key.length <= 8 ? '*'.repeat(key.length) : `${key.slice(0, 4)}${'*'.repeat(key.length - 8)}${key.slice(-4)}`;
+      const payload = {
+        project_id: projectID,
+        credential_set: true,
+        github_user: entry.github_user || '',
+        credential_masked: masked,
+      };
+      if (reveal) {
+        payload.credential = key;
+      }
+      await jsonResponse(route, payload);
+      return;
+    }
+    if (method === 'POST') {
+      const payload = route.request().postDataJSON();
+      const id = String(payload.project_id || '').trim();
+      projectCredentialState[id] = {
+        credential: String(payload.credential || ''),
+        github_user: String(payload.github_user || ''),
+      };
+      const key = String(payload.credential || '');
+      const masked = key.length <= 8 ? '*'.repeat(key.length) : `${key.slice(0, 4)}${'*'.repeat(key.length - 8)}${key.slice(-4)}`;
+      await jsonResponse(route, {
+        project_id: id,
+        credential_set: true,
+        github_user: String(payload.github_user || ''),
+        credential_masked: masked,
+      });
+      return;
+    }
+    if (method === 'DELETE') {
+      let body = {};
+      try {
+        body = route.request().postDataJSON() || {};
+      } catch (_) {}
+      const id = projectID || String(body.project_id || '').trim();
+      delete projectCredentialState[id];
+      await jsonResponse(route, { project_id: id, credential_set: false });
+      return;
+    }
+    await jsonResponse(route, { error: 'method not allowed' }, 405);
+  });
+
   await page.route(/\/v1\/control\/override$/, async (route) => {
     const payload = route.request().postDataJSON();
     overridePayloads.push(payload);
@@ -225,14 +306,33 @@ test('renders loop tiles and summary stats', async ({ page }) => {
   await expect(page.locator('#stat-total')).toHaveText('3');
   await expect(page.locator('#stat-active')).toHaveText('2');
   await expect(page.locator('#stat-flatline')).toHaveText('1');
-  await expect(page.locator('#grid .pod-group')).toHaveCount(2);
   await expect(page.locator('#grid .pod-tile')).toHaveCount(3);
-  await expect(page.locator('#pod-detail')).toBeHidden();
+  await expect(page.locator('#grid .pod-tile .tile-loop').first()).toContainText('alpha');
+  await expect(page.locator('#page-pod-view')).toBeHidden();
 
   await page.locator('#grid .pod-tile', { hasText: 'loop-alpha' }).click();
-  await expect(page.locator('#pod-detail')).toBeVisible();
+  await expect(page.locator('#page-pod-view')).toBeVisible();
+  await expect(page).toHaveURL(/#pod-view\/loop-alpha$/);
+  await expect(page.locator('#pod-view-title')).toContainText('loop-alpha');
   await expect(page.locator('#journal-title')).toContainText('loop-alpha');
   await expect(page.locator('#terminal')).toContainText('worker started');
+});
+
+test('deletes a completed loop from pod detail view', async ({ page }) => {
+  await mockConsoleApi(page);
+  await page.goto('/');
+
+  await page.locator('#grid .pod-tile', { hasText: 'loop-gamma' }).click();
+  await expect(page.locator('#page-pod-view')).toBeVisible();
+  await expect(page.locator('#pod-view-delete')).toBeEnabled();
+  await page.locator('#pod-view-delete').click();
+  await expect
+    .poll(() => page.evaluate(() => window.__lastConfirmMessage))
+    .toContain('Delete loop loop-gamma?');
+  await expect(page.locator('#toast-region .toast').last()).toContainText('Loop deleted: loop-gamma');
+  await expect(page).toHaveURL(/#pods$/);
+  await expect(page.locator('#grid .pod-tile')).toHaveCount(2);
+  await expect(page.locator('#grid .pod-tile', { hasText: 'loop-gamma' })).toHaveCount(0);
 });
 
 test('filters tiles by state and search input', async ({ page }) => {
@@ -356,12 +456,10 @@ test('adds and renders project configuration entries', async ({ page }) => {
   await page.locator('#project-save').click();
 
   await expect(page.locator('#project-config-panel')).toBeHidden();
+  await expect(page.locator('#toast-region .toast').last()).toContainText('Project saved: beta');
   await expect(page.locator('#project-list .project-tile')).toHaveCount(1);
   await expect(page.locator('#project-list .project-name')).toHaveText('beta');
-  await expect(page.locator('#project-list .project-repo')).toContainText(
-    'https://github.com/acme/beta.git',
-  );
-  await expect(page.locator('#project-list')).toContainText('GitHub: acme-bot');
+  await expect(page.locator('#project-list button[data-project-action="remove"]')).toHaveCount(0);
   await expect(page.locator('#project-list .project-loop-id')).toContainText('loop-gamma');
 
   await page.locator('#project-list button[data-project-action="review-work"][data-loop-id="loop-gamma"]').click();
@@ -375,11 +473,57 @@ test('adds and renders project configuration entries', async ({ page }) => {
   await page.locator('#project-list button[data-project-action="submit-pr"][data-loop-id="loop-gamma"]').click();
   await expect(page.locator('#project-action-status')).toContainText('PR submitted for loop-gamma');
   await expect(page.locator('#project-list .project-loop-row', { hasText: 'loop-gamma' }).locator('.project-meta .badge')).toContainText('pr submitted');
+
+  await page.locator('#project-list button[data-project-action="edit"]').click();
+  await expect(page.locator('#project-config-panel')).toBeVisible();
+  await expect(page.locator('#project-delete')).toBeVisible();
+  await expect(page.locator('#project-delete-credential')).toBeVisible();
+  await page.locator('#project-delete-credential').click();
+  await expect
+    .poll(() => page.evaluate(() => window.__lastConfirmMessage))
+    .toBe('Are you sure you wish to delete this project credential?');
+  await expect(page.locator('#project-config-panel')).toBeHidden();
+  await expect(page.locator('#toast-region .toast').last()).toContainText('Project credential deleted');
+
+  await page.locator('#project-list button[data-project-action="submit-pr"][data-loop-id="loop-gamma"]').click();
+  await expect(page.locator('#project-action-status')).toContainText('missing GitHub credential');
+
+  await page.locator('#project-list button[data-project-action="edit"]').click();
+  await expect(page.locator('#project-config-panel')).toBeVisible();
+  await page.locator('#project-delete').click();
+  await expect
+    .poll(() => page.evaluate(() => window.__lastConfirmMessage))
+    .toBe('Are you sure you wish to delete project beta?');
+  await expect(page.locator('#project-config-panel')).toBeHidden();
+  await expect(page.locator('#project-list .project-tile')).toHaveCount(0);
+  await expect(page.locator('#toast-region .toast').last()).toContainText('Project removed: beta');
 });
 
-test('starts loop from project issue with workspace form flow', async ({ page }) => {
+test('starts loop from project issue with loop modal flow', async ({ page }) => {
   const api = await mockConsoleApi(page);
   await page.goto('/');
+
+  await page.evaluate(async () => {
+    await fetch('/v1/auth/codex/connect/api-key', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        actor: 'operator',
+        api_key: 'sk-test-123',
+        account_id: 'acct-api',
+      }),
+    });
+  });
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-providers').click();
+  await page.locator('#provider-list button[data-provider-config="codex"]').click();
+  await expect(page.locator('#provider-config-panel')).toBeVisible();
+  await expect(page.locator('#provider-list .provider-card.connected')).toHaveCount(1);
+  await page.locator('#provider-back').click();
 
   await page.locator('.page.active .sidebar-toggle').click();
   await page.locator('#nav-projects').click();
@@ -394,25 +538,30 @@ test('starts loop from project issue with workspace form flow', async ({ page })
   await page.locator('#nav-pods').click();
   await page.keyboard.press('n');
 
+  await page.locator('#pod-create-next').click();
   await page.locator('#pod-create-project').selectOption({ label: 'alpha' });
-  await page.locator('#pod-create-load-issues').click();
-  await expect(page.locator('#pod-create-status')).toContainText('Loaded 2 open issue(s).');
-
+  await expect(page.locator('#pod-create-issue option[value="132"]')).toHaveCount(1);
   await page.locator('#pod-create-issue').selectOption('132');
-  await page.locator('#pod-create-branch').fill('feat/issue-132-prd');
-  await page.locator('#pod-create-source-branch').fill('main');
-  await page.locator('#pod-create-agent').selectOption('codex');
+  await page.locator('#pod-create-next').click();
+
+  await expect(page.locator('#pod-create-loop-name')).toHaveValue('');
+  await expect(page.locator('#pod-create-branch')).toHaveValue('alpha-issue-132');
+  await expect(page.locator('#pod-create-provider')).toHaveValue('codex');
   await page.locator('#pod-create-prompt').fill('Focus on pods and providers UX clean-up.');
   await page.locator('#pod-create-submit').click();
 
   await expect(page.locator('#pod-create-panel')).toBeHidden();
-  await expect(page.locator('#grid .pod-tile', { hasText: 'alpha/feat/issue-132-prd' })).toHaveCount(1);
+  await expect(page.locator('#grid .pod-tile', { hasText: 'alpha-issue-132-simplified-console-ux' })).toHaveCount(1);
   await expect
     .poll(() => api.createdLoopPayloads.length)
     .toBe(1);
   expect(api.createdLoopPayloads[0]).toMatchObject({
-    loop_id: 'alpha/feat/issue-132-prd',
     source_type: 'github_issue',
     source_ref: 'callmeradical/smith#132',
+    metadata: {
+      workspace_branch: 'alpha-issue-132',
+      workspace_agent: 'codex',
+    },
   });
+  expect(api.createdLoopPayloads[0].loop_id).toContain('alpha-issue-132-');
 });

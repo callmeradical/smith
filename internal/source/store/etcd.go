@@ -210,6 +210,23 @@ func (s *Store) PutStateFromCurrent(ctx context.Context, loopID string, mutate f
 	return LoopWithRevision{Record: next, Revision: rev}, nil
 }
 
+func (s *Store) DeleteLoop(ctx context.Context, loopID string) error {
+	id := strings.TrimSpace(loopID)
+	if id == "" {
+		return errors.New("loop id is required")
+	}
+	ops := []clientv3.Op{
+		clientv3.OpDelete(model.StateKey(id)),
+		clientv3.OpDelete(model.AnomalyKey(id)),
+		clientv3.OpDelete(model.LockKey(id)),
+		clientv3.OpDelete(model.JournalPrefix(id)+"/", clientv3.WithPrefix()),
+		clientv3.OpDelete(model.HandoffPrefix(id)+"/", clientv3.WithPrefix()),
+		clientv3.OpDelete(model.OverridePrefix(id)+"/", clientv3.WithPrefix()),
+	}
+	_, err := s.cli.Txn(ctx).Then(ops...).Commit()
+	return err
+}
+
 func (s *Store) NextSequence(ctx context.Context, prefix string) (int64, error) {
 	resp, err := s.cli.Get(ctx, prefix+"/", clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortDescend), clientv3.WithLimit(1))
 	if err != nil {
