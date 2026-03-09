@@ -237,3 +237,48 @@ Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309
   - Useful context
   - `.ralph/runs/*iter-5.log` can continue updating after commands and may require a final sync commit for clean status.
 ---
+## [2026-03-09 05:38:34 EDT] - US-006: Add reproducible verification and security gates
+Thread: 
+Run: 20260309-043624-64079 (iteration 6)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-6.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-6.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 10886dc feat(base-image): add reproducible quality gates
+- Post-commit status: dirty (.ralph/runs/run-20260309-043624-64079-iter-6.log changed after commit)
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/check-base-internal-binaries-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/check-base-skills-mount-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/run-base-quality-gates.sh loop-base:local -> PASS
+  - Command: ./scripts/check-trivy-critical-negative.sh knqyf263/vuln-image:1.2.3 -> PASS (expected trivy non-zero gate failure)
+- Files changed:
+  - scripts/run-base-quality-gates.sh
+  - scripts/check-trivy-critical-negative.sh
+  - README.md
+  - AGENTS.md
+  - artifacts/sbom-loop-base.spdx.json
+  - .agents/tasks/prd-base-container.json
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/progress.md
+  - .ralph/.tmp/prompt-20260309-043624-64079-6.md
+  - .ralph/.tmp/story-20260309-043624-64079-6.json
+  - .ralph/.tmp/story-20260309-043624-64079-6.md
+  - .ralph/runs/run-20260309-043624-64079-iter-5.log
+  - .ralph/runs/run-20260309-043624-64079-iter-5.md
+  - .ralph/runs/run-20260309-043624-64079-iter-6.log
+- What was implemented
+  - Added a deterministic, fail-fast local gate runner (`scripts/run-base-quality-gates.sh`) that executes the top-level quality gate command set in order, including lint/security/SBOM steps.
+  - Added a reproducible trivy negative-case helper (`scripts/check-trivy-critical-negative.sh`) that validates the CRITICAL gate fails for a known vulnerable image tag.
+  - Documented quality-gate usage and setup notes for required local tools (`hadolint`, `shellcheck`, `trivy`, `syft`) in README and AGENTS.
+  - Verified that the full gate sequence succeeds for `loop-base:local` and writes `artifacts/sbom-loop-base.spdx.json`.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Wrapping exact quality gate commands in a single shell script reduces drift between PRD qualityGates and local execution.
+  - Gotchas encountered
+  - `.ralph/runs/*iter-6.log` can continue updating after a commit, so a final sync commit is needed for a clean tree.
+  - Useful context
+  - `knqyf263/vuln-image:1.2.3` is a stable negative-case target for validating trivy CRITICAL gate failure behavior.
+---
