@@ -3,369 +3,1361 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Smith Operator Console</title>
+  <title>SMITH</title>
   <script src="/runtime-config.js"></script>
   <style>
     :root {
-      --bg: #090b0f;
-      --bg-elev: #11161d;
-      --panel: rgba(255, 255, 255, 0.06);
+      --bg: #07090e;
+      --bg-elev: #0d1119;
+      --panel: rgba(255, 255, 255, 0.05);
       --panel-strong: rgba(255, 255, 255, 0.1);
       --border: rgba(255, 255, 255, 0.16);
-      --text: #e5edf7;
-      --muted: #8ea0b6;
+      --text: #e6eef9;
+      --muted: #90a1b7;
       --ok: #10b981;
       --warn: #f59e0b;
       --err: #ef4444;
       --accent: #06b6d4;
-      --radius: 10px;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "Noto Sans", Helvetica, Arial, sans-serif;
+      --radius: 12px;
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: "IBM Plex Sans", "Segoe UI", -apple-system, BlinkMacSystemFont, "Noto Sans", Helvetica, Arial, sans-serif;
     }
+
     * {
       box-sizing: border-box;
     }
+
     body {
       margin: 0;
       background:
-        radial-gradient(1200px 600px at 90% -20%, rgba(6, 182, 212, 0.12), transparent 50%),
-        radial-gradient(900px 500px at -10% -10%, rgba(16, 185, 129, 0.12), transparent 45%),
+        radial-gradient(1100px 600px at 110% -20%, rgba(6, 182, 212, 0.16), transparent 50%),
+        radial-gradient(1000px 620px at -20% -30%, rgba(16, 185, 129, 0.12), transparent 55%),
         var(--bg);
       color: var(--text);
       font-family: var(--sans);
       min-height: 100vh;
     }
-    .app {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 12px 14px 24px;
-      display: grid;
-      gap: 12px;
-    }
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      backdrop-filter: blur(10px);
-      background: rgba(9, 11, 15, 0.7);
+
+    button,
+    select,
+    input,
+    textarea {
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 10px;
-      align-items: center;
-      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font-size: 0.88rem;
     }
-    .title {
+
+    button:hover,
+    select:hover,
+    input:hover,
+    textarea:hover {
+      border-color: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.09);
+    }
+
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    .pod-tile:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .shell {
+      min-height: 100vh;
+      padding: 14px;
+    }
+
+    .sidebar {
+      position: fixed;
+      left: 14px;
+      top: 14px;
+      bottom: 14px;
+      width: 240px;
+      overflow: auto;
+      border: 0;
+      border-radius: 14px;
+      background: rgba(7, 9, 14, 0.98);
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      padding: 14px;
+      transform: translateX(-120%);
+      transition: transform 180ms ease;
+      z-index: 30;
+    }
+
+    body.sidebar-open .sidebar {
+      transform: translateX(0);
+    }
+
+    .sidebar-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: none;
+      z-index: 20;
+    }
+
+    body.sidebar-open .sidebar-overlay {
+      display: block;
+    }
+
+    .provider-drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+      z-index: 31;
+      backdrop-filter: blur(0);
+      -webkit-backdrop-filter: blur(0);
+    }
+
+    body.provider-drawer-open .provider-drawer-overlay,
+    body.project-drawer-open .provider-drawer-overlay,
+    body.pod-drawer-open .provider-drawer-overlay {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .toast-region {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 60;
+      display: grid;
+      gap: 8px;
+      pointer-events: none;
+      width: min(360px, calc(100vw - 28px));
+    }
+
+    .toast {
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(7, 9, 14, 0.98);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 140ms ease, transform 140ms ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toast.ok {
+      border-color: rgba(16, 185, 129, 0.5);
+      color: #c9fce8;
+    }
+
+    .toast.err {
+      border-color: rgba(239, 68, 68, 0.5);
+      color: #ffd9d9;
+    }
+
+    .brand {
+      display: grid;
+      gap: 4px;
+      padding: 4px 2px;
+    }
+
+    .brand-line {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       font-weight: 600;
-      letter-spacing: 0.02em;
     }
+
     .dot {
       width: 10px;
       height: 10px;
       border-radius: 50%;
       background: var(--warn);
-      box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
     }
+
     .dot.ok {
       background: var(--ok);
-      box-shadow: 0 0 10px rgba(16, 185, 129, 0.7);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
     }
+
     .dot.err {
       background: var(--err);
-      box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
     }
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
+
+    .api-url {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      word-break: break-all;
     }
-    button,
-    select,
-    input {
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text);
-      border-radius: 8px;
-      padding: 7px 10px;
-      font-size: 0.9rem;
-    }
-    button:hover,
-    select:hover,
-    input:hover {
-      border-color: rgba(255, 255, 255, 0.35);
-      background: rgba(255, 255, 255, 0.09);
-    }
-    button:focus-visible,
-    select:focus-visible,
-    input:focus-visible,
-    .card:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
-    }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(120px, 1fr));
-      gap: 10px;
-    }
-    .stat {
+
+    .panel {
       border: 1px solid var(--border);
       border-radius: var(--radius);
       background: var(--panel);
       padding: 10px;
+      display: grid;
+      gap: 8px;
     }
+
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.86rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .quick-nav {
+      display: grid;
+      gap: 4px;
+      grid-template-columns: 1fr;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: #d3e2f3;
+      border: 0;
+      background: transparent;
+      padding: 7px 2px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      transition: color 120ms ease;
+    }
+
+    .nav-link::before {
+      content: " ";
+      width: 10px;
+      display: inline-block;
+      color: var(--accent);
+    }
+
+    .nav-link:hover {
+      color: #f4fbff;
+    }
+
+    .nav-link.active {
+      color: var(--accent);
+    }
+
+    .nav-link.active::before {
+      content: ">";
+    }
+
+    .status-note {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .provider-card-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      align-content: start;
+    }
+
+    .provider-card {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .provider-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .provider-card-name {
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .provider-card-desc {
+      color: #b3c1d4;
+      font-size: 0.74rem;
+      line-height: 1.35;
+    }
+
+    .provider-card-actions {
+      margin-top: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .provider-card-status {
+      color: var(--muted);
+      font-size: 0.74rem;
+    }
+
+    .provider-card-actions button {
+      font-size: 0.74rem;
+      padding: 6px 8px;
+    }
+
+    .provider-card.connected .provider-card-name {
+      color: #c9fce8;
+    }
+
+    .provider-card.active {
+      border-color: rgba(6, 182, 212, 0.6);
+      box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.45);
+    }
+
+    .provider-drawer {
+      position: fixed;
+      right: 14px;
+      top: 14px;
+      bottom: 14px;
+      width: min(430px, calc(100vw - 28px));
+      border: 0;
+      border-radius: 14px;
+      background: rgba(7, 9, 14, 0.98);
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+      padding: 12px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      overflow: auto;
+      transform: translateX(120%);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform 180ms ease, opacity 180ms ease;
+      z-index: 32;
+    }
+
+    .provider-drawer.open {
+      transform: translateX(0);
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .pod-create-modal {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: min(75vw, calc(100vw - 28px));
+      min-width: min(520px, calc(100vw - 28px));
+      max-height: calc(100vh - 28px);
+      border: 0;
+      border-radius: 14px;
+      background: rgba(7, 9, 14, 0.98);
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+      padding: 12px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      overflow: auto;
+      transform: translate(-50%, -46%) scale(0.98);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform 180ms ease, opacity 180ms ease;
+      z-index: 33;
+    }
+
+    .pod-create-modal.open {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .provider-drawer-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 2px;
+    }
+
+    .provider-drawer-title {
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      font-size: 0.92rem;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .provider-drawer-close {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 8px;
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      font-size: 1rem;
+      padding: 0;
+    }
+
+    .provider-actions {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .override-controls {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .provider-actions button,
+    .override-controls button {
+      padding-inline: 8px;
+      font-size: 0.8rem;
+    }
+
+    .primary {
+      border-color: rgba(6, 182, 212, 0.9);
+      background: rgba(6, 182, 212, 0.36);
+      color: #e8fbff;
+      font-weight: 700;
+    }
+
+    .primary:hover {
+      border-color: rgba(34, 211, 238, 1);
+      background: rgba(34, 211, 238, 0.46);
+    }
+
+    .provider-api-key {
+      display: grid;
+      gap: 6px;
+    }
+
+    .provider-api-key input {
+      width: 100%;
+    }
+
+    .input-with-icon {
+      position: relative;
+      width: 100%;
+    }
+
+    .input-with-icon input {
+      padding-right: 42px;
+    }
+
+    .field-icon-button {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--fg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .field-icon-button svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .project-actions {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .drawer-delete-action {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .project-list {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    }
+
+    .project-tile {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+    }
+
+    .project-tile:hover {
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+
+    .collapsible-summary {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      padding: 8px 2px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .collapsible-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .collapsible-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .collapsible-caret {
+      color: var(--accent);
+      display: inline-block;
+      transition: transform 120ms ease;
+    }
+
+    details[open] > .collapsible-summary .collapsible-caret {
+      transform: rotate(90deg);
+    }
+
+    .collapsible-body {
+      display: grid;
+      gap: 8px;
+      padding: 6px 0 0;
+    }
+
+    .project-name {
+      font-weight: 700;
+    }
+
+    .project-repo {
+      font-size: 0.74rem;
+      color: #b3c1d4;
+      font-family: var(--mono);
+      word-break: break-all;
+    }
+
+    .project-meta {
+      font-size: 0.74rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .project-tile-actions {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .project-tile-actions button {
+      font-size: 0.74rem;
+      padding: 6px 8px;
+    }
+
+    .project-loop-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .project-loop-row {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 8px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .project-loop-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      font-family: var(--mono);
+    }
+
+    .project-loop-id {
+      color: #dbe8f7;
+      word-break: break-all;
+    }
+
+    .project-card-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .project-card-actions button {
+      font-size: 0.74rem;
+      padding: 5px 9px;
+    }
+
+    .project-action-icon {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    .icon-button {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .danger {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.13);
+      color: #fecaca;
+    }
+
+    .workspace {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .page {
+      display: none;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .page.active {
+      display: grid;
+    }
+
+    .config-page {
+      border: 0;
+      border-radius: var(--radius);
+      background: transparent;
+      padding: 0;
+    }
+
+    .config-title {
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      font-size: 0.95rem;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 14px;
+      z-index: 4;
+      border: 0;
+      border-radius: 10px;
+      background: rgba(7, 9, 14, 0.9);
+      backdrop-filter: blur(8px);
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-toggle {
+      border: 0;
+      background: transparent;
+      color: #e6eef9;
+      font-size: 1.05rem;
+      padding: 4px 6px;
+      border-radius: 6px;
+      line-height: 1;
+    }
+
+    .sidebar-toggle:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .topbar-title {
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pod-create-actions {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .pod-create-step-indicators {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      margin-bottom: 2px;
+    }
+
+    .pod-create-step-chip {
+      position: relative;
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      color: #8fa3ba;
+    }
+
+    .pod-create-step-chip::after {
+      content: "";
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      width: 100%;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateX(10px);
+    }
+
+    .pod-create-step-chip:last-child::after {
+      display: none;
+    }
+
+    .pod-create-step-node {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      color: #afc0d4;
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.78rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .pod-create-step-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pod-create-step-chip.active {
+      color: #e3f7ff;
+    }
+
+    .pod-create-step-chip.active::after {
+      background: rgba(6, 182, 212, 0.45);
+    }
+
+    .pod-create-step-chip.active .pod-create-step-node {
+      border-color: rgba(6, 182, 212, 0.95);
+      background: rgba(6, 182, 212, 0.24);
+      color: #ecfdff;
+    }
+
+    .pod-create-step-chip.complete {
+      color: #c8f5e6;
+    }
+
+    .pod-create-step-chip.complete::after {
+      background: rgba(16, 185, 129, 0.45);
+    }
+
+    .pod-create-step-chip.complete .pod-create-step-node {
+      border-color: rgba(16, 185, 129, 0.9);
+      background: rgba(16, 185, 129, 0.2);
+      color: #ecfdf5;
+    }
+
+    .pod-create-step-panel {
+      display: grid;
+      gap: 8px;
+    }
+
+    .pod-create-method-options {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .pod-create-method-button {
+      text-align: left;
+      min-height: 88px;
+      display: grid;
+      gap: 6px;
+      align-content: start;
+      padding: 10px;
+    }
+
+    .pod-create-method-button strong {
+      font-size: 0.82rem;
+      letter-spacing: 0.02em;
+    }
+
+    .pod-create-method-button span {
+      color: var(--muted);
+      font-size: 0.74rem;
+      line-height: 1.3;
+    }
+
+    .pod-create-method-button.selected {
+      border-color: rgba(6, 182, 212, 0.72);
+      box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.5);
+      background: rgba(6, 182, 212, 0.16);
+    }
+
+    .pod-create-method-button[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pod-create-footer {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .pod-create-footer .primary {
+      grid-column: span 2;
+    }
+
+    .stats {
+      display: flex;
+      gap: 22px;
+      align-items: center;
+      margin-bottom: 0;
+      padding: 8px 4px;
+      background: transparent;
+      border-radius: 0;
+      border: 0;
+    }
+
+    .stat {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 0;
+      min-width: 96px;
+    }
+
     .stat small {
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.08em;
       font-size: 0.7rem;
     }
+
     .stat strong {
       display: block;
       margin-top: 6px;
-      font-size: 1.2rem;
+      font-size: 1rem;
       font-variant-numeric: tabular-nums;
     }
-    .main {
-      display: grid;
-      grid-template-columns: 1.3fr 1fr;
-      gap: 10px;
-      min-height: 64vh;
+
+    .stat-action {
+      min-width: 132px;
+      margin-left: auto;
+      text-align: right;
     }
-    .auth-panel {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--panel);
-      padding: 10px;
-      display: grid;
-      gap: 8px;
-    }
-    .auth-headline {
-      display: flex;
+
+    .stat-add-button {
+      display: inline-flex;
       align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      margin-top: 6px;
+      border-radius: 10px;
+      font-size: 1.7rem;
+      line-height: 1;
+      font-weight: 700;
+      padding: 0;
+      border-color: rgba(6, 182, 212, 0.58);
+      background: rgba(6, 182, 212, 0.2);
+      color: #bff4ff;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      min-height: 72vh;
+    }
+
+    .board.has-selection {
+      grid-template-columns: 1.2fr 0.95fr;
+    }
+
+    .tiles-shell,
+    .journal {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    .tiles-header,
+    .journal-header {
+      padding: 6px 2px;
+      border-bottom: 0;
+      display: flex;
       justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .tiles-header-meta {
+      display: grid;
+      justify-items: end;
+      gap: 2px;
+      text-align: right;
+    }
+
+    .pods-notice {
+      min-height: 0;
+      font-size: 0.74rem;
+    }
+
+    .pod-grid {
+      padding: 0;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      max-height: calc(72vh - 48px);
+      overflow: auto;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    }
+
+    .pod-group {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .pod-group-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       gap: 8px;
       font-size: 0.9rem;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      cursor: pointer;
+      list-style: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 8px 2px;
     }
-    .auth-metrics {
+
+    .pod-group-head::-webkit-details-marker {
+      display: none;
+    }
+
+    .pod-group-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pod-group-caret {
+      color: var(--accent);
+      display: inline-block;
+      transition: transform 120ms ease;
+    }
+
+    .pod-group[open] > .pod-group-head .pod-group-caret {
+      transform: rotate(90deg);
+    }
+
+    .pod-group-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 6px;
-      font-size: 0.78rem;
+      gap: 12px;
+      padding: 10px 0 12px 20px;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
     }
-    .auth-metrics span {
-      display: flex;
-      justify-content: space-between;
-      gap: 6px;
-      padding: 5px 7px;
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.03);
-    }
-    .auth-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr auto auto auto auto;
-      gap: 6px;
-    }
-    .grid {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: rgba(255, 255, 255, 0.03);
+
+    .pod-tile {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+      color: var(--text);
       padding: 10px;
       display: grid;
       gap: 8px;
-      align-content: start;
-      max-height: 70vh;
-      overflow: auto;
-    }
-    .card {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--panel);
-      padding: 10px;
       cursor: pointer;
       transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
       position: relative;
       overflow: hidden;
+      min-height: 140px;
     }
-    .card::before {
+
+    .pod-tile::before {
       content: "";
       position: absolute;
       left: 0;
       top: 0;
       width: 100%;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.8), transparent);
       opacity: 0;
       transition: opacity 120ms ease;
     }
-    .card:hover {
+
+    .pod-tile:hover {
       transform: translateY(-1px);
-      border-color: rgba(255, 255, 255, 0.4);
-      background: var(--panel-strong);
+      border-color: rgba(6, 182, 212, 0.45);
+      background: rgba(255, 255, 255, 0.06);
     }
-    .card:hover::before {
+
+    .pod-tile:hover::before {
       opacity: 1;
     }
-    .card.selected {
-      border-color: var(--accent);
-      background: rgba(6, 182, 212, 0.12);
+
+    .pod-tile.selected {
+      box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.9);
+      border-color: rgba(6, 182, 212, 0.8);
     }
-    .row {
+
+    .tile-head {
+      display: block;
+      min-width: 0;
+    }
+
+    .tile-actions-top {
+      min-height: 26px;
       display: flex;
+      justify-content: flex-end;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
+
     .loop-id {
       font-family: var(--mono);
       font-size: 0.82rem;
-      color: #cbe4ff;
-      word-break: break-all;
+      font-weight: 600;
+      color: #dbe8f7;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      word-break: normal;
     }
+
+    .tile-title {
+      font-size: 0.92rem;
+      line-height: 1.2;
+      letter-spacing: 0.01em;
+      font-weight: 600;
+      color: #f1f6ff;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .tile-loop {
+      font-size: 0.74rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #8fa2b9;
+    }
+
     .badge {
-      font-size: 0.68rem;
+      font-size: 0.6rem;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      padding: 2px 6px;
+      padding: 2px 8px;
       border-radius: 999px;
       border: 1px solid transparent;
       white-space: nowrap;
+      font-weight: 700;
     }
+
     .state-unresolved,
     .state-overwriting {
       color: var(--warn);
       background: rgba(245, 158, 11, 0.18);
-      border-color: rgba(245, 158, 11, 0.35);
+      border-color: rgba(245, 158, 11, 0.42);
     }
+
     .state-synced {
       color: var(--ok);
-      background: rgba(16, 185, 129, 0.18);
-      border-color: rgba(16, 185, 129, 0.35);
+      background: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.45);
     }
+
     .state-flatline,
     .state-cancelled {
       color: var(--err);
-      background: rgba(239, 68, 68, 0.18);
-      border-color: rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.44);
     }
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 6px;
+
+    .tile-reason {
       font-size: 0.76rem;
-      color: var(--muted);
-      font-variant-numeric: tabular-nums;
+      color: #9bb0c9;
+      min-height: 32px;
     }
-    .metrics span {
-      display: flex;
-      justify-content: space-between;
-      gap: 6px;
-      padding: 4px 6px;
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.03);
-    }
-    .journal {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: rgba(0, 0, 0, 0.45);
-      display: grid;
-      grid-template-rows: auto 1fr;
-      min-height: 70vh;
-      overflow: hidden;
-    }
-    .journal-header {
-      border-bottom: 1px solid var(--border);
-      padding: 10px;
-      display: grid;
-      gap: 8px;
-    }
-    .journal-headline {
+
+    .tile-health {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: 0.9rem;
-    }
-    .override-bar {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr auto;
       gap: 6px;
     }
-    .override-bar .danger {
-      border-color: rgba(239, 68, 68, 0.45);
-      background: rgba(239, 68, 68, 0.12);
-      color: #fecaca;
+
+    .tile-health-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      background: #4dc89a;
+      box-shadow: 0 0 8px rgba(77, 200, 154, 0.5);
     }
-    .override-bar .danger:hover {
-      background: rgba(239, 68, 68, 0.2);
-      border-color: rgba(239, 68, 68, 0.7);
+
+    .tile-health-text {
+      font-size: 0.74rem;
+      color: #b7c5d8;
     }
-    .terminal {
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      line-height: 1.45;
-      color: #c6ddf5;
-      overflow: auto;
-      padding: 10px;
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
+
+    .tile-meta {
+      display: flex;
+      gap: 8px;
+      color: #95a8bf;
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
     }
-    .terminal .ts {
-      color: #93afcb;
+
+    .tile-footer {
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
     }
-    .terminal .level-error {
-      color: #fda4af;
+
+    .tile-action-button {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.04);
+      color: #d9e7f8;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: lowercase;
+      cursor: pointer;
+      transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
     }
-    .terminal .level-warn {
-      color: #fcd34d;
+
+    .tile-action-button:hover:not(:disabled) {
+      border-color: rgba(6, 182, 212, 0.55);
+      background: rgba(6, 182, 212, 0.14);
+      color: #f0fbff;
     }
-    .terminal .level-info {
-      color: #93c5fd;
+
+    .tile-action-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
     }
+
     .muted {
       color: var(--muted);
     }
+
     .empty {
-      border: 1px dashed rgba(255, 255, 255, 0.2);
+      border: 1px dashed rgba(255, 255, 255, 0.22);
       border-radius: var(--radius);
-      padding: 12px;
+      padding: 14px;
       color: var(--muted);
       text-align: center;
     }
-    @media (max-width: 960px) {
-      .stats {
-        grid-template-columns: repeat(2, minmax(120px, 1fr));
+
+    .terminal {
+      margin: 0;
+      padding: 12px;
+      height: calc(72vh - 48px);
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: #cae2ff;
+      background: rgba(0, 0, 0, 0.35);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .journal.hidden {
+      display: none;
+    }
+
+    @media (max-width: 1180px) {
+      .sidebar {
+        left: 10px;
+        top: 10px;
+        bottom: 10px;
       }
-      .main {
+
+      .provider-drawer {
+        right: 10px;
+        top: 10px;
+        bottom: 10px;
+      }
+
+      .pod-create-modal {
+        width: min(75vw, calc(100vw - 20px));
+        min-width: min(460px, calc(100vw - 20px));
+        max-height: calc(100vh - 20px);
+      }
+
+      .toast-region {
+        right: 10px;
+        bottom: 10px;
+        width: min(360px, calc(100vw - 20px));
+      }
+
+      .board {
         grid-template-columns: 1fr;
       }
-      .grid,
-      .journal {
-        min-height: 42vh;
+
+      .board.has-selection {
+        grid-template-columns: 1fr;
+      }
+
+      .pod-grid,
+      .terminal {
         max-height: none;
-      }
-      .metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-      .auth-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-      .auth-actions {
-        grid-template-columns: 1fr 1fr;
-      }
-      .override-bar {
-        grid-template-columns: 1fr 1fr;
+        height: 44vh;
       }
     }
+
+    @media (max-width: 760px) {
+      .stats {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .provider-drawer {
+        right: 10px;
+        top: 10px;
+        bottom: 10px;
+        width: calc(100vw - 20px);
+      }
+
+      .pod-create-modal {
+        width: calc(100vw - 20px);
+        max-height: calc(100vh - 20px);
+      }
+
+      .toast-region {
+        right: 10px;
+        bottom: 10px;
+        width: calc(100vw - 20px);
+      }
+
+      .provider-actions,
+      .override-controls {
+        grid-template-columns: 1fr;
+      }
+
+      .project-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .pod-create-method-options {
+        grid-template-columns: 1fr;
+      }
+
+      .pod-create-step-indicators {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .pod-create-footer {
+        grid-template-columns: 1fr;
+      }
+
+      .pod-create-footer .primary {
+        grid-column: auto;
+      }
+
+      .project-meta {
+        flex-direction: column;
+      }
+
+      .project-tile-actions {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       * {
         animation: none !important;
@@ -375,92 +1367,294 @@
   </style>
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
-      <div class="title">
-        <span id="api-dot" class="dot" aria-hidden="true"></span>
-        <span>Smith Operator Console</span>
-        <small class="muted" id="api-url"></small>
-      </div>
-      <div class="controls">
-        <select id="state-filter" aria-label="State filter">
-          <option value="all">All States</option>
-          <option value="active">Active Only</option>
-          <option value="unresolved">Unresolved</option>
-          <option value="overwriting">Overwriting</option>
-          <option value="synced">Synced</option>
-          <option value="flatline">Flatline</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <input id="search" type="search" placeholder="Filter loop id">
-        <input id="auth-token" type="password" placeholder="operator bearer token (optional)">
-        <label class="muted"><input id="auto-refresh" type="checkbox" checked> auto-refresh</label>
-        <button id="refresh">refresh</button>
-      </div>
-    </header>
+  <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+  <div id="provider-drawer-overlay" class="provider-drawer-overlay" aria-hidden="true"></div>
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Console sidebar">
+      <section class="brand">
+        <div class="brand-line">
+          <span id="api-dot" class="dot" aria-hidden="true"></span>
+          <span>SMITH</span>
+        </div>
+        <div class="api-url" id="api-url"></div>
+      </section>
 
-    <section class="stats">
-      <div class="stat"><small>Total</small><strong id="stat-total">0</strong></div>
-      <div class="stat"><small>Active</small><strong id="stat-active">0</strong></div>
-      <div class="stat"><small>Flatline</small><strong id="stat-flatline">0</strong></div>
-      <div class="stat"><small>Last Refresh</small><strong id="stat-refresh">-</strong></div>
-    </section>
+      <nav class="quick-nav" aria-label="Configuration pages">
+        <a id="nav-pods" class="nav-link active" data-page-link="pods" href="#pods">Pods</a>
+        <a id="nav-projects" class="nav-link" data-page-link="projects" href="#projects">Projects</a>
+        <a id="nav-providers" class="nav-link" data-page-link="providers" href="#providers">Providers</a>
+        <a id="nav-controls" class="nav-link" data-page-link="controls" href="#controls">Manual Controls</a>
+      </nav>
+    </aside>
 
-    <section class="auth-panel">
-      <div class="auth-headline">
-        <strong>Provider Auth (Codex)</strong>
-        <span id="auth-status" class="muted">status idle</span>
-      </div>
-      <div class="auth-metrics">
-        <span><b>Connected</b><i id="auth-connected">--</i></span>
-        <span><b>Account</b><i id="auth-account">--</i></span>
-        <span><b>Expires</b><i id="auth-expires">--</i></span>
-        <span><b>Last Refresh</b><i id="auth-refresh">--</i></span>
-      </div>
-      <div class="auth-actions">
-        <input id="auth-actor" type="text" placeholder="actor (default: operator)">
-        <input id="auth-device-code" type="text" placeholder="device code">
-        <button id="auth-status-refresh">status</button>
-        <button id="auth-connect-start">connect</button>
-        <button id="auth-connect-complete">complete</button>
-        <button id="auth-reconnect">reconnect</button>
-        <button id="auth-disconnect">disconnect</button>
-        <button id="auth-open-verify">open verify URL</button>
-      </div>
-      <div class="muted" id="auth-flow-message"></div>
-    </section>
+    <main class="workspace">
+      <section id="page-pods" class="page active">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Pods</div>
+          </div>
+          <div class="controls">
+            <select id="state-filter" aria-label="State filter">
+              <option value="all">All States</option>
+              <option value="active">Active Only</option>
+              <option value="unresolved">Unresolved</option>
+              <option value="overwriting">Overwriting</option>
+              <option value="synced">Synced</option>
+              <option value="flatline">Flatline</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <input id="search" type="search" placeholder="Filter loop id">
+            <label class="muted"><input id="auto-refresh" type="checkbox" checked> auto-refresh</label>
+            <button id="refresh">refresh</button>
+          </div>
+        </header>
 
-    <section class="main">
-      <div id="grid" class="grid" role="list" aria-label="Anomaly grid"></div>
-      <div class="journal">
-        <div class="journal-header">
-          <div class="journal-headline">
-            <strong id="journal-title">Live Journal</strong>
+        <aside id="pod-create-panel" class="pod-create-modal" aria-hidden="true">
+          <div class="provider-drawer-head">
+            <div class="provider-drawer-title">New Loop</div>
+            <button id="pod-create-close" type="button" class="provider-drawer-close" aria-label="Close loop creation">&times;</button>
+          </div>
+          <section class="panel">
+            <div class="pod-create-step-indicators" aria-hidden="true">
+              <div id="pod-create-step-chip-1" class="pod-create-step-chip active">
+                <span class="pod-create-step-node">1</span>
+                <span class="pod-create-step-label">Method</span>
+              </div>
+              <div id="pod-create-step-chip-2" class="pod-create-step-chip">
+                <span class="pod-create-step-node">2</span>
+                <span class="pod-create-step-label">Source</span>
+              </div>
+              <div id="pod-create-step-chip-3" class="pod-create-step-chip">
+                <span class="pod-create-step-node">3</span>
+                <span class="pod-create-step-label">Details</span>
+              </div>
+            </div>
+
+            <section id="pod-create-step-1" class="pod-create-step-panel" data-pod-create-step="1">
+              <div class="status-note">How should this loop start?</div>
+              <div class="pod-create-method-options">
+                <button type="button" class="pod-create-method-button selected" data-pod-create-method="issue">
+                  <strong>Create from Issue</strong>
+                  <span>Select a GitHub issue from a project and create a loop.</span>
+                </button>
+                <button type="button" class="pod-create-method-button" data-pod-create-method="generate_prd" disabled aria-disabled="true" title="Coming soon">
+                  <strong>Generate a PRD</strong>
+                  <span>Build a PRD before loop creation.</span>
+                </button>
+                <button type="button" class="pod-create-method-button" data-pod-create-method="load_prd" disabled aria-disabled="true" title="Coming soon">
+                  <strong>Load a PRD</strong>
+                  <span>Use an existing PRD as loop source.</span>
+                </button>
+              </div>
+            </section>
+
+            <section id="pod-create-step-2" class="pod-create-step-panel hidden" data-pod-create-step="2">
+              <div id="pod-create-method-issue" data-pod-create-method-panel="issue">
+                <select id="pod-create-project" aria-label="Project">
+                  <option value="">Select project</option>
+                </select>
+                <input id="pod-create-issue-filter" type="search" placeholder="Filter issue (number/title)">
+                <select id="pod-create-issue" aria-label="Issue" disabled>
+                  <option value="">Select issue</option>
+                </select>
+                <div id="pod-create-issue-preview" class="status-note">Select a project to load issues.</div>
+              </div>
+              <div id="pod-create-method-generate-prd" class="status-note hidden" data-pod-create-method-panel="generate_prd">
+                Generate a PRD flow is coming soon.
+              </div>
+              <div id="pod-create-method-load-prd" class="status-note hidden" data-pod-create-method-panel="load_prd">
+                Load a PRD flow is coming soon.
+              </div>
+            </section>
+
+            <section id="pod-create-step-3" class="pod-create-step-panel hidden" data-pod-create-step="3">
+              <input id="pod-create-loop-name" type="text" placeholder="loop name (optional)">
+              <input id="pod-create-branch" type="text" placeholder="branch name (default: project-issue-#)">
+              <input id="pod-create-source-branch" type="text" placeholder="source branch (default: main)">
+              <select id="pod-create-provider" aria-label="Provider">
+                <option value="">Select provider</option>
+              </select>
+              <textarea id="pod-create-prompt" rows="6" placeholder="optional prompt"></textarea>
+            </section>
+
+            <div class="pod-create-footer">
+              <button id="pod-create-back" type="button">back</button>
+              <button id="pod-create-next" type="button" class="primary">next</button>
+              <button id="pod-create-submit" type="button" class="primary hidden">create loop</button>
+              <button id="pod-create-cancel" type="button">cancel</button>
+            </div>
+            <div id="pod-create-status" class="status-note"></div>
+          </section>
+        </aside>
+
+        <section class="stats">
+          <div class="stat"><small>Total</small><strong id="stat-total">0</strong></div>
+          <div class="stat"><small>Active</small><strong id="stat-active">0</strong></div>
+          <div class="stat"><small>Flatline</small><strong id="stat-flatline">0</strong></div>
+          <div class="stat"><small>Last Refresh</small><strong id="stat-refresh">-</strong></div>
+          <div class="stat stat-action">
+            <small>New Loop</small>
+            <button id="pod-create-toggle" type="button" class="stat-add-button" aria-label="Start loop">+</button>
+          </div>
+        </section>
+
+        <section class="board">
+          <section class="tiles-shell">
+            <div class="tiles-header">
+              <strong>Pods</strong>
+              <div class="tiles-header-meta">
+                <span class="muted">click a tile to open pod detail</span>
+                <span id="pods-notice" class="status-note pods-notice hidden" aria-live="polite"></span>
+              </div>
+            </div>
+            <div id="grid" class="pod-grid" role="list" aria-label="Pods grouped by project"></div>
+          </section>
+        </section>
+      </section>
+
+      <section id="page-pod-view" class="page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <button id="pod-view-back" type="button" aria-label="Back to pods">&larr;</button>
+            <div id="pod-view-title" class="topbar-title">Pod Detail</div>
+          </div>
+          <div class="controls">
+            <button id="pod-view-attach" type="button">attach</button>
+            <button id="pod-view-delete" type="button" class="danger">delete loop</button>
+          </div>
+        </header>
+        <section class="journal">
+          <div class="journal-header">
+            <strong id="journal-title">Pod Detail Journal</strong>
             <span id="journal-latency" class="muted">p95 --</span>
+          </div>
+          <pre id="terminal" class="terminal">[journal] select a pod tile to open pod detail view
+</pre>
+        </section>
+      </section>
+
+      <section id="page-providers" class="page config-page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Providers</div>
+          </div>
+        </header>
+        <section id="provider-list-panel">
+          <div id="provider-list" class="provider-card-grid" role="list" aria-label="Provider configuration catalog"></div>
+          <div id="provider-catalog-status" class="status-note"></div>
+          <div id="provider-empty" class="status-note hidden">No providers available.</div>
+        </section>
+        <aside id="provider-config-panel" class="provider-drawer" aria-hidden="true">
+          <div class="provider-drawer-head">
+            <div id="provider-config-title" class="provider-drawer-title">Provider Configuration</div>
+            <button id="provider-back" type="button" class="provider-drawer-close" aria-label="Close provider configuration">&times;</button>
+          </div>
+          <section id="provider-codex-panel" class="panel hidden">
+          <div class="panel-title">
+            <span>Codex Authentication</span>
+          </div>
+          <div class="status-note">Provide an API key and optional label for Codex.</div>
+          <div id="auth-api-key-panel" class="provider-api-key">
+            <div class="input-with-icon">
+              <input id="auth-api-key" type="password" placeholder="OpenAI API key">
+              <button
+                id="auth-reveal-api-key"
+                class="field-icon-button"
+                type="button"
+                aria-label="Reveal API key"
+                title="Reveal API key"
+              ></button>
+            </div>
+            <input id="auth-account-id" type="text" placeholder="account label (optional)">
+          </div>
+          <div class="provider-actions">
+            <button id="auth-save-api-key" class="primary">Save</button>
+            <button id="auth-disconnect">delete</button>
+          </div>
+          </section>
+        </aside>
+      </section>
+
+      <section id="page-controls" class="page config-page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Manual Controls</div>
+          </div>
+        </header>
+        <section class="panel">
+          <div class="panel-title">
+            <span>Loop Override</span>
             <span id="journal-status" class="muted">idle</span>
           </div>
-          <div class="override-bar">
-            <select id="override-state" aria-label="Override target state">
-              <option value="unresolved">unresolved</option>
-              <option value="overwriting">overwriting</option>
-              <option value="synced">synced</option>
-              <option value="flatline">flatline</option>
-              <option value="cancelled">cancelled</option>
-            </select>
-            <input id="override-reason" type="text" placeholder="override reason (required)">
-            <input id="override-actor" type="text" placeholder="actor (default: operator)">
-            <input id="override-confirm" type="text" placeholder="type APPLY to confirm">
+          <div id="override-loop" class="status-note">selected loop: --</div>
+          <select id="override-state" aria-label="Override target state">
+            <option value="unresolved">unresolved</option>
+            <option value="overwriting">overwriting</option>
+            <option value="synced">synced</option>
+            <option value="flatline">flatline</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+          <input id="override-reason" type="text" placeholder="override reason (required)">
+          <input id="override-actor" type="text" placeholder="actor (default: operator)">
+          <input id="override-confirm" type="text" placeholder="type APPLY to confirm">
+          <div class="override-controls">
             <button id="override-apply" class="danger">apply override</button>
           </div>
-        </div>
-        <pre id="terminal" class="terminal"></pre>
-      </div>
-    </section>
+        </section>
+      </section>
+
+      <section id="page-projects" class="page config-page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Projects</div>
+          </div>
+          <button id="project-add" type="button" class="icon-button" aria-label="Add project">+</button>
+        </header>
+        <section id="project-list-panel">
+          <div id="project-list" class="project-list"></div>
+          <div id="project-action-status" class="status-note"></div>
+          <div id="project-empty" class="status-note">
+            No projects configured yet.
+          </div>
+        </section>
+        <aside id="project-config-panel" class="provider-drawer" aria-hidden="true">
+          <div class="provider-drawer-head">
+            <div class="provider-drawer-title">Project Configuration</div>
+            <button id="project-back" type="button" class="provider-drawer-close" aria-label="Close project configuration">&times;</button>
+          </div>
+          <section class="panel">
+            <input id="project-name" type="text" placeholder="project name">
+            <input id="project-repo-url" type="url" placeholder="repository URL (https://github.com/org/repo.git)">
+            <input id="project-github-user" type="text" placeholder="GitHub username or app/bot name">
+            <input id="project-github-credential" type="password" placeholder="GitHub credential (PAT or token)">
+            <div class="status-note">
+              Credential is saved to backend secret storage.
+            </div>
+            <div class="project-actions">
+              <button id="project-save" class="primary">save project</button>
+              <button id="project-delete-credential" class="danger hidden" type="button">delete credential</button>
+            </div>
+            <div id="project-form-status" class="status-note"></div>
+          </section>
+          <button id="project-delete" class="danger drawer-delete-action hidden" type="button">delete project</button>
+        </aside>
+      </section>
+    </main>
   </div>
 
   <script>
     const config = window.__SMITH_CONFIG__ || {};
     const apiBase = String(config.apiBaseUrl || "").replace(/\/+$/, "");
+    const operatorToken = String(config.operatorToken || "").trim();
+    const showComingSoonProviders = /^(1|true|yes|on)$/i.test(
+      String(config.showComingSoonProviders || ""),
+    );
     const state = {
       loops: [],
       selectedLoop: "",
@@ -469,31 +1663,283 @@
       latencySamplesMs: [],
       journalSource: null,
       reconnectTimer: null,
-      authSession: null
+      authBusy: false,
+      authFormDirty: false,
+      activeProvider: "",
+      providerCredentialRevealed: false,
+      projects: [],
+      projectCredentials: {},
+      projectFormBusy: false,
+      loopWorkflow: {},
+      editingProjectID: "",
+      podProjectIssues: {},
+      podCreateBusy: false,
+      podCreateStep: 1,
+      podCreateMethod: "issue",
+      attachBusyLoopID: "",
+      loopDeleteBusy: false,
+      pendingPodViewLoopID: "",
+      providerStatus: {
+        codex: {
+          connected: false,
+          account_id: "",
+          expires_at: "",
+          last_refresh_at: "",
+          auth_method: "",
+          api_key_masked: "",
+          api_key_revealed: "",
+        },
+      },
     };
 
     const gridEl = document.getElementById("grid");
     const terminalEl = document.getElementById("terminal");
+    const podViewBackEl = document.getElementById("pod-view-back");
+    const podViewAttachEl = document.getElementById("pod-view-attach");
+    const podViewDeleteEl = document.getElementById("pod-view-delete");
+    const podViewTitleEl = document.getElementById("pod-view-title");
+    const podsNoticeEl = document.getElementById("pods-notice");
+    const podCreateToggleEl = document.getElementById("pod-create-toggle");
+    const podCreatePanelEl = document.getElementById("pod-create-panel");
+    const podCreateProjectEl = document.getElementById("pod-create-project");
+    const podCreateIssueFilterEl = document.getElementById("pod-create-issue-filter");
+    const podCreateIssueEl = document.getElementById("pod-create-issue");
+    const podCreateLoopNameEl = document.getElementById("pod-create-loop-name");
+    const podCreateBranchEl = document.getElementById("pod-create-branch");
+    const podCreateSourceBranchEl = document.getElementById("pod-create-source-branch");
+    const podCreateProviderEl = document.getElementById("pod-create-provider");
+    const podCreatePromptEl = document.getElementById("pod-create-prompt");
+    const podCreateIssuePreviewEl = document.getElementById("pod-create-issue-preview");
+    const podCreateBackEl = document.getElementById("pod-create-back");
+    const podCreateNextEl = document.getElementById("pod-create-next");
+    const podCreateSubmitEl = document.getElementById("pod-create-submit");
+    const podCreateCancelEl = document.getElementById("pod-create-cancel");
+    const podCreateCloseEl = document.getElementById("pod-create-close");
+    const podCreateStatusEl = document.getElementById("pod-create-status");
+    const podCreateStepChips = {
+      1: document.getElementById("pod-create-step-chip-1"),
+      2: document.getElementById("pod-create-step-chip-2"),
+      3: document.getElementById("pod-create-step-chip-3"),
+    };
+    const podCreateStepPanels = Array.from(document.querySelectorAll("[data-pod-create-step]"));
+    const podCreateMethodButtons = Array.from(document.querySelectorAll("[data-pod-create-method]"));
+    const podCreateMethodPanels = Array.from(document.querySelectorAll("[data-pod-create-method-panel]"));
     const apiDotEl = document.getElementById("api-dot");
     const journalLatencyEl = document.getElementById("journal-latency");
     const journalStatusEl = document.getElementById("journal-status");
-    const authStatusEl = document.getElementById("auth-status");
-    const authConnectedEl = document.getElementById("auth-connected");
-    const authAccountEl = document.getElementById("auth-account");
-    const authExpiresEl = document.getElementById("auth-expires");
-    const authRefreshEl = document.getElementById("auth-refresh");
-    const authFlowMessageEl = document.getElementById("auth-flow-message");
+    const providerBackEl = document.getElementById("provider-back");
+    const providerConfigPanelEl = document.getElementById("provider-config-panel");
+    const providerConfigTitleEl = document.getElementById("provider-config-title");
+    const providerListEl = document.getElementById("provider-list");
+    const providerCatalogStatusEl = document.getElementById("provider-catalog-status");
+    const providerEmptyEl = document.getElementById("provider-empty");
+    const providerCodexPanelEl = document.getElementById("provider-codex-panel");
+    const authAPIKeyEl = document.getElementById("auth-api-key");
+    const authAccountIDEl = document.getElementById("auth-account-id");
+    const authRevealAPIKeyEl = document.getElementById("auth-reveal-api-key");
+    const projectBackEl = document.getElementById("project-back");
+    const projectAddEl = document.getElementById("project-add");
+    const projectListPanelEl = document.getElementById("project-list-panel");
+    const projectConfigPanelEl = document.getElementById("project-config-panel");
+    const projectListEl = document.getElementById("project-list");
+    const projectActionStatusEl = document.getElementById("project-action-status");
+    const projectEmptyEl = document.getElementById("project-empty");
+    const projectFormStatusEl = document.getElementById("project-form-status");
+    const overrideLoopEl = document.getElementById("override-loop");
+    const sidebarEl = document.querySelector(".sidebar");
+    const sidebarOverlayEl = document.getElementById("sidebar-overlay");
+    const providerDrawerOverlayEl = document.getElementById("provider-drawer-overlay");
+    const toastRegionEl = document.getElementById("toast-region");
+    const sidebarToggleButtons = Array.from(document.querySelectorAll(".sidebar-toggle"));
+    const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
+    const pages = {
+      pods: document.getElementById("page-pods"),
+      podView: document.getElementById("page-pod-view"),
+      projects: document.getElementById("page-projects"),
+      providers: document.getElementById("page-providers"),
+      controls: document.getElementById("page-controls"),
+    };
+    const eyeIconMarkup =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path><circle cx="12" cy="12" r="2.7"></circle></svg>';
+    const eyeOffIconMarkup =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.7 6.3A10.8 10.8 0 0 1 12 6c6.5 0 10 6 10 6a19 19 0 0 1-4.2 4.6"></path><path d="M6.1 6.9C3.7 8.6 2 12 2 12s3.5 6 10 6c1.6 0 3-.3 4.3-.8"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>';
+    const providerCatalog = [
+      {
+        id: "anthropic",
+        label: "Anthropic",
+        subtitle: "Claude and other models from Anthropic.",
+      },
+      {
+        id: "amazon_bedrock",
+        label: "Amazon Bedrock",
+        subtitle: "Run models through Amazon Bedrock.",
+      },
+      {
+        id: "azure_openai",
+        label: "Azure OpenAI",
+        subtitle: "Models through Azure OpenAI Service.",
+      },
+      {
+        id: "claude_code_cli",
+        label: "Claude Code CLI",
+        subtitle: "Execute Claude models via Claude Code CLI.",
+      },
+      {
+        id: "codex",
+        label: "OpenAI Codex CLI",
+        subtitle: "Execute OpenAI models via Codex CLI.",
+      },
+      {
+        id: "cursor_agent",
+        label: "Cursor Agent",
+        subtitle: "Execute AI models via cursor-agent CLI.",
+      },
+      {
+        id: "deepseek",
+        label: "DeepSeek",
+        subtitle: "Custom DeepSeek provider.",
+      },
+      {
+        id: "databricks",
+        label: "Databricks",
+        subtitle: "Models on Databricks AI Gateway.",
+      },
+      {
+        id: "gcp_vertex_ai",
+        label: "GCP Vertex AI",
+        subtitle: "Access models through Vertex AI.",
+      },
+      {
+        id: "gemini_cli",
+        label: "Gemini CLI",
+        subtitle: "Execute Gemini models via CLI.",
+      },
+      {
+        id: "github_copilot",
+        label: "GitHub Copilot",
+        subtitle: "Run and configure GitHub Copilot.",
+      },
+      {
+        id: "google_gemini",
+        label: "Google Gemini",
+        subtitle: "Gemini models from Google AI.",
+      },
+    ];
+    const projectStorageKey = "smith.console.projects.v1";
+    let podsNoticeTimer = null;
+
     document.getElementById("api-url").textContent = apiBase || "(api unset)";
-    document.getElementById("auth-token").value = config.operatorToken || "";
+
+    function pageFromHash() {
+      const rawValue = String(window.location.hash || "").replace(/^#/, "").trim();
+      const raw = rawValue.toLowerCase();
+      if (raw.startsWith("pod-view/")) {
+        const encoded = rawValue.slice("pod-view/".length);
+        try {
+          state.pendingPodViewLoopID = decodeURIComponent(encoded);
+        } catch (_) {
+          state.pendingPodViewLoopID = encoded;
+        }
+        return "podView";
+      }
+      if (raw === "pod-view") {
+        state.pendingPodViewLoopID = "";
+        return "podView";
+      }
+      return pages[raw] ? raw : "pods";
+    }
+
+    function setSidebarOpen(open) {
+      const isOpen = Boolean(open);
+      document.body.classList.toggle("sidebar-open", isOpen);
+      sidebarEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      sidebarToggleButtons.forEach((btn) => {
+        btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      });
+    }
+
+    function setActivePage(page, updateHash) {
+      let target = pages[page] ? page : "pods";
+      const requestedPodViewLoopID =
+        target === "podView" ? String(state.pendingPodViewLoopID || "").trim() : "";
+      if (
+        target === "podView" &&
+        !requestedPodViewLoopID &&
+        !String(state.selectedLoop || "").trim()
+      ) {
+        target = "pods";
+      }
+      for (const [name, el] of Object.entries(pages)) {
+        el.classList.toggle("active", name === target);
+      }
+      const navTarget = target === "podView" ? "pods" : target;
+      for (const link of pageLinks) {
+        link.classList.toggle("active", link.getAttribute("data-page-link") === navTarget);
+      }
+      if (updateHash) {
+        if (target === "podView") {
+          const selected = String(state.selectedLoop || "").trim();
+          window.location.hash = selected
+            ? "#pod-view/" + encodeURIComponent(selected)
+            : "#pods";
+        } else {
+          window.location.hash = "#" + target;
+        }
+      }
+      if (target !== "providers") {
+        setProviderConfigOpen(false);
+      }
+      if (target !== "projects") {
+        setProjectEditorOpen(false);
+      }
+      if (target !== "pods" && target !== "podView") {
+        setPodCreateOpen(false);
+      }
+      if (target === "podView" && requestedPodViewLoopID && requestedPodViewLoopID !== state.selectedLoop) {
+        selectLoop(requestedPodViewLoopID);
+      }
+      state.pendingPodViewLoopID = "";
+    }
+
+    function selectedLoopRecord() {
+      const loopID = String(state.selectedLoop || "").trim();
+      if (!loopID) return null;
+      return state.loops.find((item) => item.loopID === loopID) || null;
+    }
+
+    function syncPodViewActions() {
+      const selected = selectedLoopRecord();
+      const hasSelection = Boolean(selected);
+      const canAttach = hasSelection && isActive(selected.status);
+      const attachBusy = hasSelection && state.attachBusyLoopID === selected.loopID;
+      podViewAttachEl.disabled = !canAttach || state.loopDeleteBusy || attachBusy;
+      podViewAttachEl.textContent = attachBusy ? "attaching..." : "attach";
+      const canDelete = hasSelection && !isActive(selected.status) && !state.loopDeleteBusy;
+      podViewDeleteEl.disabled = !canDelete;
+      podViewDeleteEl.textContent = state.loopDeleteBusy ? "deleting..." : "delete loop";
+    }
+
+    function renderSelectedLoop() {
+      overrideLoopEl.textContent = "selected loop: " + (state.selectedLoop || "--");
+      const hasSelection = Boolean(state.selectedLoop);
+      if (!hasSelection) {
+        podViewTitleEl.textContent = "Pod Detail";
+        document.getElementById("journal-title").textContent = "Pod Detail Journal";
+        terminalEl.textContent = "[journal] select a pod tile to open pod detail view\n";
+        journalLatencyEl.textContent = "p95 --";
+      } else {
+        podViewTitleEl.textContent = "Pod: " + String(state.selectedLoop || "");
+      }
+      syncPodViewActions();
+    }
 
     function isActive(status) {
       return status === "unresolved" || status === "overwriting";
     }
 
     async function fetchJSON(path) {
-      const headers = { "Accept": "application/json" };
-      const token = document.getElementById("auth-token").value.trim();
-      if (token) headers.Authorization = "Bearer " + token;
+      const headers = { Accept: "application/json" };
+      if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
       const res = await fetch(apiBase + path, { headers });
       if (!res.ok) {
         throw new Error("HTTP " + res.status + " for " + path);
@@ -502,20 +1948,27 @@
     }
 
     async function postJSON(path, payload) {
+      return requestJSON(path, "POST", payload);
+    }
+
+    async function deleteJSON(path, payload) {
+      return requestJSON(path, "DELETE", payload);
+    }
+
+    async function requestJSON(path, method, payload) {
       const headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
+        Accept: "application/json",
+        "Content-Type": "application/json",
       };
-      const token = document.getElementById("auth-token").value.trim();
-      if (token) headers.Authorization = "Bearer " + token;
+      if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
       const res = await fetch(apiBase + path, {
-        method: "POST",
+        method,
         headers,
-        body: JSON.stringify(payload)
+        body: payload === undefined ? undefined : JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = body.error || ("HTTP " + res.status);
+        const msg = body.error || "HTTP " + res.status;
         const err = new Error(msg);
         err.status = res.status;
         throw err;
@@ -524,7 +1977,7 @@
     }
 
     function authActor() {
-      return document.getElementById("auth-actor").value.trim() || "operator";
+      return "operator";
     }
 
     function shortTime(raw) {
@@ -533,100 +1986,1450 @@
       return new Date(ms).toLocaleString();
     }
 
-    function setAuthStatus(message, level) {
-      authStatusEl.textContent = message;
-      authStatusEl.style.color =
-        level === "ok" ? "var(--ok)" :
-        level === "err" ? "var(--err)" :
-        "var(--muted)";
+    function pushToast(message, level) {
+      const text = String(message || "").trim();
+      if (!text) return;
+      // TODO(td-f6f789): normalize toast color semantics across console actions.
+      // Save should always use green; delete should always use red (even on success) per UX direction.
+      const tone = level === "ok" ? "ok" : level === "err" ? "err" : "muted";
+      const toast = document.createElement("div");
+      toast.className = "toast " + tone;
+      toast.textContent = text;
+      toastRegionEl.appendChild(toast);
+      while (toastRegionEl.children.length > 4) {
+        toastRegionEl.removeChild(toastRegionEl.firstChild);
+      }
+      requestAnimationFrame(() => toast.classList.add("show"));
+      window.setTimeout(() => {
+        toast.classList.remove("show");
+        window.setTimeout(() => {
+          if (toast.parentNode === toastRegionEl) {
+            toastRegionEl.removeChild(toast);
+          }
+        }, 160);
+      }, 3200);
+    }
+
+    function setAuthMessage(message, level) {
+      pushToast(message, level);
+    }
+
+    function syncAuthCredentialForm() {
+      const providerStatus = state.providerStatus.codex || {};
+      const connected = Boolean(providerStatus.connected);
+      const masked = String(providerStatus.api_key_masked || "");
+      const revealed = String(providerStatus.api_key_revealed || "");
+      if (!connected) {
+        state.providerCredentialRevealed = false;
+      }
+      if (connected && !state.authFormDirty) {
+        const showRevealed = connected && state.providerCredentialRevealed && revealed;
+        authAPIKeyEl.type = showRevealed ? "text" : "password";
+        authAPIKeyEl.value = showRevealed ? revealed : masked;
+        authAccountIDEl.value = String(providerStatus.account_id || "");
+      } else if (!connected && !state.authFormDirty) {
+        authAPIKeyEl.type = "password";
+        authAPIKeyEl.value = "";
+        authAccountIDEl.value = "";
+      } else {
+        authAPIKeyEl.type = state.providerCredentialRevealed ? "text" : "password";
+      }
+      authAPIKeyEl.placeholder = "OpenAI API key";
+      authAccountIDEl.placeholder = "account label (optional)";
+      const revealing = Boolean(state.providerCredentialRevealed);
+      authRevealAPIKeyEl.innerHTML = revealing ? eyeOffIconMarkup : eyeIconMarkup;
+      authRevealAPIKeyEl.setAttribute("aria-label", revealing ? "Hide API key" : "Reveal API key");
+      authRevealAPIKeyEl.setAttribute("title", revealing ? "Hide API key" : "Reveal API key");
+      const hasFieldValue = String(authAPIKeyEl.value || "").trim() !== "";
+      const canReveal = state.authFormDirty ? hasFieldValue : connected && (!!masked || !!revealed);
+      authRevealAPIKeyEl.disabled = state.authBusy || !canReveal;
+    }
+
+    function validateOpenAIAPIKey(apiKey) {
+      const key = String(apiKey || "").trim();
+      if (!key) {
+        return "API key required.";
+      }
+      if (!/^sk-[A-Za-z0-9][A-Za-z0-9._-]{2,}$/.test(key)) {
+        return "Enter a valid OpenAI API key (starts with sk-).";
+      }
+      return "";
+    }
+
+    function setProviderConfigOpen(open) {
+      const isOpen = Boolean(open);
+      document.body.classList.toggle("provider-drawer-open", isOpen);
+      providerConfigPanelEl.classList.toggle("open", isOpen);
+      providerConfigPanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      syncRightDrawerOverlay();
+      if (!isOpen) {
+        providerCodexPanelEl.classList.add("hidden");
+        state.activeProvider = "";
+        state.providerCredentialRevealed = false;
+        syncAuthCredentialForm();
+        renderProviderList();
+      }
+    }
+
+    function visibleProviderCatalog() {
+      return providerCatalog.filter((providerInfo) => {
+        if (providerInfo.id === "codex") return true;
+        return showComingSoonProviders;
+      });
+    }
+
+    function renderProviderList() {
+      providerListEl.innerHTML = "";
+      providerCatalogStatusEl.textContent = "";
+      const visibleProviders = visibleProviderCatalog();
+      providerEmptyEl.classList.toggle("hidden", visibleProviders.length > 0);
+      for (const providerInfo of visibleProviders) {
+        const providerID = providerInfo.id;
+        const isCodex = providerID === "codex";
+        const providerStatus = state.providerStatus[providerID] || {};
+        const connected = Boolean(providerStatus.connected);
+        const card = document.createElement("article");
+        card.className =
+          "provider-card" +
+          (connected ? " connected" : "") +
+          (state.activeProvider === providerID ? " active" : "");
+        card.setAttribute("role", "listitem");
+        card.innerHTML =
+          '<div class="provider-card-head">' +
+          '<span class="provider-card-name">' +
+          escapeHtml(providerInfo.label) +
+          "</span>" +
+          "</div>" +
+          '<div class="provider-card-desc">' +
+          escapeHtml(providerInfo.subtitle || "") +
+          "</div>" +
+          '<div class="provider-card-actions">' +
+          '<button type="button" class="' +
+          (isCodex ? "primary" : "") +
+          '" data-provider-config="' +
+          escapeHtml(providerID) +
+          '">configure</button>' +
+          '<span class="provider-card-status">' +
+          escapeHtml(connected ? "configured" : isCodex ? "available" : "coming soon") +
+          "</span>" +
+          "</div>";
+        providerListEl.appendChild(card);
+      }
+    }
+
+    function setActiveProvider(providerID) {
+      const next = String(providerID || "").trim().toLowerCase();
+      state.activeProvider = next;
+      state.authFormDirty = false;
+      state.providerCredentialRevealed = false;
+      state.authBusy = false;
+      renderProviderList();
+      setProviderConfigOpen(true);
+      setAuthBusy(false);
+      const info = providerCatalog.find((item) => item.id === next);
+      providerConfigTitleEl.textContent = (info ? info.label : next || "Provider") + " Configuration";
+      providerCodexPanelEl.classList.toggle("hidden", next !== "codex");
+      if (next === "codex") {
+        void refreshAuthStatus();
+      }
+    }
+
+    function configureProvider(providerID) {
+      const target = String(providerID || "").trim().toLowerCase();
+      if (target !== "codex") {
+        providerCatalogStatusEl.textContent =
+          (providerCatalog.find((p) => p.id === target)?.label || target) +
+          " configuration is coming soon.";
+        return;
+      }
+      providerCatalogStatusEl.textContent = "";
+      setActiveProvider(target);
+    }
+
+    function setAuthBusy(busy) {
+      state.authBusy = Boolean(busy);
+      const ids = ["auth-save-api-key", "auth-disconnect"];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = state.authBusy;
+      }
+      syncAuthCredentialForm();
     }
 
     function renderAuthStatus(payload) {
       const connected = Boolean(payload && payload.connected);
-      authConnectedEl.textContent = connected ? "yes" : "no";
-      authAccountEl.textContent = connected ? String(payload.account_id || "--") : "--";
-      authExpiresEl.textContent = connected ? shortTime(payload.expires_at) : "--";
-      authRefreshEl.textContent = connected ? shortTime(payload.last_refresh_at) : "--";
-      setAuthStatus(connected ? "connected" : "disconnected", connected ? "ok" : "muted");
+      const method = payload && payload.auth_method ? String(payload.auth_method) : "";
+      state.providerStatus.codex = {
+        connected,
+        account_id: connected ? String(payload.account_id || "") : "",
+        expires_at: connected ? String(payload.expires_at || "") : "",
+        last_refresh_at: connected ? String(payload.last_refresh_at || "") : "",
+        auth_method: connected ? method : "",
+        api_key_masked: connected ? String(payload.api_key_masked || "") : "",
+        api_key_revealed: connected ? String(payload.api_key || "") : "",
+      };
+      if (!connected) {
+        state.providerCredentialRevealed = false;
+      }
+      renderProviderList();
+      syncAuthCredentialForm();
+    }
+
+    function renderStoredCredential(payload) {
+      const connected = Boolean(payload && payload.connected);
+      const masked = connected ? String(payload.api_key_masked || "") : "";
+      const revealed = connected ? String(payload.api_key || "") : "";
+      const accountID = connected ? String(payload.account_id || "") : "";
+      state.providerStatus.codex.api_key_masked = masked;
+      state.providerStatus.codex.api_key_revealed = revealed;
+      state.authFormDirty = false;
+      if (!connected) {
+        state.providerCredentialRevealed = false;
+      }
+      if (connected && accountID) {
+        state.providerStatus.codex.account_id = accountID;
+      }
+      syncAuthCredentialForm();
+    }
+
+    async function refreshStoredCredential(reveal) {
+      try {
+        const query = reveal ? "?reveal=true" : "";
+        const credential = await fetchJSON("/v1/auth/codex/credential" + query);
+        renderStoredCredential(credential);
+      } catch (_) {
+        state.providerStatus.codex.api_key_masked = "";
+        state.providerStatus.codex.api_key_revealed = "";
+        state.authFormDirty = false;
+        syncAuthCredentialForm();
+      }
     }
 
     async function refreshAuthStatus() {
       try {
         const status = await fetchJSON("/v1/auth/codex/status");
         renderAuthStatus(status);
+        await refreshStoredCredential(true);
       } catch (err) {
-        if (err && err.message && err.message.includes("HTTP 401")) {
-          setAuthStatus("unauthorized", "err");
-        } else {
-          setAuthStatus("status error", "err");
+        renderAuthStatus({ connected: false });
+        state.providerStatus.codex.api_key_masked = "";
+        state.providerStatus.codex.api_key_revealed = "";
+        syncAuthCredentialForm();
+        const shouldNotify =
+          document.body.classList.contains("provider-drawer-open") && state.activeProvider === "codex";
+        if (shouldNotify) {
+          if (err && err.message && err.message.includes("HTTP 401")) {
+            setAuthMessage("Unauthorized. Check operator token.", "err");
+          } else {
+            setAuthMessage("Failed to fetch provider status.", "err");
+          }
         }
       }
+      renderPodProviderOptions();
     }
 
-    async function startConnect() {
-      try {
-        const session = await postJSON("/v1/auth/codex/connect/start", { actor: authActor() });
-        state.authSession = session;
-        document.getElementById("auth-device-code").value = session.device_code || "";
-        authFlowMessageEl.textContent =
-          "Enter code " + (session.user_code || "--") +
-          " at " + (session.verification_uri || "--") +
-          " then click complete.";
-        setAuthStatus("connect started", "ok");
-      } catch (err) {
-        setAuthStatus("connect start failed", "err");
-        authFlowMessageEl.textContent = err.message || "connect start error";
-      }
-    }
-
-    async function completeConnect() {
-      const deviceCode = document.getElementById("auth-device-code").value.trim() || (state.authSession && state.authSession.device_code) || "";
-      if (!deviceCode) {
-        setAuthStatus("device code required", "err");
+    async function toggleStoredCredentialReveal() {
+      if (state.activeProvider !== "codex") {
         return;
       }
+      if (!state.providerStatus.codex.connected) {
+        return;
+      }
+      state.providerCredentialRevealed = !state.providerCredentialRevealed;
+      syncAuthCredentialForm();
+    }
+
+    async function saveAPIKey() {
+      if (state.activeProvider !== "codex") {
+        setAuthMessage("Select Codex in the provider list first.", "err");
+        return;
+      }
+      const enteredAPIKey = authAPIKeyEl.value.trim();
+      const masked = String(state.providerStatus.codex.api_key_masked || "");
+      const revealed = String(state.providerStatus.codex.api_key_revealed || "");
+      const apiKey =
+        !state.authFormDirty && !state.providerCredentialRevealed && enteredAPIKey === masked && revealed
+          ? revealed
+          : enteredAPIKey;
+      const keyValidationError = validateOpenAIAPIKey(apiKey);
+      if (keyValidationError) {
+        setAuthMessage(keyValidationError, "err");
+        return;
+      }
+      setAuthBusy(true);
       try {
-        await postJSON("/v1/auth/codex/connect/complete", {
+        await postJSON("/v1/auth/codex/connect/api-key", {
           actor: authActor(),
-          device_code: deviceCode
+          api_key: apiKey,
+          account_id: authAccountIDEl.value.trim(),
         });
-        authFlowMessageEl.textContent = "Provider connected.";
-        state.authSession = null;
+        state.authFormDirty = false;
+        state.providerCredentialRevealed = false;
+        setAuthMessage("API key saved and provider connected.", "ok");
         await refreshAuthStatus();
+        setProviderConfigOpen(false);
       } catch (err) {
-        setAuthStatus("connect complete failed", "err");
-        authFlowMessageEl.textContent = err.message || "connect complete error";
+        setAuthMessage(err.message || "API key auth error.", "err");
+      } finally {
+        setAuthBusy(false);
       }
     }
 
     async function disconnectProvider() {
+      const confirmed = window.confirm("Are you sure you wish to delete these credentials?");
+      if (!confirmed) {
+        return;
+      }
+      setAuthBusy(true);
       try {
         await postJSON("/v1/auth/codex/disconnect", { actor: authActor() });
-        state.authSession = null;
-        authFlowMessageEl.textContent = "Provider disconnected.";
+        state.authFormDirty = false;
+        state.providerCredentialRevealed = false;
+        setAuthMessage("Credential deleted.", "ok");
         await refreshAuthStatus();
-        return true;
+        setProviderConfigOpen(false);
       } catch (err) {
-        setAuthStatus("disconnect failed", "err");
-        authFlowMessageEl.textContent = err.message || "disconnect error";
+        setAuthMessage(err.message || "Delete error.", "err");
+      } finally {
+        setAuthBusy(false);
+      }
+    }
+
+    function setPodCreateStatus(message, level) {
+      podCreateStatusEl.textContent = message;
+      podCreateStatusEl.style.color =
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+    }
+
+    function setPodsNotice(message, level, timeoutMs) {
+      const text = String(message || "").trim();
+      if (!podsNoticeEl) return;
+      if (podsNoticeTimer) {
+        window.clearTimeout(podsNoticeTimer);
+        podsNoticeTimer = null;
+      }
+      if (!text) {
+        podsNoticeEl.textContent = "";
+        podsNoticeEl.classList.add("hidden");
+        podsNoticeEl.style.color = "var(--muted)";
+        return;
+      }
+      podsNoticeEl.classList.remove("hidden");
+      podsNoticeEl.textContent = text;
+      podsNoticeEl.style.color =
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+      const duration = Number(timeoutMs || 0);
+      if (Number.isFinite(duration) && duration > 0) {
+        podsNoticeTimer = window.setTimeout(() => {
+          setPodsNotice("", "muted");
+        }, duration);
+      }
+    }
+
+    function setPodCreateBusy(busy) {
+      state.podCreateBusy = Boolean(busy);
+      podCreateProjectEl.disabled = state.podCreateBusy;
+      podCreateIssueFilterEl.disabled = state.podCreateBusy;
+      podCreateIssueEl.disabled = state.podCreateBusy || podCreateIssueEl.options.length <= 1;
+      podCreateLoopNameEl.disabled = state.podCreateBusy;
+      podCreateBranchEl.disabled = state.podCreateBusy;
+      podCreateSourceBranchEl.disabled = state.podCreateBusy;
+      podCreateProviderEl.disabled = state.podCreateBusy || podCreateProviderEl.options.length <= 1;
+      podCreatePromptEl.disabled = state.podCreateBusy;
+      podCreateBackEl.disabled = state.podCreateBusy;
+      podCreateNextEl.disabled = state.podCreateBusy;
+      podCreateSubmitEl.disabled = state.podCreateBusy || state.podCreateStep !== 3;
+      for (const methodButton of podCreateMethodButtons) {
+        const method = String(methodButton.getAttribute("data-pod-create-method") || "");
+        methodButton.disabled = state.podCreateBusy || !podCreateMethodEnabled(method);
+      }
+    }
+
+    function normalizePodCreateMethod(method) {
+      const next = String(method || "")
+        .trim()
+        .toLowerCase();
+      if (next === "issue" || next === "generate_prd" || next === "load_prd") {
+        return next;
+      }
+      return "issue";
+    }
+
+    function podCreateMethodEnabled(method) {
+      return normalizePodCreateMethod(method) === "issue";
+    }
+
+    function setPodCreateMethod(method) {
+      const next = normalizePodCreateMethod(method);
+      if (!podCreateMethodEnabled(next)) {
+        return;
+      }
+      state.podCreateMethod = next;
+      syncPodCreateWorkflow();
+    }
+
+    function syncPodCreateWorkflow() {
+      const step = Math.max(1, Math.min(3, Number(state.podCreateStep || 1)));
+      state.podCreateStep = step;
+      for (const panel of podCreateStepPanels) {
+        const panelStep = Number(panel.getAttribute("data-pod-create-step") || 0);
+        panel.classList.toggle("hidden", panelStep !== step);
+      }
+      Object.entries(podCreateStepChips).forEach(([rawStep, chip]) => {
+        if (!chip) return;
+        const chipStep = Number(rawStep);
+        chip.classList.toggle("active", chipStep === step);
+        chip.classList.toggle("complete", chipStep < step);
+      });
+      for (const button of podCreateMethodButtons) {
+        const method = normalizePodCreateMethod(button.getAttribute("data-pod-create-method") || "");
+        button.classList.toggle("selected", method === state.podCreateMethod);
+      }
+      for (const panel of podCreateMethodPanels) {
+        const method = normalizePodCreateMethod(panel.getAttribute("data-pod-create-method-panel") || "");
+        panel.classList.toggle("hidden", method !== state.podCreateMethod);
+      }
+      podCreateBackEl.classList.toggle("hidden", step <= 1);
+      podCreateNextEl.classList.toggle("hidden", step >= 3);
+      podCreateSubmitEl.classList.toggle("hidden", step !== 3);
+      if (step === 3) {
+        preparePodCreateDetails();
+      }
+      setPodCreateBusy(state.podCreateBusy);
+    }
+
+    function setPodCreateStep(step) {
+      state.podCreateStep = Math.max(1, Math.min(3, Number(step || 1)));
+      syncPodCreateWorkflow();
+    }
+
+    function configuredLoopProviders() {
+      const labelByID = providerCatalog.reduce((acc, provider) => {
+        acc[provider.id] = provider.label;
+        return acc;
+      }, {});
+      return Object.entries(state.providerStatus)
+        .filter(([, status]) => Boolean(status && status.connected))
+        .map(([id]) => ({
+          id,
+          label: String(labelByID[id] || id),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    function renderPodProviderOptions() {
+      const providers = configuredLoopProviders();
+      const selected = String(podCreateProviderEl.value || "").trim().toLowerCase();
+      podCreateProviderEl.innerHTML = "";
+      if (providers.length === 0) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No configured providers";
+        podCreateProviderEl.appendChild(option);
+        podCreateProviderEl.value = "";
+        podCreateProviderEl.disabled = true;
+        return providers;
+      }
+      if (providers.length > 1) {
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select provider";
+        podCreateProviderEl.appendChild(placeholder);
+      }
+      for (const provider of providers) {
+        const option = document.createElement("option");
+        option.value = provider.id;
+        option.textContent = provider.label;
+        podCreateProviderEl.appendChild(option);
+      }
+      if (selected && providers.some((provider) => provider.id === selected)) {
+        podCreateProviderEl.value = selected;
+      } else if (providers.length === 1) {
+        podCreateProviderEl.value = providers[0].id;
+      } else {
+        podCreateProviderEl.value = "";
+      }
+      podCreateProviderEl.disabled = state.podCreateBusy || providers.length <= 1;
+      return providers;
+    }
+
+    function defaultPodLoopName(issue) {
+      if (!issue) {
+        return "";
+      }
+      return "issue-" + String(issue.number) + "-" + slugifySegment(issue.title || "loop");
+    }
+
+    function defaultPodBranchName(project, issue) {
+      if (!project || !issue) {
+        return "";
+      }
+      const projectSlug = slugifySegment(project.name || project.id || "project");
+      const issuePart = "issue-" + String(issue.number);
+      return normalizeBranchName(projectSlug + "-" + issuePart) || normalizeBranchName(issuePart);
+    }
+
+    function preparePodCreateDetails() {
+      const project = selectedPodProject();
+      const issue = selectedPodIssue();
+      if (!podCreateSourceBranchEl.value.trim()) {
+        podCreateSourceBranchEl.value = "main";
+      }
+      if (!podCreateBranchEl.value.trim()) {
+        podCreateBranchEl.value = defaultPodBranchName(project, issue);
+      }
+      renderPodProviderOptions();
+    }
+
+    function validatePodCreateStep(step) {
+      if (step === 1) {
+        if (!podCreateMethodEnabled(state.podCreateMethod)) {
+          return "Select a supported loop start method.";
+        }
+        return "";
+      }
+      if (step === 2) {
+        if (state.podCreateMethod === "issue") {
+          if (!selectedPodProject()) return "Select a project first.";
+          if (!selectedPodIssue()) return "Select an issue first.";
+          return "";
+        }
+        return "This flow is not available yet.";
+      }
+      if (step === 3) {
+        if (!selectedPodProject()) return "Select a project first.";
+        if (!selectedPodIssue()) return "Select an issue first.";
+        const configuredProviders = configuredLoopProviders();
+        if (configuredProviders.length === 0) {
+          return "Configure at least one provider before starting a loop.";
+        }
+        const provider = String(podCreateProviderEl.value || "").trim().toLowerCase();
+        if (!configuredProviders.some((item) => item.id === provider)) {
+          return "Select a configured provider.";
+        }
+      }
+      return "";
+    }
+
+    function goToNextPodCreateStep() {
+      const error = validatePodCreateStep(state.podCreateStep);
+      if (error) {
+        setPodCreateStatus(error, "err");
+        return;
+      }
+      setPodCreateStatus("", "muted");
+      setPodCreateStep(state.podCreateStep + 1);
+    }
+
+    function resetPodCreateWorkflow() {
+      state.podCreateMethod = "issue";
+      state.podCreateStep = 1;
+      podCreateIssueFilterEl.value = "";
+      podCreateIssueEl.value = "";
+      podCreateLoopNameEl.value = "";
+      podCreateBranchEl.value = "";
+      podCreateSourceBranchEl.value = "main";
+      podCreateProviderEl.value = "";
+      podCreatePromptEl.value = "";
+      podCreateIssuePreviewEl.textContent = "Select a project to load issues.";
+      setPodCreateStatus("", "muted");
+      syncPodCreateWorkflow();
+    }
+
+    function setPodCreateOpen(open) {
+      const isOpen = Boolean(open);
+      document.body.classList.toggle("pod-drawer-open", isOpen);
+      podCreatePanelEl.classList.toggle("open", isOpen);
+      podCreatePanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      syncRightDrawerOverlay();
+      if (isOpen) {
+        renderPodProjectOptions();
+        resetPodCreateWorkflow();
+        void loadProjectIssues(false);
+      } else {
+        setPodCreateStatus("", "muted");
+      }
+    }
+
+    function slugifySegment(value) {
+      const out = String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      return out || "loop";
+    }
+
+    function parseGitHubRepository(repoURL) {
+      const raw = String(repoURL || "").trim();
+      if (!raw) return "";
+      const ssh = raw.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i);
+      if (ssh) {
+        return ssh[1] + "/" + ssh[2];
+      }
+      try {
+        const url = new URL(raw);
+        if (!/github\.com$/i.test(url.hostname)) return "";
+        const parts = url.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+        if (parts.length < 2) return "";
+        return parts[0] + "/" + parts[1].replace(/\.git$/i, "");
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function normalizeBranchName(raw) {
+      const value = String(raw || "")
+        .trim()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-zA-Z0-9._/-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^[-/]+|[-/]+$/g, "");
+      return value;
+    }
+
+    function selectedPodProject() {
+      const projectID = String(podCreateProjectEl.value || "").trim();
+      if (!projectID) return null;
+      return state.projects.find((item) => item.id === projectID) || null;
+    }
+
+    function renderPodIssuePreview() {
+      const project = selectedPodProject();
+      if (!project) {
+        podCreateIssuePreviewEl.textContent = "Select a project to load issues.";
+        return;
+      }
+      const issueNumber = Number(podCreateIssueEl.value || 0);
+      if (!Number.isFinite(issueNumber) || issueNumber <= 0) {
+        podCreateIssuePreviewEl.textContent = "Select an issue for this loop.";
+        return;
+      }
+      const issues = state.podProjectIssues[project.id] || [];
+      const issue = issues.find((item) => item.number === issueNumber);
+      if (!issue) {
+        podCreateIssuePreviewEl.textContent = "Issue not found in current list.";
+        return;
+      }
+      podCreateIssuePreviewEl.textContent =
+        "#" + String(issue.number) + " " + String(issue.title || "").trim();
+      if (!podCreateBranchEl.value.trim()) {
+        const project = selectedPodProject();
+        podCreateBranchEl.value = defaultPodBranchName(project, issue);
+      }
+    }
+
+    function selectedPodIssue() {
+      const project = selectedPodProject();
+      if (!project) return null;
+      const issueNumber = Number(podCreateIssueEl.value || 0);
+      if (!Number.isFinite(issueNumber) || issueNumber <= 0) return null;
+      const issues = state.podProjectIssues[project.id] || [];
+      return issues.find((item) => item.number === issueNumber) || null;
+    }
+
+    function filteredProjectIssues(projectID) {
+      const issues = state.podProjectIssues[projectID] || [];
+      const query = String(podCreateIssueFilterEl.value || "").trim().toLowerCase();
+      if (!query) return issues;
+      return issues.filter((issue) => {
+        const numberText = String(issue.number || "");
+        const titleText = String(issue.title || "").toLowerCase();
+        return numberText.includes(query) || titleText.includes(query);
+      });
+    }
+
+    function renderPodIssueOptions(projectID) {
+      const project = state.projects.find((item) => item.id === projectID);
+      const previous = Number(podCreateIssueEl.value || 0);
+      podCreateIssueEl.innerHTML = '<option value="">Select issue</option>';
+      if (!project) {
+        podCreateIssueEl.disabled = true;
+        podCreateIssuePreviewEl.textContent = "Select a project to load issues.";
+        renderPodIssuePreview();
+        return;
+      }
+      const allIssues = state.podProjectIssues[project.id] || [];
+      const issues = filteredProjectIssues(project.id);
+      podCreateIssueEl.disabled = issues.length === 0;
+      for (const issue of issues) {
+        const option = document.createElement("option");
+        option.value = String(issue.number);
+        option.textContent = "#" + String(issue.number) + " " + String(issue.title || "").trim();
+        podCreateIssueEl.appendChild(option);
+      }
+      if (issues.some((item) => item.number === previous)) {
+        podCreateIssueEl.value = String(previous);
+      }
+      if (allIssues.length === 0) {
+        podCreateIssuePreviewEl.textContent = "No open issues found for this project.";
+      } else if (issues.length === 0) {
+        podCreateIssuePreviewEl.textContent = "No issues match current filter.";
+      }
+      renderPodIssuePreview();
+      setPodCreateBusy(state.podCreateBusy);
+    }
+
+    function renderPodProjectOptions() {
+      const selected = String(podCreateProjectEl.value || "").trim();
+      podCreateProjectEl.innerHTML = '<option value="">Select project</option>';
+      const sorted = state.projects.slice().sort((a, b) => a.name.localeCompare(b.name));
+      for (const project of sorted) {
+        const option = document.createElement("option");
+        option.value = project.id;
+        option.textContent = project.name;
+        podCreateProjectEl.appendChild(option);
+      }
+      if (selected && sorted.some((item) => item.id === selected)) {
+        podCreateProjectEl.value = selected;
+      } else if (sorted.length > 0) {
+        podCreateProjectEl.value = sorted[0].id;
+      } else {
+        podCreateProjectEl.value = "";
+      }
+      renderPodIssueOptions(podCreateProjectEl.value);
+    }
+
+    async function loadProjectIssues(refresh) {
+      const project = selectedPodProject();
+      if (!project) {
+        setPodCreateStatus("Select a project first.", "err");
+        return;
+      }
+      if (!refresh && Array.isArray(state.podProjectIssues[project.id])) {
+        renderPodIssueOptions(project.id);
+        return;
+      }
+      const repository = parseGitHubRepository(project.repo_url);
+      if (!repository) {
+        setPodCreateStatus("Project repository URL must be a valid github.com repo.", "err");
+        return;
+      }
+      setPodCreateBusy(true);
+      setPodCreateStatus("Loading issues...", "muted");
+      try {
+        const headers = { Accept: "application/vnd.github+json" };
+        const credential = await ensureProjectCredential(project.id);
+        if (credential) {
+          headers.Authorization = "Bearer " + credential;
+        }
+        const res = await fetch(
+          "https://api.github.com/repos/" + repository + "/issues?state=open&per_page=50",
+          { headers },
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = body && body.message ? String(body.message) : "issue fetch failed";
+          throw new Error(msg);
+        }
+        const issues = Array.isArray(body)
+          ? body
+              .filter((item) => item && !item.pull_request)
+              .map((item) => ({
+                number: Number(item.number || 0),
+                title: String(item.title || "").trim(),
+                body: String(item.body || ""),
+                url: String(item.html_url || ""),
+                labels: Array.isArray(item.labels)
+                  ? item.labels
+                      .map((label) =>
+                        typeof label === "string"
+                          ? label
+                          : label && typeof label.name === "string"
+                          ? label.name
+                          : "",
+                      )
+                      .filter(Boolean)
+                  : [],
+              }))
+              .filter((item) => Number.isFinite(item.number) && item.number > 0 && item.title)
+          : [];
+        state.podProjectIssues[project.id] = issues;
+        renderPodIssueOptions(project.id);
+        setPodCreateStatus("Loaded " + String(issues.length) + " open issue(s).", "ok");
+      } catch (err) {
+        setPodCreateStatus(err.message || "failed to load issues", "err");
+      } finally {
+        setPodCreateBusy(false);
+      }
+    }
+
+    async function startLoopFromIssue() {
+      if (state.podCreateMethod !== "issue") {
+        setPodCreateStatus("Only issue-based loop creation is available right now.", "err");
+        return;
+      }
+      const project = selectedPodProject();
+      if (!project) {
+        setPodCreateStatus("Select a project first.", "err");
+        return;
+      }
+      const issue = selectedPodIssue();
+      if (!issue) {
+        setPodCreateStatus("Select an issue first.", "err");
+        return;
+      }
+      const repository = parseGitHubRepository(project.repo_url);
+      if (!repository) {
+        setPodCreateStatus("Project repository URL must be a valid github.com repo.", "err");
+        return;
+      }
+      const configuredProviders = configuredLoopProviders();
+      if (configuredProviders.length === 0) {
+        setPodCreateStatus("Configure at least one provider before starting a loop.", "err");
+        return;
+      }
+      const provider = String(podCreateProviderEl.value || "").trim().toLowerCase();
+      const providerInfo = configuredProviders.find((item) => item.id === provider);
+      if (!providerInfo) {
+        setPodCreateStatus("Select a configured provider.", "err");
+        return;
+      }
+      const enteredLoopName = String(podCreateLoopNameEl.value || "").trim();
+      const loopName = enteredLoopName || defaultPodLoopName(issue);
+      const loopNameSlug = slugifySegment(loopName);
+      const branchDefault = defaultPodBranchName(project, issue) || loopNameSlug;
+      const branch = normalizeBranchName(podCreateBranchEl.value) || branchDefault;
+      const sourceBranch = normalizeBranchName(podCreateSourceBranchEl.value) || "main";
+      const prompt = String(podCreatePromptEl.value || "").trim();
+      const loopID =
+        slugifySegment(project.name || project.id || "project") + "-" + loopNameSlug;
+      const sourceRef = repository + "#" + String(issue.number);
+      const descriptionParts = [
+        "Loop request from console",
+        "",
+        "Loop Name: " + loopName,
+        "Branch: " + branch,
+        "Base branch: " + sourceBranch,
+        "Provider: " + providerInfo.label,
+        "Issue: " + sourceRef,
+      ];
+      if (prompt) {
+        descriptionParts.push("", "Prompt:", prompt);
+      }
+      if (issue.body) {
+        descriptionParts.push("", "Issue Body:", issue.body.trim());
+      }
+
+      setPodCreateBusy(true);
+      setPodCreateStatus("Creating loop...", "muted");
+      try {
+        const payload = {
+          loop_id: loopID,
+          idempotency_key: "github:" + repository + "#" + String(issue.number),
+          title: "Loop " + loopName + ": " + issue.title,
+          description: descriptionParts.join("\n"),
+          source_type: "github_issue",
+          source_ref: sourceRef,
+          metadata: {
+            project_id: project.id,
+            project_name: project.name,
+            github_repository: repository,
+            github_issue_number: String(issue.number),
+            github_issue_url: issue.url,
+            github_labels: issue.labels.join(","),
+            workspace_branch: branch,
+            workspace_source_branch: sourceBranch,
+            workspace_agent: provider,
+            workspace_provider: provider,
+            workspace_prompt: prompt,
+          },
+        };
+        const result = await postJSON("/v1/loops", payload);
+        setPodCreateStatus("Loop started for issue #" + String(issue.number) + ".", "ok");
+        setPodCreateOpen(false);
+        await refreshLoops();
+        if (result && result.loop_id) {
+          selectLoop(String(result.loop_id));
+        }
+      } catch (err) {
+        setPodCreateStatus(err.message || "failed to create loop", "err");
+      } finally {
+        setPodCreateBusy(false);
+      }
+    }
+
+    function projectInput(id) {
+      return document.getElementById(id);
+    }
+
+    function loadProjectsFromStorage() {
+      try {
+        const raw = window.localStorage.getItem(projectStorageKey);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+          .map((item) => ({
+            id: String(item.id || "").trim(),
+            name: String(item.name || "").trim(),
+            repo_url: String(item.repo_url || "").trim(),
+            github_user: String(item.github_user || "").trim(),
+            credential_set: Boolean(item.credential_set),
+            updated_at: String(item.updated_at || ""),
+            workflow_status: String(item.workflow_status || "new").trim() || "new",
+            last_action_at: String(item.last_action_at || ""),
+          }))
+          .filter((item) => item.id && item.name && item.repo_url);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function persistProjects() {
+      const payload = state.projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        repo_url: project.repo_url,
+        github_user: project.github_user,
+        credential_set: Boolean(project.credential_set),
+        updated_at: project.updated_at,
+        workflow_status: project.workflow_status || "new",
+        last_action_at: project.last_action_at || "",
+      }));
+      try {
+        window.localStorage.setItem(projectStorageKey, JSON.stringify(payload));
+      } catch (_) {}
+    }
+
+    function syncRightDrawerOverlay() {
+      const open =
+        document.body.classList.contains("provider-drawer-open") ||
+        document.body.classList.contains("project-drawer-open") ||
+        document.body.classList.contains("pod-drawer-open");
+      providerDrawerOverlayEl.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+
+    function setProjectFormBusy(busy) {
+      state.projectFormBusy = Boolean(busy);
+      const disabled = state.projectFormBusy;
+      const ids = [
+        "project-name",
+        "project-repo-url",
+        "project-github-user",
+        "project-github-credential",
+        "project-save",
+        "project-delete",
+        "project-back",
+        "project-delete-credential",
+      ];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+      }
+    }
+
+    function syncProjectCredentialControl(projectID, hasCredential) {
+      const button = document.getElementById("project-delete-credential");
+      if (!button) return;
+      const hasProject = String(projectID || "").trim() !== "";
+      button.classList.toggle("hidden", !hasProject);
+      button.disabled = state.projectFormBusy || !hasProject || !hasCredential;
+    }
+
+    function syncProjectDeleteControl(projectID) {
+      const button = document.getElementById("project-delete");
+      if (!button) return;
+      const hasProject = String(projectID || "").trim() !== "";
+      button.classList.toggle("hidden", !hasProject);
+      button.disabled = state.projectFormBusy || !hasProject;
+    }
+
+    function setProjectEditorOpen(open) {
+      const isOpen = Boolean(open);
+      document.body.classList.toggle("project-drawer-open", isOpen);
+      projectConfigPanelEl.classList.toggle("open", isOpen);
+      projectConfigPanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      projectAddEl.classList.toggle("hidden", isOpen);
+      syncRightDrawerOverlay();
+      if (!isOpen) {
+        setProjectFormBusy(false);
+        clearProjectForm();
+      }
+    }
+
+    function openProjectEditor() {
+      clearProjectForm();
+      setProjectActionStatus("", "muted");
+      setProjectEditorOpen(true);
+      projectInput("project-name").focus();
+    }
+
+    function clearProjectForm() {
+      state.editingProjectID = "";
+      projectInput("project-name").value = "";
+      projectInput("project-repo-url").value = "";
+      projectInput("project-github-user").value = "";
+      projectInput("project-github-credential").value = "";
+      projectFormStatusEl.textContent = "";
+      document.getElementById("project-save").textContent = "save project";
+      syncProjectDeleteControl("");
+      syncProjectCredentialControl("", false);
+    }
+
+    async function fetchProjectCredential(projectID, reveal) {
+      const id = String(projectID || "").trim();
+      if (!id) {
+        return { credential_set: false };
+      }
+      const query =
+        "/v1/projects/credentials/github?project_id=" +
+        encodeURIComponent(id) +
+        (reveal ? "&reveal=true" : "");
+      return fetchJSON(query);
+    }
+
+    async function hasStoredProjectCredential(projectID) {
+      try {
+        const payload = await fetchProjectCredential(projectID, false);
+        return Boolean(payload && payload.credential_set);
+      } catch (_) {
         return false;
       }
     }
 
-    async function reconnectProvider() {
-      const disconnected = await disconnectProvider();
-      if (disconnected) {
-        await startConnect();
+    async function ensureProjectCredential(projectID) {
+      const id = String(projectID || "").trim();
+      if (!id) return "";
+      const cached = String(state.projectCredentials[id] || "").trim();
+      if (cached) return cached;
+      try {
+        const payload = await fetchProjectCredential(id, true);
+        const value = String(payload && payload.credential ? payload.credential : "").trim();
+        if (value) {
+          state.projectCredentials[id] = value;
+          const project = state.projects.find((item) => item.id === id);
+          if (project) {
+            project.credential_set = true;
+            if (payload && payload.github_user && !project.github_user) {
+              project.github_user = String(payload.github_user);
+            }
+            persistProjects();
+            renderProjects();
+          }
+          return value;
+        }
+      } catch (_) {}
+      return "";
+    }
+
+    function setProjectFormStatus(message, level) {
+      projectFormStatusEl.textContent = message;
+      projectFormStatusEl.style.color =
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+    }
+
+    function setProjectActionStatus(message, level) {
+      projectActionStatusEl.textContent = message;
+      projectActionStatusEl.style.color =
+        level === "ok"
+          ? "var(--ok)"
+          : level === "err"
+          ? "var(--err)"
+          : "var(--muted)";
+    }
+
+    function projectWorkflowLabel(raw) {
+      const value = String(raw || "new").trim().toLowerCase();
+      if (value === "in_review") return "in review";
+      if (value === "approved") return "approved";
+      if (value === "pr_submitted") return "pr submitted";
+      return "new";
+    }
+
+    function isCompletedLoopStatus(status) {
+      const value = String(status || "").trim().toLowerCase();
+      return value === "synced" || value === "flatline" || value === "cancelled";
+    }
+
+    function renderProjects() {
+      projectListEl.innerHTML = "";
+      projectEmptyEl.classList.toggle("hidden", state.projects.length > 0);
+      renderPodProjectOptions();
+      if (state.projects.length === 0) return;
+
+      const sorted = state.projects.slice().sort((a, b) => a.name.localeCompare(b.name));
+      for (const project of sorted) {
+        const projectNameKey = String(project.name || "").trim().toLowerCase();
+        const completedLoops = state.loops.filter((loop) => {
+          const loopProject = String(loop.project || "").trim().toLowerCase();
+          return loopProject === projectNameKey && isCompletedLoopStatus(loop.status);
+        });
+        const completedCount = completedLoops.length;
+        const loopRows = completedLoops.map((loop) => {
+          const workflow = String(state.loopWorkflow[loop.loopID] || "new").toLowerCase();
+          const workflowClass =
+            workflow === "approved"
+              ? "state-synced"
+              : workflow === "pr_submitted"
+              ? "state-overwriting"
+              : workflow === "in_review"
+              ? "state-unresolved"
+              : "state-flatline";
+          return (
+            '<article class="project-loop-row">' +
+            '<div class="project-loop-head">' +
+            '<span class="project-loop-id">' + escapeHtml(loop.loopID) + "</span>" +
+            '<span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + "</span>" +
+            "</div>" +
+            '<div class="project-tile-actions">' +
+            '<button type="button" data-project-action="review-work" data-project-id="' + escapeHtml(project.id) + '" data-loop-id="' + escapeHtml(loop.loopID) + '">review</button>' +
+            '<button type="button" data-project-action="approve" data-project-id="' + escapeHtml(project.id) + '" data-loop-id="' + escapeHtml(loop.loopID) + '">approve</button>' +
+            '<button type="button" class="primary" data-project-action="submit-pr" data-project-id="' + escapeHtml(project.id) + '" data-loop-id="' + escapeHtml(loop.loopID) + '">submit PR</button>' +
+            "</div>" +
+            '<div class="project-meta"><span>Workflow</span><span class="badge ' + workflowClass + '">' + escapeHtml(projectWorkflowLabel(workflow)) + "</span></div>" +
+            "</article>"
+          );
+        }).join("");
+        const section = document.createElement("details");
+        section.className = "project-tile";
+        section.setAttribute("role", "listitem");
+        section.open = true;
+        section.innerHTML =
+          '<summary class="collapsible-summary">' +
+          '<span class="collapsible-label"><span class="collapsible-caret">&gt;</span>' +
+          '<span class="project-name">' +
+          escapeHtml(project.name) +
+          "</span></span>" +
+          '<span class="muted">' + String(completedCount) + " completed</span></summary>" +
+          '<div class="collapsible-body">' +
+          (completedCount > 0
+            ? '<div class="project-loop-list">' + loopRows + "</div>"
+            : '<div class="status-note">No completed loops for this project yet.</div>') +
+          '<div class="project-card-actions">' +
+          '<button type="button" class="project-action-icon" aria-label="Edit project" title="Edit project" data-project-action="edit" data-project-id="' +
+          escapeHtml(project.id) +
+          '">&#9998;</button>' +
+          "</div>" +
+          "</div>";
+        projectListEl.appendChild(section);
       }
     }
 
-    function openVerifyURL() {
-      const uri = state.authSession && state.authSession.verification_uri;
-      if (!uri) {
-        authFlowMessageEl.textContent = "No active device flow. Click connect first.";
+    async function editProject(projectID) {
+      const project = state.projects.find((item) => item.id === projectID);
+      if (!project) return;
+      setProjectEditorOpen(true);
+      state.editingProjectID = project.id;
+      projectInput("project-name").value = project.name;
+      projectInput("project-repo-url").value = project.repo_url;
+      projectInput("project-github-user").value = project.github_user;
+      projectInput("project-github-credential").value = "";
+      document.getElementById("project-save").textContent = "update project";
+      syncProjectDeleteControl(project.id);
+      syncProjectCredentialControl(project.id, Boolean(project.credential_set));
+      setProjectFormStatus("Editing " + project.name + ".", "muted");
+      try {
+        const stored = await fetchProjectCredential(project.id, false);
+        project.credential_set = Boolean(stored && stored.credential_set);
+        if (stored && stored.github_user) {
+          projectInput("project-github-user").value = String(stored.github_user);
+        }
+        if (project.credential_set) {
+          setProjectFormStatus("Credential already stored in secret manager.", "muted");
+        } else {
+          setProjectFormStatus("Enter GitHub credential to save.", "muted");
+        }
+        syncProjectCredentialControl(project.id, project.credential_set);
+        persistProjects();
+        renderProjects();
+      } catch (_) {
+        setProjectFormStatus("Could not verify stored credential. You can still update project details.", "muted");
+        syncProjectCredentialControl(project.id, Boolean(project.credential_set));
+      }
+    }
+
+    async function deleteProjectFromEditor() {
+      const projectID = String(state.editingProjectID || "").trim();
+      if (!projectID) {
+        setProjectFormStatus("Save this project first before deleting.", "err");
         return;
       }
-      window.open(uri, "_blank", "noopener,noreferrer");
+      const project = state.projects.find((item) => item.id === projectID) || null;
+      const label = project ? project.name : projectID;
+      const confirmed = window.confirm("Are you sure you wish to delete project " + label + "?");
+      if (!confirmed) {
+        return;
+      }
+      setProjectEditorOpen(false);
+      await removeProject(projectID);
+    }
+
+    async function deleteProjectCredentialFromEditor() {
+      const projectID = String(state.editingProjectID || "").trim();
+      if (!projectID) {
+        setProjectFormStatus("Save this project first before deleting credential.", "err");
+        return;
+      }
+      const project = state.projects.find((item) => item.id === projectID) || null;
+      const confirmed = window.confirm("Are you sure you wish to delete this project credential?");
+      if (!confirmed) {
+        return;
+      }
+      setProjectFormBusy(true);
+      try {
+        await deleteJSON(
+          "/v1/projects/credentials/github?project_id=" + encodeURIComponent(projectID),
+          { actor: authActor(), project_id: projectID },
+        );
+        delete state.projectCredentials[projectID];
+        projectInput("project-github-credential").value = "";
+        if (project) {
+          project.credential_set = false;
+          project.updated_at = new Date().toISOString();
+        }
+        persistProjects();
+        renderProjects();
+        setProjectFormStatus("Credential deleted from secret manager.", "ok");
+        setProjectActionStatus(
+          "Credential deleted for " + (project ? project.name : projectID) + ".",
+          "ok",
+        );
+        pushToast("Project credential deleted.", "err");
+        setProjectEditorOpen(false);
+      } catch (err) {
+        setProjectFormStatus(
+          err && err.message ? err.message : "Failed to delete project credential.",
+          "err",
+        );
+        pushToast("Failed to delete project credential.", "err");
+      } finally {
+        setProjectFormBusy(false);
+        syncProjectCredentialControl(projectID, false);
+      }
+    }
+
+    async function removeProject(projectID) {
+      const removed = state.projects.find((item) => item.id === projectID);
+      let credentialDeleteError = "";
+      try {
+        await deleteJSON(
+          "/v1/projects/credentials/github?project_id=" + encodeURIComponent(String(projectID || "").trim()),
+          { actor: authActor(), project_id: projectID },
+        );
+      } catch (err) {
+        credentialDeleteError = err && err.message ? String(err.message) : "credential delete failed";
+      }
+      state.projects = state.projects.filter((item) => item.id !== projectID);
+      delete state.projectCredentials[projectID];
+      if (state.editingProjectID === projectID) {
+        setProjectEditorOpen(false);
+      }
+      persistProjects();
+      renderProjects();
+      if (removed) {
+        if (credentialDeleteError) {
+          setProjectActionStatus(
+            "Removed project " + removed.name + ", but secret delete failed: " + credentialDeleteError + ".",
+            "err",
+          );
+          pushToast(
+            "Project removed, but credential delete failed for " + removed.name + ".",
+            "err",
+          );
+        } else {
+          setProjectActionStatus("Removed project " + removed.name + ".", "ok");
+          pushToast("Project removed: " + removed.name + ".", "err");
+        }
+      }
+    }
+
+    function runProjectWorkflowAction(projectID, loopID, action) {
+      const project = state.projects.find((item) => item.id === projectID);
+      if (!project) return;
+      const loopRef = String(loopID || "").trim();
+      if (!loopRef) return;
+
+      const next = String(action || "").trim().toLowerCase();
+      if (next === "review-work") {
+        state.loopWorkflow[loopRef] = "in_review";
+        project.last_action_at = new Date().toISOString();
+        setProjectActionStatus("Review started for " + loopRef + ".", "ok");
+      } else if (next === "approve") {
+        state.loopWorkflow[loopRef] = "approved";
+        project.last_action_at = new Date().toISOString();
+        setProjectActionStatus("Approved work for " + loopRef + ".", "ok");
+      } else if (next === "submit-pr") {
+        if (!project.credential_set) {
+          setProjectActionStatus(
+            "Cannot submit PR for " + project.name + ": missing GitHub credential.",
+            "err",
+          );
+          return;
+        }
+        state.loopWorkflow[loopRef] = "pr_submitted";
+        project.last_action_at = new Date().toISOString();
+        setProjectActionStatus("PR submitted for " + loopRef + ".", "ok");
+      } else {
+        return;
+      }
+      project.updated_at = new Date().toISOString();
+      persistProjects();
+      renderProjects();
+    }
+
+    async function saveProject() {
+      const name = projectInput("project-name").value.trim();
+      const repoURL = projectInput("project-repo-url").value.trim();
+      const githubUser = projectInput("project-github-user").value.trim();
+      const githubCredential = projectInput("project-github-credential").value.trim();
+
+      if (!name) {
+        setProjectFormStatus("project name is required", "err");
+        return;
+      }
+      if (!repoURL) {
+        setProjectFormStatus("repository URL is required", "err");
+        return;
+      }
+      if (!repoURL.includes("github.com")) {
+        setProjectFormStatus("repository URL must target github.com", "err");
+        return;
+      }
+      if (!githubUser) {
+        setProjectFormStatus("GitHub username or app/bot name is required", "err");
+        return;
+      }
+
+      const existing = state.editingProjectID
+        ? state.projects.find((item) => item.id === state.editingProjectID)
+        : null;
+      const projectID =
+        state.editingProjectID ||
+        ("proj-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1000).toString(36));
+      let credentialSet = Boolean(githubCredential) || Boolean(existing && existing.credential_set);
+      if (!githubCredential && !credentialSet) {
+        credentialSet = await hasStoredProjectCredential(projectID);
+      }
+
+      if (!credentialSet) {
+        setProjectFormStatus("GitHub credential is required", "err");
+        return;
+      }
+
+      setProjectFormBusy(true);
+      try {
+        if (githubCredential) {
+          await postJSON("/v1/projects/credentials/github", {
+            actor: authActor(),
+            project_id: projectID,
+            github_user: githubUser,
+            credential: githubCredential,
+          });
+          state.projectCredentials[projectID] = githubCredential;
+          credentialSet = true;
+        } else {
+          delete state.projectCredentials[projectID];
+        }
+
+        const project = {
+          id: projectID,
+          name,
+          repo_url: repoURL,
+          github_user: githubUser,
+          credential_set: credentialSet,
+          updated_at: new Date().toISOString(),
+          workflow_status: existing && existing.workflow_status ? existing.workflow_status : "new",
+          last_action_at: existing && existing.last_action_at ? existing.last_action_at : "",
+        };
+
+        const index = state.projects.findIndex((item) => item.id === projectID);
+        if (index >= 0) {
+          state.projects[index] = project;
+        } else {
+          state.projects.push(project);
+        }
+
+        persistProjects();
+        renderProjects();
+        setProjectEditorOpen(false);
+        setProjectActionStatus("Saved project " + project.name + ".", "ok");
+        pushToast("Project saved: " + project.name + ".", "ok");
+      } catch (err) {
+        setProjectFormStatus(err && err.message ? err.message : "Failed to save project credential", "err");
+        pushToast("Failed to save project.", "err");
+      } finally {
+        setProjectFormBusy(false);
+        syncProjectCredentialControl(
+          state.editingProjectID || "",
+          Boolean(
+            state.editingProjectID &&
+              state.projects.find((item) => item.id === state.editingProjectID)?.credential_set,
+          ),
+        );
+      }
+    }
+
+    function initProjects() {
+      state.projects = loadProjectsFromStorage();
+      renderProjects();
+      setProjectEditorOpen(false);
+    }
+
+    function resolveProjectLabel(value) {
+      const trimmed = String(value || "").trim();
+      if (!trimmed) return "";
+      const key = trimmed.toLowerCase();
+      const matched =
+        state.projects.find((project) => String(project.id || "").trim().toLowerCase() === key) ||
+        state.projects.find((project) => String(project.name || "").trim().toLowerCase() === key);
+      if (matched) {
+        return String(matched.name || matched.id || trimmed).trim() || trimmed;
+      }
+      return trimmed;
+    }
+
+    function projectFromLoop(item, record, loopID) {
+      const candidates = [
+        item.project_id,
+        item.project,
+        record.project_id,
+        record.project,
+        record.project_name,
+      ];
+      for (const value of candidates) {
+        const resolved = resolveProjectLabel(value);
+        if (resolved) return resolved;
+      }
+      const loopLower = String(loopID || "").trim().toLowerCase();
+      if (loopLower) {
+        for (const project of state.projects) {
+          const display = String(project.name || project.id || "").trim();
+          if (!display) continue;
+          const keys = [project.id, project.name];
+          for (const raw of keys) {
+            const token = slugifySegment(raw).toLowerCase();
+            if (!token) continue;
+            if (
+              loopLower === token ||
+              loopLower.startsWith(token + "-") ||
+              loopLower.startsWith(token + "/") ||
+              loopLower.startsWith(token + ":")
+            ) {
+              return display;
+            }
+          }
+        }
+      }
+      if (loopID.includes("/")) {
+        return resolveProjectLabel(loopID.split("/")[0]);
+      }
+      if (loopID.includes(":")) {
+        return resolveProjectLabel(loopID.split(":")[0]);
+      }
+      return "default";
     }
 
     function normalizeLoop(item) {
@@ -638,19 +3441,20 @@
       const revision = Number(item.revision || item.Revision || record.observed_revision || 0);
       return {
         loopID,
+        project: projectFromLoop(item, record, loopID),
         status,
         attempt,
         reason,
         revision,
         cpu: "--",
-        memory: "--"
+        memory: "--",
       };
     }
 
     function updateStats(loops) {
       const total = loops.length;
-      const active = loops.filter(l => isActive(l.status)).length;
-      const flatline = loops.filter(l => l.status === "flatline").length;
+      const active = loops.filter((l) => isActive(l.status)).length;
+      const flatline = loops.filter((l) => l.status === "flatline").length;
       document.getElementById("stat-total").textContent = String(total);
       document.getElementById("stat-active").textContent = String(active);
       document.getElementById("stat-flatline").textContent = String(flatline);
@@ -660,7 +3464,7 @@
     function filteredLoops() {
       const filter = document.getElementById("state-filter").value;
       const query = document.getElementById("search").value.trim().toLowerCase();
-      return state.loops.filter(loop => {
+      return state.loops.filter((loop) => {
         if (filter === "active" && !isActive(loop.status)) return false;
         if (filter !== "all" && filter !== "active" && loop.status !== filter) return false;
         if (query && !loop.loopID.toLowerCase().includes(query)) return false;
@@ -670,36 +3474,82 @@
 
     function renderGrid() {
       const loops = filteredLoops();
+      gridEl.innerHTML = "";
+
       if (loops.length === 0) {
-        gridEl.innerHTML = '<div class="empty">No anomalies for selected filter.</div>';
+        gridEl.innerHTML = '<div class="empty">No pods for selected filter.</div>';
         return;
       }
-      gridEl.innerHTML = "";
-      for (const loop of loops) {
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "card" + (state.selectedLoop === loop.loopID ? " selected" : "");
-        card.setAttribute("role", "listitem");
-        card.innerHTML = [
-          '<div class="row">',
-          '  <span class="loop-id">' + escapeHtml(loop.loopID) + '</span>',
-          '  <span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + '</span>',
+
+      const sortedLoops = loops.slice().sort((a, b) => {
+        const projectCmp = String(a.project || "").localeCompare(String(b.project || ""));
+        if (projectCmp !== 0) return projectCmp;
+        return String(a.loopID || "").localeCompare(String(b.loopID || ""));
+      });
+      for (const loop of sortedLoops) {
+        const tile = document.createElement("article");
+        tile.className = "pod-tile" + (state.selectedLoop === loop.loopID ? " selected" : "");
+        tile.setAttribute("role", "listitem");
+        tile.tabIndex = 0;
+        const canAttach = isActive(loop.status);
+        const attaching = state.attachBusyLoopID === loop.loopID;
+
+        tile.innerHTML = [
+          '<div class="tile-actions-top">',
+          '  <button type="button" class="tile-action-button" data-tile-attach="1" ' +
+            (canAttach && !attaching ? "" : "disabled ") +
+            'aria-label="Attach to ' + escapeHtml(loop.loopID) + '">' +
+            (attaching ? "attaching..." : "attach") +
+          "</button>",
           "</div>",
-          '<div class="metrics">',
-          '  <span><b>CPU</b><i>' + escapeHtml(loop.cpu) + "</i></span>",
-          '  <span><b>MEM</b><i>' + escapeHtml(loop.memory) + "</i></span>",
-          '  <span><b>ATT</b><i>' + String(loop.attempt) + "</i></span>",
-          '  <span><b>REV</b><i>' + String(loop.revision) + "</i></span>",
+          '<div class="tile-head">',
+          '  <div class="tile-title loop-id" title="' + escapeHtml(loop.loopID) + '">' + escapeHtml(loop.loopID) + "</div>",
           "</div>",
-          loop.reason ? '<div class="muted" style="margin-top:6px;font-size:.76rem;">' + escapeHtml(loop.reason) + "</div>" : ""
+          '<div class="tile-loop">' + escapeHtml(loop.project) + "</div>",
+          '<div class="tile-reason">' +
+            escapeHtml(loop.reason || "no recent update") +
+          "</div>",
+          '<div class="tile-health">',
+          '  <span class="tile-health-dot" aria-hidden="true"></span>',
+          '  <span class="tile-health-text">1/1 containers ready</span>',
+          "</div>",
+          '<div class="tile-footer">',
+          '  <span class="badge state-' + escapeHtml(loop.status) + '">' + escapeHtml(loop.status) + "</span>",
+          '<div class="tile-meta">',
+          '  <span>ATT ' + String(loop.attempt) + "</span>",
+          '  <span>REV ' + String(loop.revision) + "</span>",
+          "</div>",
+          "</div>",
         ].join("");
-        card.addEventListener("click", () => selectLoop(loop.loopID));
-        gridEl.appendChild(card);
+
+        tile.addEventListener("click", () => openPodView(loop.loopID));
+        tile.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            openPodView(loop.loopID);
+          }
+        });
+        const attachButton = tile.querySelector("[data-tile-attach]");
+        if (attachButton instanceof HTMLButtonElement) {
+          attachButton.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            void attachLoopTerminal(loop.loopID);
+          });
+        }
+
+        gridEl.appendChild(tile);
       }
     }
 
     function escapeHtml(v) {
-      return String(v).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+      return String(v).replace(/[&<>"']/g, (m) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[m]));
     }
 
     async function refreshLoops() {
@@ -708,14 +3558,18 @@
         state.loops = Array.isArray(raw) ? raw.map(normalizeLoop) : [];
         updateStats(state.loops);
         renderGrid();
+        renderProjects();
+        syncPodViewActions();
         apiDotEl.className = "dot ok";
-        if (!state.selectedLoop && state.loops.length > 0) {
-          selectLoop(state.loops[0].loopID);
-        } else if (state.selectedLoop && !state.loops.some(l => l.loopID === state.selectedLoop)) {
-          clearJournal("selected anomaly no longer present");
+        if (state.selectedLoop && !state.loops.some((l) => l.loopID === state.selectedLoop)) {
+          clearJournal("selected pod no longer present");
           state.selectedLoop = "";
+          renderSelectedLoop();
+          if (pages.podView.classList.contains("active")) {
+            setActivePage("pods", true);
+          }
         }
-      } catch (err) {
+      } catch (_) {
         apiDotEl.className = "dot err";
       }
     }
@@ -742,7 +3596,8 @@
         journalLatencyEl.textContent = "p95 --";
         return;
       }
-      journalLatencyEl.textContent = "p95 " + Math.round(p95) + "ms (n=" + state.latencySamplesMs.length + ")";
+      journalLatencyEl.textContent =
+        "p95 " + Math.round(p95) + "ms (n=" + state.latencySamplesMs.length + ")";
     }
 
     function appendJournal(entry) {
@@ -774,7 +3629,7 @@
         terminalEl.textContent = "[journal] waiting for entries...\n";
         return;
       }
-      const lines = state.journalEntries.map(entry => {
+      const lines = state.journalEntries.map((entry) => {
         const ts = String(entry.timestamp || entry.Timestamp || "");
         const level = String(entry.level || entry.Level || "info").toLowerCase();
         const phase = String(entry.phase || entry.Phase || "-");
@@ -788,10 +3643,92 @@
 
     function selectLoop(loopID) {
       state.selectedLoop = loopID;
+      renderSelectedLoop();
       document.getElementById("journal-title").textContent = "Live Journal: " + loopID;
       renderGrid();
       clearJournal("attaching to stream...");
       attachStream(loopID);
+    }
+
+    function openPodView(loopID) {
+      const next = String(loopID || "").trim();
+      if (!next) return;
+      selectLoop(next);
+      setActivePage("podView", true);
+    }
+
+    async function attachLoopTerminal(loopID) {
+      const id = String(loopID || "").trim();
+      if (!id) return;
+      const loop = state.loops.find((item) => item.loopID === id);
+      if (!loop || !isActive(loop.status)) {
+        pushToast("Attach is only available for active loops.", "err");
+        return;
+      }
+      if (state.attachBusyLoopID) {
+        return;
+      }
+      state.attachBusyLoopID = id;
+      renderGrid();
+      syncPodViewActions();
+      try {
+        await postJSON("/v1/loops/" + encodeURIComponent(id) + "/control/attach", {
+          actor: authActor(),
+          terminal: "console-pods",
+        });
+        pushToast("Attached to " + id + ".", "ok");
+        selectLoop(id);
+      } catch (err) {
+        const message = err && err.message ? err.message : "attach failed";
+        pushToast("Failed to attach to " + id + ": " + message, "err");
+      } finally {
+        state.attachBusyLoopID = "";
+        renderGrid();
+        syncPodViewActions();
+      }
+    }
+
+    async function deleteSelectedLoop() {
+      const selected = selectedLoopRecord();
+      if (!selected) {
+        pushToast("Select a loop first.", "err");
+        return;
+      }
+      if (isActive(selected.status)) {
+        pushToast("Only completed loops can be deleted.", "err");
+        return;
+      }
+      const confirmed = window.confirm(
+        "Delete loop " + selected.loopID + "? This removes loop state and history.",
+      );
+      if (!confirmed) {
+        return;
+      }
+      const loopID = String(selected.loopID || "").trim();
+      state.loopDeleteBusy = true;
+      syncPodViewActions();
+      setPodsNotice("Deleting loop " + loopID + "...", "muted");
+      setActivePage("pods", true);
+      detachStream();
+      clearJournal("deleting loop...");
+      state.selectedLoop = "";
+      renderSelectedLoop();
+      renderGrid();
+      try {
+        await deleteJSON("/v1/loops/" + encodeURIComponent(loopID), {
+          actor: authActor(),
+        });
+        pushToast("Loop deleted: " + loopID + ".", "err");
+        setPodsNotice("Deleted loop " + loopID + ".", "ok", 4000);
+        await refreshLoops();
+      } catch (err) {
+        const message = err && err.message ? err.message : "delete failed";
+        setPodsNotice("Failed to delete " + loopID + ": " + message, "err", 7000);
+        pushToast("Failed to delete loop: " + message, "err");
+      } finally {
+        state.loopDeleteBusy = false;
+        syncPodViewActions();
+      }
     }
 
     async function applyOverride() {
@@ -813,7 +3750,7 @@
         return;
       }
       const confirm = window.confirm(
-        "Apply override?\n\nLoop: " + loopID + "\nTarget: " + targetState + "\nReason: " + reason
+        "Apply override?\n\nLoop: " + loopID + "\nTarget: " + targetState + "\nReason: " + reason,
       );
       if (!confirm) return;
       try {
@@ -821,10 +3758,11 @@
           loop_id: loopID,
           target_state: targetState,
           reason,
-          actor
+          actor,
         });
         journalStatusEl.textContent = "override applied";
-        terminalEl.textContent += "[override] state -> " + targetState + " (revision " + (res.revision || "?") + ")\n";
+        terminalEl.textContent +=
+          "[override] state -> " + targetState + " (revision " + (res.revision || "?") + ")\n";
         terminalEl.scrollTop = terminalEl.scrollHeight;
         document.getElementById("override-confirm").value = "";
         await refreshLoops();
@@ -857,7 +3795,12 @@
         state.reconnectTimer = setTimeout(() => attachStream(loopID, 0), delayMs);
         return;
       }
-      const streamURL = apiBase + "/v1/loops/" + encodeURIComponent(loopID) + "/journal/stream?since_seq=" + state.journalLastSeq;
+      const streamURL =
+        apiBase +
+        "/v1/loops/" +
+        encodeURIComponent(loopID) +
+        "/journal/stream?since_seq=" +
+        state.journalLastSeq;
       journalStatusEl.textContent = "connecting";
       try {
         const source = new EventSource(streamURL);
@@ -865,7 +3808,7 @@
         source.addEventListener("ready", () => {
           journalStatusEl.textContent = "connected";
         });
-        source.addEventListener("entry", ev => {
+        source.addEventListener("entry", (ev) => {
           try {
             const parsed = JSON.parse(ev.data);
             appendJournal(parsed.entry || parsed);
@@ -883,7 +3826,9 @@
 
     async function pollJournal(loopID) {
       try {
-        const entries = await fetchJSON("/v1/loops/" + encodeURIComponent(loopID) + "/journal?limit=500");
+        const entries = await fetchJSON(
+          "/v1/loops/" + encodeURIComponent(loopID) + "/journal?limit=500",
+        );
         if (Array.isArray(entries)) {
           for (const entry of entries) appendJournal(entry);
         }
@@ -897,15 +3842,148 @@
     document.getElementById("refresh").addEventListener("click", refreshLoops);
     document.getElementById("state-filter").addEventListener("change", renderGrid);
     document.getElementById("search").addEventListener("input", renderGrid);
-    document.getElementById("auth-token").addEventListener("change", refreshAuthStatus);
+    podViewBackEl.addEventListener("click", () => {
+      setActivePage("pods", true);
+    });
+    podViewAttachEl.addEventListener("click", () => {
+      if (state.selectedLoop) {
+        void attachLoopTerminal(state.selectedLoop);
+      }
+    });
+    podViewDeleteEl.addEventListener("click", () => {
+      void deleteSelectedLoop();
+    });
+    podCreateToggleEl.addEventListener("click", () => setPodCreateOpen(true));
+    podCreateCloseEl.addEventListener("click", () => setPodCreateOpen(false));
+    podCreateCancelEl.addEventListener("click", () => setPodCreateOpen(false));
+    podCreateProjectEl.addEventListener("change", () => {
+      podCreateIssueFilterEl.value = "";
+      podCreateIssueEl.value = "";
+      podCreateIssuePreviewEl.textContent = "Loading issues...";
+      if (!podCreateSourceBranchEl.value.trim()) {
+        podCreateSourceBranchEl.value = "main";
+      }
+      void loadProjectIssues(false);
+    });
+    podCreateMethodButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const method = button.getAttribute("data-pod-create-method") || "";
+        setPodCreateMethod(method);
+      });
+    });
+    podCreateBackEl.addEventListener("click", () => {
+      setPodCreateStatus("", "muted");
+      setPodCreateStep(state.podCreateStep - 1);
+    });
+    podCreateNextEl.addEventListener("click", () => {
+      goToNextPodCreateStep();
+    });
+    podCreateIssueFilterEl.addEventListener("input", () => {
+      renderPodIssueOptions(podCreateProjectEl.value);
+    });
+    podCreateIssueEl.addEventListener("change", () => {
+      renderPodIssuePreview();
+    });
+    podCreateSubmitEl.addEventListener("click", () => {
+      void startLoopFromIssue();
+    });
     document.getElementById("override-apply").addEventListener("click", applyOverride);
-    document.getElementById("auth-status-refresh").addEventListener("click", refreshAuthStatus);
-    document.getElementById("auth-connect-start").addEventListener("click", startConnect);
-    document.getElementById("auth-connect-complete").addEventListener("click", completeConnect);
+    document.getElementById("provider-back").addEventListener("click", () => setProviderConfigOpen(false));
+    providerListEl.addEventListener("click", (ev) => {
+      const target = ev.target;
+      if (!(target instanceof HTMLElement)) return;
+      const control = target.closest("[data-provider-config]");
+      if (!(control instanceof HTMLElement)) return;
+      const providerID = control.getAttribute("data-provider-config") || "";
+      if (providerID) {
+        configureProvider(providerID);
+      }
+    });
+    document.getElementById("auth-save-api-key").addEventListener("click", saveAPIKey);
     document.getElementById("auth-disconnect").addEventListener("click", disconnectProvider);
-    document.getElementById("auth-reconnect").addEventListener("click", reconnectProvider);
-    document.getElementById("auth-open-verify").addEventListener("click", openVerifyURL);
+    authAPIKeyEl.addEventListener("input", () => {
+      state.authFormDirty = true;
+      syncAuthCredentialForm();
+    });
+    authAccountIDEl.addEventListener("input", () => {
+      state.authFormDirty = true;
+    });
+    document.getElementById("auth-reveal-api-key").addEventListener("click", () => {
+      void toggleStoredCredentialReveal();
+    });
+    document.getElementById("project-add").addEventListener("click", openProjectEditor);
+    document.getElementById("project-save").addEventListener("click", () => {
+      void saveProject();
+    });
+    document.getElementById("project-delete").addEventListener("click", () => {
+      void deleteProjectFromEditor();
+    });
+    document.getElementById("project-delete-credential").addEventListener("click", () => {
+      void deleteProjectCredentialFromEditor();
+    });
+    projectBackEl.addEventListener("click", () => {
+      setProjectEditorOpen(false);
+    });
+    projectListEl.addEventListener("click", (ev) => {
+      const target = ev.target;
+      if (!(target instanceof HTMLElement)) return;
+      const control = target.closest("[data-project-action]");
+      if (!(control instanceof HTMLElement)) return;
+      const action = control.getAttribute("data-project-action");
+      const projectID = control.getAttribute("data-project-id") || "";
+      const loopID = control.getAttribute("data-loop-id") || "";
+      if (action === "edit") {
+        void editProject(projectID);
+      } else if (action === "review-work" || action === "approve" || action === "submit-pr") {
+        runProjectWorkflowAction(projectID, loopID, action);
+      }
+    });
+    sidebarToggleButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setSidebarOpen(!document.body.classList.contains("sidebar-open"));
+      });
+    });
+    sidebarOverlayEl.addEventListener("click", () => setSidebarOpen(false));
+    providerDrawerOverlayEl.addEventListener("click", () => {
+      setProviderConfigOpen(false);
+      setProjectEditorOpen(false);
+      setPodCreateOpen(false);
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") setSidebarOpen(false);
+      if (ev.key === "Escape") setProviderConfigOpen(false);
+      if (ev.key === "Escape") setProjectEditorOpen(false);
+      if (ev.key === "Escape") setPodCreateOpen(false);
+      if (ev.key.toLowerCase() === "n") {
+        const target = ev.target;
+        const editing =
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target instanceof HTMLSelectElement ||
+          (target instanceof HTMLElement && target.isContentEditable);
+        if (!editing && pageFromHash() === "pods") {
+          ev.preventDefault();
+          setPodCreateOpen(true);
+        }
+      }
+    });
+    pageLinks.forEach((link) => {
+      link.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        setActivePage(link.getAttribute("data-page-link"), true);
+        setSidebarOpen(false);
+      });
+    });
+    window.addEventListener("hashchange", () => {
+      setActivePage(pageFromHash(), false);
+    });
 
+    setSidebarOpen(false);
+    initProjects();
+    renderProviderList();
+    setProviderConfigOpen(false);
+    setActivePage(pageFromHash(), false);
+    renderSelectedLoop();
     refreshLoops();
     refreshAuthStatus();
     setInterval(() => {

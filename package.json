@@ -1,0 +1,14 @@
+{
+  "name": "smith-frontend-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:frontend": "playwright test",
+    "test:frontend:live": "PW_UI_BASE_URL=http://127.0.0.1:3000 playwright test",
+    "test:frontend:headed": "playwright test --headed",
+    "test:frontend:debug": "playwright test --debug"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0"
+  }
+}

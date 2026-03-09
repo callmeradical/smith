@@ -106,6 +106,41 @@ func TestAuthManagerRequiresConnection(t *testing.T) {
 	}
 }
 
+func TestAuthManagerStoredCredentialForAPIKey(t *testing.T) {
+	store := NewFileTokenStore(filepath.Join(t.TempDir(), "tokens.json"))
+	mgr := NewAuthManager(ProviderCodex, store, NewMockDeviceAuthClient(), nil)
+	ctx := context.Background()
+
+	cred, err := mgr.StoredCredential(ctx)
+	if err != nil {
+		t.Fatalf("stored credential before connect: %v", err)
+	}
+	if cred.Connected {
+		t.Fatal("expected disconnected credential before api key connect")
+	}
+
+	if _, err := mgr.ConnectAPIKey(ctx, "operator-a", "sk-test-123", "work"); err != nil {
+		t.Fatalf("connect api key: %v", err)
+	}
+
+	cred, err = mgr.StoredCredential(ctx)
+	if err != nil {
+		t.Fatalf("stored credential after connect: %v", err)
+	}
+	if !cred.Connected {
+		t.Fatal("expected connected credential")
+	}
+	if cred.AuthMethod != "api_key" {
+		t.Fatalf("expected api_key auth method, got %q", cred.AuthMethod)
+	}
+	if cred.APIKey != "sk-test-123" {
+		t.Fatalf("expected stored api key, got %q", cred.APIKey)
+	}
+	if cred.AccountID != "work" {
+		t.Fatalf("expected account label, got %q", cred.AccountID)
+	}
+}
+
 func TestFileTokenStoreUsesRestrictedPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	store := NewFileTokenStore(path)

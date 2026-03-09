@@ -269,6 +269,7 @@
         },
         "autoscaling": { "$ref": "#/definitions/autoscaling" },
         "image": { "$ref": "#/definitions/componentImage" },
+        "replicaImage": { "$ref": "#/definitions/componentImage" },
         "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
         "loopPolicy": { "$ref": "#/definitions/loopPolicy" },
         "replicaTemplate": { "$ref": "#/definitions/replicaTemplate" },
@@ -278,13 +279,15 @@
           "items": { "$ref": "#/definitions/envVar" }
         }
       },
-      "required": ["enabled", "replicaCount", "autoscaling", "image", "serviceAccount", "loopPolicy", "replicaTemplate", "resources", "env"]
+      "required": ["enabled", "replicaCount", "autoscaling", "image", "replicaImage", "serviceAccount", "loopPolicy", "replicaTemplate", "resources", "env"]
     },
     "componentConfigWithService": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean" },
+        "apiBaseUrl": { "type": "string", "minLength": 1 },
+        "showComingSoonProviders": { "type": "boolean" },
         "replicaCount": {
           "type": "integer",
           "minimum": 1

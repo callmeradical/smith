@@ -24,6 +24,9 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	if job.Metadata.Namespace != "smith-system" {
 		t.Fatalf("expected namespace smith-system, got %q", job.Metadata.Namespace)
 	}
+	if job.Metadata.Name != "smith-replica-loop-123" {
+		t.Fatalf("unexpected generated job name %q", job.Metadata.Name)
+	}
 	if job.Spec.Template.Spec.ServiceAccountName != "smith-replica" {
 		t.Fatalf("unexpected service account: %q", job.Spec.Template.Spec.ServiceAccountName)
 	}
@@ -87,6 +90,38 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	}
 	if mounts["skill-1-lint"].MountPath != "/smith/skills/lint" || mounts["skill-1-lint"].ReadOnly {
 		t.Fatalf("unexpected lint mount: %+v", mounts["skill-1-lint"])
+	}
+}
+
+func TestBuildReplicaJobSanitizesLabelsAndRespectsCustomJobName(t *testing.T) {
+	req := validRequest()
+	req.LoopID = "alpha/feat/issue-132-prd"
+	req.CorrelationID = "corr/123"
+	req.JobName = "smith-replica-alpha-feat-issue-132-99999"
+	req.Labels = map[string]string{
+		"smith.io/project": "pod-visualizer/demo",
+		"smith.io/custom":  "!!!",
+	}
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	if job.Metadata.Name != req.JobName {
+		t.Fatalf("expected custom job name %q, got %q", req.JobName, job.Metadata.Name)
+	}
+	if got := job.Metadata.Labels["smith.io/loop-id"]; got != "alpha-feat-issue-132-prd" {
+		t.Fatalf("unexpected loop label %q", got)
+	}
+	if got := job.Metadata.Labels["smith.io/correlation-id"]; got != "corr-123" {
+		t.Fatalf("unexpected correlation label %q", got)
+	}
+	if got := job.Metadata.Labels["smith.io/project"]; got != "pod-visualizer-demo" {
+		t.Fatalf("unexpected project label %q", got)
+	}
+	if got := job.Metadata.Labels["smith.io/custom"]; got != "unknown" {
+		t.Fatalf("unexpected custom label %q", got)
 	}
 }
 

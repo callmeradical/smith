@@ -30,6 +30,16 @@ spec:
           env:
             - name: SMITH_ETCD_ENDPOINTS
               value: {{ join "," .Values.etcd.endpoints | quote }}
+            - name: SMITH_AUTH_STORE_BACKEND
+              value: "kubernetes"
+            - name: SMITH_AUTH_STORE_K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SMITH_AUTH_STORE_K8S_SECRET
+              value: "{{ include "smith.fullname" . }}-auth-store"
+            - name: SMITH_AUTH_STORE_K8S_KEY
+              value: "tokens.json"
             {{- if $runtimeSecretName }}
             - name: SMITH_GIT_PAT
               valueFrom:

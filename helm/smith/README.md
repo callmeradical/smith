@@ -112,6 +112,7 @@ Chart-managed secret rotation:
 Operational note:
 - Avoid passing secret values through shell history or plaintext checked-in values files.
 - Prefer CI secret stores or sealed/external secret controllers for production rotation.
+- Enable Kubernetes Secret encryption at rest for production clusters (see `docs/kubernetes-secrets-encryption-provider-runbook.md`).
 - See `docs/helm-upgrade-rollback-runbook.md` for upgrade/rollback and zero-downtime procedures.
 
 ## Notes

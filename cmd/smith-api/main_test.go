@@ -40,3 +40,60 @@ func TestPresetCatalogSupportsCRUDAndPolicy(t *testing.T) {
 		t.Fatalf("expected analytics in allowed presets: %#v", policy.AllowedPresets)
 	}
 }
+
+func TestMaskCredentialValue(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty", in: "", want: ""},
+		{name: "short", in: "sk-12", want: "*****"},
+		{name: "normal", in: "sk-test-123456", want: "sk-t******3456"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := maskCredentialValue(tc.in); got != tc.want {
+				t.Fatalf("maskCredentialValue(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSplitLoopRouteSupportsSlashLoopIDs(t *testing.T) {
+	tests := []struct {
+		path       string
+		wantLoopID string
+		wantRoute  string
+	}{
+		{
+			path:       "/v1/loops/alpha/feat-132",
+			wantLoopID: "alpha/feat-132",
+			wantRoute:  "",
+		},
+		{
+			path:       "/v1/loops/alpha/feat-132/journal",
+			wantLoopID: "alpha/feat-132",
+			wantRoute:  "journal",
+		},
+		{
+			path:       "/v1/loops/team/alpha/feat-132/control/attach",
+			wantLoopID: "team/alpha/feat-132",
+			wantRoute:  "control/attach",
+		},
+		{
+			path:       "/v1/loops/team/alpha/feat-132/journal/stream",
+			wantLoopID: "team/alpha/feat-132",
+			wantRoute:  "journal/stream",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			loopID, route := splitLoopRoute(tc.path)
+			if loopID != tc.wantLoopID || route != tc.wantRoute {
+				t.Fatalf("splitLoopRoute(%q) = (%q, %q), want (%q, %q)", tc.path, loopID, route, tc.wantLoopID, tc.wantRoute)
+			}
+		})
+	}
+}

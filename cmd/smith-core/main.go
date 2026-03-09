@@ -327,10 +327,18 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 	if err := o.ensureSkillSourcesExist(ctx, skillMounts); err != nil {
 		return err
 	}
+	labels := map[string]string{
+		"smith.io/job-name": jobName,
+	}
+	if project := projectLabelValue(anomaly); project != "" {
+		labels["smith.io/project"] = project
+	}
 	request := replica.JobRequest{
 		Namespace:                 o.cfg.namespace,
 		LoopID:                    loopID,
 		CorrelationID:             correlationID,
+		JobName:                   jobName,
+		Labels:                    labels,
 		ServiceAccountName:        o.cfg.replicaSA,
 		Image:                     executionImage.Ref,
 		ImagePullPolicy:           executionImage.PullPolicy,
@@ -565,6 +573,18 @@ func gitContextFor(anomaly model.Anomaly) replica.GitContext {
 		Branch:     branch,
 		CommitSHA:  commit,
 	}
+}
+
+func projectLabelValue(anomaly model.Anomaly) string {
+	if len(anomaly.Metadata) == 0 {
+		return ""
+	}
+	for _, key := range []string{"project_id", "project_name", "github_repository"} {
+		if value := strings.TrimSpace(anomaly.Metadata[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func handoffConfigMapName(loopID string) string {

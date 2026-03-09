@@ -3,6 +3,10 @@ global:
   featureFlags:
     interactiveAttach: true
 
+etcd:
+  endpoints:
+    - http://smith-etcd-x-smith-system-x-smith-vc.smith-vcluster.svc.cluster.local:2379
+
 secrets:
   create: true
   managed:
@@ -17,7 +21,7 @@ core:
     backoffMax: 30s
     timeout: 20m
   replicaTemplate:
-    serviceAccountName: smith-local-replica
+    serviceAccountName: ""
     env:
       - name: SMITH_REPLICA_LOG_LEVEL
         value: debug

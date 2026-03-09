@@ -17,7 +17,7 @@ SMITH_MIN_HELM_VERSION ?= 3.13.0
 	doctor bootstrap \
 	cluster cluster-up cluster-down cluster-reset cluster-health \
 	build build-local deploy deploy-local deploy-staging deploy-prod undeploy undeploy-local \
-	test test-unit test-matrix test-integration test-e2e test-bdd \
+	test test-unit test-frontend test-matrix test-integration test-e2e test-bdd \
 	test-observability-latency \
 	test-acceptance-smoke test-acceptance-bdd test-acceptance \
 	teardown \
@@ -171,6 +171,9 @@ test: test-matrix ## Run default local test workflow (non-cluster matrix)
 
 test-unit: ## Run full Go test suite
 	go test ./...
+
+test-frontend: ## Run Playwright frontend/component tests for console
+	npm run test:frontend
 
 test-matrix: ## Run script-based local matrix (fixture + e2e + verification)
 	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" \

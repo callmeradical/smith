@@ -20,6 +20,7 @@ type Token struct {
 	RefreshToken  string    `json:"refresh_token"`
 	ExpiresAt     time.Time `json:"expires_at"`
 	AccountID     string    `json:"account_id"`
+	AuthMethod    string    `json:"auth_method,omitempty"`
 	ConnectedAt   time.Time `json:"connected_at,omitempty"`
 	LastRefreshAt time.Time `json:"last_refresh_at,omitempty"`
 }
@@ -28,8 +29,16 @@ type AuthStatus struct {
 	Connected     bool
 	ExpiresAt     time.Time
 	AccountID     string
+	AuthMethod    string
 	ConnectedAt   time.Time
 	LastRefreshAt time.Time
+}
+
+type StoredCredential struct {
+	Connected  bool
+	AccountID  string
+	AuthMethod string
+	APIKey     string
 }
 
 type DeviceAuthSession struct {
@@ -106,6 +115,7 @@ func (m *AuthManager) CompleteConnect(ctx context.Context, actor string, deviceC
 		return Token{}, err
 	}
 	now := m.clock().UTC()
+	token.AuthMethod = "openai_sign_in"
 	token.ConnectedAt = now
 	token.LastRefreshAt = now
 	if err := m.store.Put(ctx, m.providerID, token); err != nil {
@@ -130,9 +140,55 @@ func (m *AuthManager) Status(ctx context.Context) (AuthStatus, error) {
 		Connected:     true,
 		ExpiresAt:     token.ExpiresAt,
 		AccountID:     token.AccountID,
+		AuthMethod:    token.AuthMethod,
 		ConnectedAt:   token.ConnectedAt,
 		LastRefreshAt: token.LastRefreshAt,
 	}, nil
+}
+
+func (m *AuthManager) ConnectAPIKey(ctx context.Context, actor string, apiKey string, accountID string) (Token, error) {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return Token{}, errors.New("api_key is required")
+	}
+	accountID = strings.TrimSpace(accountID)
+	if accountID == "" {
+		accountID = "api-key"
+	}
+	now := m.clock().UTC()
+	token := Token{
+		AccessToken:   apiKey,
+		RefreshToken:  "",
+		ExpiresAt:     now.Add(10 * 365 * 24 * time.Hour),
+		AccountID:     accountID,
+		AuthMethod:    "api_key",
+		ConnectedAt:   now,
+		LastRefreshAt: now,
+	}
+	if err := m.store.Put(ctx, m.providerID, token); err != nil {
+		return Token{}, err
+	}
+	_ = m.record(ctx, actor, "connected-api-key", map[string]string{"account_id": token.AccountID})
+	return token, nil
+}
+
+func (m *AuthManager) StoredCredential(ctx context.Context) (StoredCredential, error) {
+	token, found, err := m.store.Get(ctx, m.providerID)
+	if err != nil {
+		return StoredCredential{}, err
+	}
+	if !found || strings.TrimSpace(token.AccessToken) == "" {
+		return StoredCredential{}, nil
+	}
+	credential := StoredCredential{
+		Connected:  true,
+		AccountID:  token.AccountID,
+		AuthMethod: token.AuthMethod,
+	}
+	if strings.EqualFold(token.AuthMethod, "api_key") {
+		credential.APIKey = token.AccessToken
+	}
+	return credential, nil
 }
 
 func (m *AuthManager) Disconnect(ctx context.Context, actor string) error {
