@@ -1,6 +1,37 @@
 # syntax=docker/dockerfile:1.7
 
 ARG ALPINE_TAG=3.21
+ARG GO_ALPINE_TAG=1.25.7-alpine
+
+FROM golang:${GO_ALPINE_TAG} AS internal-binaries-builder
+
+WORKDIR /src
+
+# hadolint ignore=DL3018
+RUN apk add --no-cache \
+      ca-certificates \
+      git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Inputs for the internal binary build contract:
+# - source packages in ./cmd
+# - shared code in ./internal
+# - artifact list in docker/base-internal-binaries.txt
+COPY cmd ./cmd
+COPY internal ./internal
+COPY docker/base-internal-binaries.txt ./docker/base-internal-binaries.txt
+
+RUN set -eu; \
+    mkdir -p /out; \
+    while IFS= read -r bin || [ -n "$bin" ]; do \
+      case "$bin" in \
+        ""|\#*) continue ;; \
+      esac; \
+      CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -o "/out/${bin}" "./cmd/${bin}"; \
+    done < ./docker/base-internal-binaries.txt
+
 FROM alpine:${ALPINE_TAG}
 
 ENV HOME=/home/dev \
@@ -36,6 +67,9 @@ RUN npm install --global @openai/codex@latest pnpm@latest \
     && command -v codex >/dev/null \
     && command -v pnpm >/dev/null \
     && if ! command -v pip >/dev/null 2>&1; then ln -s /usr/bin/pip3 /usr/local/bin/pip; fi
+
+# Internal binaries are copied from the dedicated builder stage into PATH.
+COPY --from=internal-binaries-builder /out/ /usr/local/bin/
 
 RUN addgroup -S -g 1000 dev \
     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \

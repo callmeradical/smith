@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-09 05:08:04 | run=20260309-043624-64079 | iter=3 | mode=build | story=US-003 | duration=711s | status=success
 - 2026-03-09 04:56:11 | run=20260309-043624-64079 | iter=2 | mode=build | story=US-002 | duration=445s | status=success
 - 2026-03-09 04:48:43 | run=20260309-043624-64079 | iter=1 | mode=build | story=US-001 | duration=739s | status=success
 
@@ -25,3 +26,8 @@
 [2026-03-09 05:01:11] US-003 verification complete: docker build/run gates, smoke positive+negative, hadolint, shellcheck, trivy, syft all executed
 [2026-03-09 05:03:30] US-003 progress log updated with verification matrix, commit metadata, and iteration learnings
 [2026-03-09 05:07:39] US-003 progress entry finalized with final commit hash and clean post-commit status
+[2026-03-09 05:08:04] ITERATION 3 end (duration=711s)
+[2026-03-09 05:08:06] ITERATION 4 start (mode=build story=US-004)
+[2026-03-09 05:08:32] US-004 iteration 4 start: initialized td session and beginning guardrails/context audit
+[2026-03-09 05:12:54] US-004 major code changes complete: added multi-stage internal binary builder/copy flow, binary list contract, version flags, and internal binary smoke script/docs
+[2026-03-09 05:18:06] US-004 verification complete: docker build/smokes/lint/trivy/syft all passed, including negative missing-binary smoke case

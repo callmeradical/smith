@@ -11,7 +11,10 @@ import (
 	"smith/internal/source/verification"
 )
 
+var version = "dev"
+
 func main() {
+	showVersion := flag.Bool("version", false, "print version and exit")
 	repoPath := flag.String("repo", "", "path to git repository fixture")
 	expectedPath := flag.String("expected", "", "path to expected outcomes JSON")
 	scenarioID := flag.String("scenario", "", "scenario id to verify")
@@ -19,6 +22,10 @@ func main() {
 	phasePath := flag.String("phase", "", "optional path to phase-state JSON")
 	outputPath := flag.String("output", "", "optional output JSON file path")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()

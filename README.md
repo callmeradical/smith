@@ -80,6 +80,34 @@ Negative-case check (example):
 REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
 ```
 
+### Internal Binary Bundle Contract
+
+The loop base image uses a dedicated Docker builder stage to compile internal
+Go binaries, then copies artifacts into `/usr/local/bin` in the runtime image.
+`/usr/local/bin` is on `PATH` for the runtime user.
+
+Builder inputs and expected artifacts are declared by
+`docker/base-internal-binaries.txt`:
+
+- Input package: `./cmd/<binary-name>`
+- Builder artifact: `/out/<binary-name>`
+- Runtime artifact: `/usr/local/bin/<binary-name>`
+
+To add a new binary, append it to `docker/base-internal-binaries.txt` and
+ensure `./cmd/<binary-name>` supports `--version` for smoke verification.
+
+Internal binary smoke test:
+
+```bash
+./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+```
+
+Negative-case check (example):
+
+```bash
+BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+```
+
 ## Key API Endpoints
 
 Implemented today:

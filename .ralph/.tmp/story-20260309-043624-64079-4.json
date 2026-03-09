@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "total": 7,
+  "remaining": 4,
+  "quality_gates": [
+    "docker build -t loop-base:local .",
+    "docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version'",
+    "docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills'",
+    "hadolint Dockerfile",
+    "shellcheck scripts/*.sh",
+    "trivy image --severity CRITICAL --exit-code 1 loop-base:local",
+    "syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json"
+  ],
+  "id": "US-004",
+  "title": "Bundle internal binaries via multi-stage build"
+}

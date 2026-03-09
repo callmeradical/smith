@@ -121,7 +121,7 @@
     {
       "id": "US-003",
       "title": "Add common developer tooling to image",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-001"
       ],
@@ -134,13 +134,13 @@
         "Keep final image layer changes minimal by cleaning package caches where applicable."
       ],
       "startedAt": "2026-03-09T08:56:13.236309+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T08:56:13.236559+00:00"
+      "completedAt": "2026-03-09T09:08:04.302059+00:00",
+      "updatedAt": "2026-03-09T09:08:04.301221+00:00"
     },
     {
       "id": "US-004",
       "title": "Bundle internal binaries via multi-stage build",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-001"
       ],
@@ -151,7 +151,10 @@
         "Example: runtime container executes each required internal binary with `--version` successfully.",
         "Negative case: if a binary is present in builder but not copied to runtime, smoke verification fails and names the missing binary.",
         "Document builder inputs and expected artifacts so future binary additions follow the same pattern."
-      ]
+      ],
+      "startedAt": "2026-03-09T09:08:06.371580+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T09:08:06.371801+00:00"
     },
     {
       "id": "US-005",

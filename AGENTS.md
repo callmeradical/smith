@@ -15,4 +15,5 @@ Run tooling smoke checks:
 
 ```bash
 ./scripts/check-base-tooling-smoke.sh loop-base:local
+./scripts/check-base-internal-binaries-smoke.sh loop-base:local
 ```

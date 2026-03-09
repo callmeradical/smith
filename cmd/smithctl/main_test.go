@@ -39,6 +39,26 @@ func TestResolveConfigFromFileAndOverrides(t *testing.T) {
 	}
 }
 
+func TestRunVersionFlag(t *testing.T) {
+	previous := version
+	version = "test-version"
+	t.Cleanup(func() {
+		version = previous
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--version"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected code=0, got %d stderr=%s", code, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "test-version" {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
 func TestResolveConfigEnvAndFlagPrecedence(t *testing.T) {
 	t.Setenv("SMITH_API_URL", "http://env.local:8080")
 	t.Setenv("SMITH_OPERATOR_TOKEN", "env-token")

@@ -20,12 +20,15 @@ import (
 
 const defaultServer = "http://127.0.0.1:8080"
 
+var version = "dev"
+
 type rootFlags struct {
 	Server  string
 	Token   string
 	Config  string
 	Context string
 	Output  string
+	Version bool
 }
 
 type runtimeConfig struct {
@@ -131,6 +134,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
+	if flags.Version {
+		fmt.Fprintln(stdout, version)
+		return 0
+	}
 	cfg, err := resolveConfig(flags)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
@@ -173,6 +180,7 @@ func parseRootFlags(args []string) (rootFlags, []string, error) {
 	fs.StringVar(&defaults.Config, "config", defaults.Config, "Path to smithctl config file")
 	fs.StringVar(&defaults.Context, "context", "", "Named config context")
 	fs.StringVar(&defaults.Output, "output", defaults.Output, "Output format: text|json")
+	fs.BoolVar(&defaults.Version, "version", false, "Print version and exit")
 	if err := fs.Parse(args); err != nil {
 		return rootFlags{}, nil, err
 	}
