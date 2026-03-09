@@ -113,3 +113,48 @@ Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043
   - Useful context
   - Pre-commit hooks run `go test ./cmd/...` and may continue appending to iteration run logs after commits; check and commit log tails explicitly.
 ---
+## [2026-03-09 05:29:53 EDT] - US-004: Add interactive command controls to pod detail UI
+Thread: 
+Run: 20260309-043236-60668 (iteration 4)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-4.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-4.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: a2db662 feat(console): add pod detail terminal controls
+- Post-commit status: clean
+- Verification:
+  - Command: make build -> PASS
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
+  - Command: dev-browser scripted pod-view verification -> PASS
+- Files changed:
+  - console/index.html
+  - test/playwright/console.spec.js
+  - .agents/tasks/prd-console-terminal-attach.json
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/runs/run-20260309-043236-60668-iter-3.log
+  - .ralph/runs/run-20260309-043236-60668-iter-3.md
+  - .ralph/runs/run-20260309-043236-60668-iter-4.log
+  - .ralph/.tmp/prompt-20260309-043236-60668-4.md
+  - .ralph/.tmp/story-20260309-043236-60668-4.json
+  - .ralph/.tmp/story-20260309-043236-60668-4.md
+  - .ralph/progress.md
+- What was implemented
+  - Added explicit pod detail terminal controls (attach, detach, command input, run button), runtime target summary, and terminal status indicator.
+  - Implemented pod-view UI state machine (`idle`, `attaching`, `attached`, `executing`, `detaching`, `error`) with control locking and status messaging.
+  - Wired runtime resolution calls to `/v1/loops/{id}/runtime` and surfaced non-attachable reason text for inactive loops.
+  - Added command execution behavior for Enter and Run button; controls lock while executing; command input clears only after successful execution.
+  - Added Playwright coverage for success and failure control paths, including disabled controls and runtime reason on non-active loops.
+  - Completed required browser verification via `dev-browser` with screenshot: `/Users/lars/.codex/skills/dev-browser/tmp/us004-pod-view-controls.png`.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Pod-view terminal UX can stay deterministic by deriving enable/disable rules from one centralized sync function.
+  - Gotchas encountered
+  - Mocked journal events must use strictly increasing sequence numbers or the UI will drop entries as out-of-order.
+  - Useful context
+  - The frontend Playwright suite already uses an extensible API mock helper, so adding control endpoint behaviors there keeps scenario tests stable.
+---
