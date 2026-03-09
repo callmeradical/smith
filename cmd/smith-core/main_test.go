@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,6 +149,64 @@ func TestHandoffConfigMapNameSanitizesAndBounds(t *testing.T) {
 	}
 	if got[:8] != "handoff-" {
 		t.Fatalf("expected handoff prefix, got %q", got)
+	}
+}
+
+func TestWorkspacePRDConfigMapNameSanitizesAndBounds(t *testing.T) {
+	got := workspacePRDConfigMapName("LOOP/With Spaces.and_extra_chars___abcdefghijklmnopqrstuvwxyz")
+	if got == "" {
+		t.Fatal("expected non-empty configmap name")
+	}
+	if len(got) > 58 {
+		t.Fatalf("expected bounded configmap name, got len=%d (%q)", len(got), got)
+	}
+	if !strings.HasPrefix(got, "workspace-prd-") {
+		t.Fatalf("expected workspace-prd prefix, got %q", got)
+	}
+}
+
+func TestWorkspacePRDPayload(t *testing.T) {
+	payload, ok, err := workspacePRDPayload(map[string]string{
+		"workspace_prd_json": `{"stories":[{"id":"US-001","status":"open"}],"meta":{"x":1}}`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected payload to be present")
+	}
+	if !strings.Contains(payload, `"stories"`) {
+		t.Fatalf("expected serialized payload with stories, got %s", payload)
+	}
+}
+
+func TestWorkspacePRDPayloadRejectsInvalid(t *testing.T) {
+	_, _, err := workspacePRDPayload(map[string]string{
+		"workspace_prd_json": `{"stories":`,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for invalid json")
+	}
+	_, _, err = workspacePRDPayload(map[string]string{
+		"workspace_prd_json": `{"stories":[]}`,
+	})
+	if err == nil {
+		t.Fatal("expected validation error for empty stories")
+	}
+}
+
+func TestWorkspacePRDPathFor(t *testing.T) {
+	if got := workspacePRDPathFor(nil); got != defaultWorkspacePRDPath {
+		t.Fatalf("expected default prd path %q, got %q", defaultWorkspacePRDPath, got)
+	}
+	if got := workspacePRDPathFor(map[string]string{"workspace_prd_path": ".agents/tasks/prd-custom.json"}); got != ".agents/tasks/prd-custom.json" {
+		t.Fatalf("unexpected prd path %q", got)
+	}
+	if got := workspacePRDPathFor(map[string]string{"workspace_prd_path": "../secrets/prd.json"}); got != defaultWorkspacePRDPath {
+		t.Fatalf("expected unsafe path fallback, got %q", got)
+	}
+	if got := workspacePRDPathFor(map[string]string{"workspace_prd_path": "/tmp/prd.json"}); got != defaultWorkspacePRDPath {
+		t.Fatalf("expected absolute path fallback, got %q", got)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,8 +37,10 @@ import (
 )
 
 const (
-	defaultPort            = 8081
-	defaultShutdownTimeout = 10 * time.Second
+	defaultPort             = 8081
+	defaultShutdownTimeout  = 10 * time.Second
+	defaultWorkspacePRDPath = ".agents/tasks/prd.json"
+	defaultWorkspacePRDKey  = "prd.json"
 )
 
 type config struct {
@@ -365,6 +368,15 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		ActiveDeadlineSeconds:     int64(o.cfg.defaultPolicy.Timeout.Seconds()),
 		TTLSecondsAfterFinished:   o.jobTTL,
 	}
+	prdPayload, hasWorkspacePRD, err := workspacePRDPayload(anomaly.Metadata)
+	if err != nil {
+		return err
+	}
+	if hasWorkspacePRD {
+		request.PRDConfigMapName = workspacePRDConfigMapName(loopID)
+		request.PRDConfigMapKey = defaultWorkspacePRDKey
+		request.WorkspacePRDPath = workspacePRDPathFor(anomaly.Metadata)
+	}
 	generator := replica.NewJobGenerator(kubeJobsAPI{
 		kube:      o.kube,
 		namespace: o.cfg.namespace,
@@ -372,7 +384,12 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 	if err := o.ensureHandoffConfigMap(ctx, loopID, request.HandoffConfigMapName); err != nil {
 		return err
 	}
-	_, err := generator.Submit(ctx, request)
+	if hasWorkspacePRD {
+		if err := o.ensureWorkspacePRDConfigMap(ctx, loopID, request.PRDConfigMapName, request.PRDConfigMapKey, prdPayload); err != nil {
+			return err
+		}
+	}
+	_, err = generator.Submit(ctx, request)
 	return err
 }
 
@@ -426,6 +443,64 @@ func (o *orchestrator) ensureHandoffConfigMap(ctx context.Context, loopID, confi
 	next.Annotations["smith.io/loop-id"] = loopID
 	if _, err := client.Update(ctx, next, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("update handoff configmap %q: %w", name, err)
+	}
+	return nil
+}
+
+func (o *orchestrator) ensureWorkspacePRDConfigMap(ctx context.Context, loopID, configMapName, dataKey, payload string) error {
+	name := strings.TrimSpace(configMapName)
+	key := strings.TrimSpace(dataKey)
+	body := strings.TrimSpace(payload)
+	if name == "" {
+		return errors.New("workspace prd configmap name is required")
+	}
+	if key == "" {
+		return errors.New("workspace prd configmap key is required")
+	}
+	if body == "" {
+		return errors.New("workspace prd payload is empty")
+	}
+	client := o.kube.CoreV1().ConfigMaps(o.cfg.namespace)
+	existing, err := client.Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, createErr := client.Create(ctx, &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: o.cfg.namespace,
+				Labels: map[string]string{
+					"app.kubernetes.io/name":      "smith",
+					"app.kubernetes.io/component": "workspace-prd",
+				},
+				Annotations: map[string]string{
+					"smith.io/loop-id": loopID,
+				},
+			},
+			Data: map[string]string{
+				key: body,
+			},
+		}, metav1.CreateOptions{})
+		if createErr != nil {
+			return fmt.Errorf("create workspace prd configmap %q: %w", name, createErr)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get workspace prd configmap %q: %w", name, err)
+	}
+	if existing.Data != nil && existing.Data[key] == body {
+		return nil
+	}
+	next := existing.DeepCopy()
+	if next.Data == nil {
+		next.Data = map[string]string{}
+	}
+	next.Data[key] = body
+	if next.Annotations == nil {
+		next.Annotations = map[string]string{}
+	}
+	next.Annotations["smith.io/loop-id"] = loopID
+	if _, err := client.Update(ctx, next, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update workspace prd configmap %q: %w", name, err)
 	}
 	return nil
 }
@@ -725,6 +800,66 @@ func handoffConfigMapName(loopID string) string {
 		base = base[:40]
 	}
 	return "handoff-" + base
+}
+
+func workspacePRDConfigMapName(loopID string) string {
+	base := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-").Replace(strings.ToLower(loopID))
+	base = strings.Trim(base, "-")
+	if base == "" {
+		base = "loop"
+	}
+	if len(base) > 44 {
+		base = base[:44]
+	}
+	return "workspace-prd-" + base
+}
+
+func workspacePRDPayload(metadata map[string]string) (string, bool, error) {
+	if len(metadata) == 0 {
+		return "", false, nil
+	}
+	raw := strings.TrimSpace(metadata["workspace_prd_json"])
+	if raw == "" {
+		return "", false, nil
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return "", false, errors.New("workspace_prd_json is not valid json")
+	}
+	obj, ok := parsed.(map[string]any)
+	if !ok {
+		return "", false, errors.New("workspace_prd_json must be a json object")
+	}
+	stories, ok := obj["stories"].([]any)
+	if !ok || len(stories) == 0 {
+		return "", false, errors.New("workspace_prd_json must include a non-empty stories array")
+	}
+	normalized, err := json.Marshal(parsed)
+	if err != nil {
+		return "", false, fmt.Errorf("marshal workspace prd payload: %w", err)
+	}
+	return string(normalized), true, nil
+}
+
+func workspacePRDPathFor(metadata map[string]string) string {
+	if len(metadata) == 0 {
+		return defaultWorkspacePRDPath
+	}
+	candidate := strings.TrimSpace(strings.ReplaceAll(metadata["workspace_prd_path"], "\\", "/"))
+	if candidate == "" {
+		return defaultWorkspacePRDPath
+	}
+	if strings.HasPrefix(candidate, "/") {
+		return defaultWorkspacePRDPath
+	}
+	cleaned := path.Clean(candidate)
+	if cleaned == "." || cleaned == ".." {
+		return defaultWorkspacePRDPath
+	}
+	if strings.HasPrefix(cleaned, "../") || strings.Contains(cleaned, "/../") {
+		return defaultWorkspacePRDPath
+	}
+	return cleaned
 }
 
 func resolveSkillMounts(anomaly *model.Anomaly) ([]replica.SkillMount, []string, error) {

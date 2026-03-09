@@ -3,6 +3,7 @@ package replica
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -214,6 +215,57 @@ func TestBuildReplicaJobIncludesWorkspaceSeedInitContainer(t *testing.T) {
 	}
 	if !hasWorkspaceMount {
 		t.Fatalf("expected init container workspace mount, got %+v", seed.VolumeMounts)
+	}
+}
+
+func TestBuildReplicaJobMountsWorkspacePRDConfigMap(t *testing.T) {
+	req := validRequest()
+	req.PRDConfigMapName = "workspace-prd-loop-123"
+	req.PRDConfigMapKey = "prd.json"
+	req.WorkspacePRDPath = ".agents/tasks/prd.json"
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	volumes := map[string]Volume{}
+	for _, v := range job.Spec.Template.Spec.Volumes {
+		volumes[v.Name] = v
+	}
+	if volumes["workspace-prd"].ConfigMapName != "workspace-prd-loop-123" {
+		t.Fatalf("expected workspace-prd volume configmap, got %+v", volumes["workspace-prd"])
+	}
+
+	if len(job.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected one init container, got %d", len(job.Spec.Template.Spec.InitContainers))
+	}
+	init := job.Spec.Template.Spec.InitContainers[0]
+	if init.Name != "workspace-prd" {
+		t.Fatalf("unexpected init container name %q", init.Name)
+	}
+	if len(init.Command) != 3 {
+		t.Fatalf("unexpected init command shape: %+v", init.Command)
+	}
+	if init.Command[0] != "sh" || init.Command[1] != "-lc" {
+		t.Fatalf("unexpected init command wrapper: %+v", init.Command)
+	}
+	if !strings.Contains(init.Command[2], "cp '/smith/prd/prd.json' '/workspace/.agents/tasks/prd.json'") {
+		t.Fatalf("expected init command to copy PRD into workspace, got %q", init.Command[2])
+	}
+
+	hasWorkspace := false
+	hasPRD := false
+	for _, mount := range init.VolumeMounts {
+		if mount.Name == "workspace" && mount.MountPath == "/workspace" && !mount.ReadOnly {
+			hasWorkspace = true
+		}
+		if mount.Name == "workspace-prd" && mount.MountPath == "/smith/prd" && mount.ReadOnly {
+			hasPRD = true
+		}
+	}
+	if !hasWorkspace || !hasPRD {
+		t.Fatalf("expected workspace and workspace-prd mounts, got %+v", init.VolumeMounts)
 	}
 }
 
@@ -443,6 +495,18 @@ func TestBuildReplicaJobValidation(t *testing.T) {
 	_, err = BuildReplicaJob(req)
 	if err == nil {
 		t.Fatal("expected validation error for missing etcd endpoints")
+	}
+	if !errors.Is(err, ErrInvalidJobRequest) {
+		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)
+	}
+
+	req = validRequest()
+	req.PRDConfigMapName = "workspace-prd-loop-123"
+	req.PRDConfigMapKey = "prd.json"
+	req.WorkspacePRDPath = "../escape/prd.json"
+	_, err = BuildReplicaJob(req)
+	if err == nil {
+		t.Fatal("expected validation error for unsafe workspace prd path")
 	}
 	if !errors.Is(err, ErrInvalidJobRequest) {
 		t.Fatalf("expected ErrInvalidJobRequest, got %v", err)

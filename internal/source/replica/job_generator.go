@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"smith/internal/source/gitpolicy"
@@ -80,6 +81,9 @@ type JobRequest struct {
 	EnableJournalPolicyConfig bool
 	GitAuth                   *GitAuthConfig
 	HandoffConfigMapName      string
+	PRDConfigMapName          string
+	PRDConfigMapKey           string
+	WorkspacePRDPath          string
 	RuntimeSecretName         string
 	RuntimeCredentialsKey     string
 	RuntimeCredentialsValue   string
@@ -176,6 +180,14 @@ func NewJobGenerator(jobs JobsAPI) *JobGenerator {
 }
 
 func BuildReplicaJob(req JobRequest) (JobManifest, error) {
+	if strings.TrimSpace(req.PRDConfigMapName) != "" {
+		if strings.TrimSpace(req.PRDConfigMapKey) == "" {
+			req.PRDConfigMapKey = "prd.json"
+		}
+		if strings.TrimSpace(req.WorkspacePRDPath) == "" {
+			req.WorkspacePRDPath = ".agents/tasks/prd.json"
+		}
+	}
 	if err := validateRequest(req); err != nil {
 		return JobManifest{}, err
 	}
@@ -322,6 +334,14 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 			ReadOnly:  true,
 		},
 	}
+	hasPRDConfig := strings.TrimSpace(req.PRDConfigMapName) != ""
+	if hasPRDConfig {
+		volumes = append(volumes, Volume{
+			Name:          "workspace-prd",
+			ConfigMapName: req.PRDConfigMapName,
+			Optional:      false,
+		})
+	}
 	resolvedSkillNames := make([]string, 0, len(req.SkillMounts))
 	for i, skill := range req.SkillMounts {
 		volumeName := fmt.Sprintf("skill-%d-%s", i, sanitizeName(skill.Name))
@@ -363,6 +383,33 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 					Name:      "workspace",
 					MountPath: "/workspace",
 					ReadOnly:  false,
+				},
+			},
+		})
+	}
+	if hasPRDConfig {
+		targetPath := workspacePRDAbsolutePath(req.WorkspacePRDPath)
+		targetDir := path.Dir(targetPath)
+		sourcePath := "/smith/prd/" + strings.TrimSpace(req.PRDConfigMapKey)
+		initContainers = append(initContainers, Container{
+			Name:            "workspace-prd",
+			Image:           req.Image,
+			ImagePullPolicy: req.ImagePullPolicy,
+			Command: []string{
+				"sh",
+				"-lc",
+				"set -eu; mkdir -p " + shellQuote(targetDir) + "; cp " + shellQuote(sourcePath) + " " + shellQuote(targetPath),
+			},
+			VolumeMounts: []VolumeMount{
+				{
+					Name:      "workspace",
+					MountPath: "/workspace",
+					ReadOnly:  false,
+				},
+				{
+					Name:      "workspace-prd",
+					MountPath: "/smith/prd",
+					ReadOnly:  true,
 				},
 			},
 		})
@@ -448,6 +495,17 @@ func validateRequest(req JobRequest) error {
 		return fmt.Errorf("%w: git commit sha is required", ErrInvalidJobRequest)
 	case strings.TrimSpace(req.HandoffConfigMapName) == "":
 		return fmt.Errorf("%w: handoff configmap is required", ErrInvalidJobRequest)
+	}
+	if strings.TrimSpace(req.PRDConfigMapName) != "" {
+		if strings.TrimSpace(req.PRDConfigMapKey) == "" {
+			return fmt.Errorf("%w: prd configmap key is required when prd configmap is set", ErrInvalidJobRequest)
+		}
+		if strings.Contains(strings.TrimSpace(req.PRDConfigMapKey), "/") {
+			return fmt.Errorf("%w: prd configmap key must not contain '/'", ErrInvalidJobRequest)
+		}
+		if workspacePathUnsafe(req.WorkspacePRDPath) {
+			return fmt.Errorf("%w: workspace prd path is unsafe", ErrInvalidJobRequest)
+		}
 	}
 
 	if req.BackoffLimit < 0 || req.ActiveDeadlineSeconds <= 0 || req.TTLSecondsAfterFinished < 0 {
@@ -611,4 +669,37 @@ func sanitizeKubernetesLabelValue(raw string) string {
 		out = "x"
 	}
 	return out + "-" + suffix
+}
+
+func workspacePathUnsafe(raw string) bool {
+	value := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if value == "" {
+		return true
+	}
+	if strings.HasPrefix(value, "/") {
+		return true
+	}
+	cleaned := path.Clean(value)
+	if cleaned == "." || cleaned == ".." {
+		return true
+	}
+	if strings.HasPrefix(cleaned, "../") || strings.Contains(cleaned, "/../") {
+		return true
+	}
+	return false
+}
+
+func workspacePRDAbsolutePath(raw string) string {
+	relative := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if relative == "" || workspacePathUnsafe(relative) {
+		relative = ".agents/tasks/prd.json"
+	}
+	cleaned := path.Clean(relative)
+	cleaned = strings.TrimPrefix(cleaned, "./")
+	return path.Join("/workspace", cleaned)
+}
+
+func shellQuote(raw string) string {
+	escaped := strings.ReplaceAll(raw, `'`, `'\''`)
+	return "'" + escaped + "'"
 }
