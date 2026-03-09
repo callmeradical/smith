@@ -44,6 +44,10 @@ core:
     repository: ghcr.io/smith/replica
     tag: v0.1.0
     pullPolicy: IfNotPresent
+  workspaceSeedImage:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
   serviceAccount:
     create: true
     name: ""

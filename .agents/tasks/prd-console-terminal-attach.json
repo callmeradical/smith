@@ -237,7 +237,7 @@
     {
       "id": "US-006",
       "title": "Verification coverage and operator documentation",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-001",
         "US-002",
@@ -255,8 +255,8 @@
         "Negative case: documented troubleshooting includes pod missing/not-running scenario and expected console/API error surfaces."
       ],
       "startedAt": "2026-03-09T09:45:57.378289+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T09:45:57.378507+00:00"
+      "completedAt": "2026-03-09T09:59:49.347187+00:00",
+      "updatedAt": "2026-03-09T09:59:49.346717+00:00"
     }
   ]
 }
