@@ -8254,3 +8254,632 @@ index 0000000000000000000000000000000000000000..263e172ddd71925d85038c36813fc010
 +- `./scripts/check-base-skills-mount-smoke.sh loop-base:local`
 +- `./scripts/run-base-quality-gates.sh loop-base:local`
 
+exec
+/bin/zsh -lc 'git add -A && git commit -m "chore(ralph): record US-007 progress logs" -m "Append the required progress entry and persist run/activity logs so the workspace is clean after the US-007 execution."' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/README.md b/README.md
+index ca55c02d6353bcb14af91d00ae416151f5277a6a..4eaebcc6711e86170af51dd6ca24cd2ae35236db
+--- a/README.md
++++ b/README.md
+@@ -114,6 +114,9 @@
+ the runtime user (`dev`). The container startup command does not write to this
+ path, so a mounted skills volume is not overwritten at startup.
+ 
++Loop-definition examples for local and production-like contexts are documented
++in [`docs/loop-base-image-usage.md`](docs/loop-base-image-usage.md).
++
+ Skills mount smoke test (mounted + unmounted scenarios):
+ 
+ ```bash
+diff --git a/docs/index.md b/docs/index.md
+index dd5de4de3fee160ab963f20c2f5251ad88535f37..b49bfe0a291bc8c57a45bb9dfa3f7fee1af813cd
+--- a/docs/index.md
++++ b/docs/index.md
+@@ -47,6 +47,7 @@
+ 
+ - [Loop Ingress and CLI](loop-ingress-and-cli.md)
+ - [Loop Environment Profile](loop-environment-profile.md)
++- [Loop Base Image Usage](loop-base-image-usage.md)
+ - [Multi-Provider Skill Mount Abstraction](multi-provider-skill-mount-abstraction.md)
+ - [Repository Auth Options](repository-auth-options.md)
+ - [Git History Policy](git-history-policy.md)
+diff --git a/docs/loop-base-image-usage.md b/docs/loop-base-image-usage.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..263e172ddd71925d85038c36813fc01044c34e10
+--- /dev/null
++++ b/docs/loop-base-image-usage.md
+@@ -0,0 +1,166 @@
++# Loop Base Image Usage in Loop Definitions
++
++## Goal
++
++Give loop authors a single reference for using the base image and the skills
++mount contract together.
++
++## Required Contract
++
++- Base image reference must point to the loop base image:
++  - local development: `loop-base:local`
++  - production-like: registry tag or digest (for example
++    `ghcr.io/acme/loop-base:2026.03.09` or
++    `ghcr.io/acme/loop-base@sha256:<digest>`)
++- Skills root path in the container is fixed:
++  - `/home/dev/.codex/skills`
++- For loop skill mounts, set `skills[*].mount_path` to a path under that root
++  (for example `/home/dev/.codex/skills/commit`).
++
++## Local Development Example
++
++Loop definition payload:
++
++```json
++{
++  "title": "US-007 local base-image usage",
++  "description": "Validate local base image and skills mount path",
++  "source_type": "interactive",
++  "source_ref": "terminal/us-007-local",
++  "environment": {
++    "container_image": {
++      "ref": "loop-base:local",
++      "pull_policy": "IfNotPresent"
++    }
++  },
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skills/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++Equivalent `smithctl` command:
++
++```bash
++smithctl loop create \
++  --title "US-007 local base-image usage" \
++  --description "Validate local base image and skills mount path" \
++  --source-type interactive \
++  --source-ref terminal/us-007-local \
++  --env-image-ref loop-base:local \
++  --env-image-pull-policy IfNotPresent \
++  --skill name=commit,source=local://skills/commit,mount_path=/home/dev/.codex/skills/commit,read_only=true
++```
++
++Start-success smoke example using the same image and skills path:
++
++```bash
++mkdir -p tmp-skills/commit
++printf 'name: commit\n' > tmp-skills/commit/SKILL.md
++docker run --rm \
++  -v "$(pwd)/tmp-skills:/home/dev/.codex/skills:ro" \
++  loop-base:local \
++  sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md && codex --version'
++```
++
++Expected result: command exits `0`, proving the sample loop definition contract
++can start with the base image and mounted skills path.
++
++## Production-Like Example
++
++Use an immutable image reference and keep the same mount contract:
++
++```json
++{
++  "title": "US-007 prod-like base-image usage",
++  "source_type": "prd_task",
++  "source_ref": "docs/prd1.md#us-007",
++  "environment": {
++    "container_image": {
++      "ref": "ghcr.io/acme/loop-base@sha256:<digest>",
++      "pull_policy": "Always"
++    }
++  },
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skills/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++## Misconfigured Mount Path (Negative Case)
++
++Incorrect loop definition snippet:
++
++```json
++{
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skillz/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++Expected failure symptoms:
++
++- loop worker starts, but skill files are missing under
++  `/home/dev/.codex/skills/...`
++- commands that expect `/home/dev/.codex/skills/commit/SKILL.md` fail
++- runtime diagnostics show empty or missing entries in
++  `/home/dev/.codex/skills`
++
++Repro command for the failure symptom:
++
++```bash
++docker run --rm \
++  -v "$(pwd)/tmp-skills:/home/dev/.codex/skillz:ro" \
++  loop-base:local \
++  sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md'
++```
++
++Expected result: command exits non-zero.
++
++Correction: set the mount target to `/home/dev/.codex/skills` (or a child path
++under it, such as `/home/dev/.codex/skills/commit`).
++
++## Bundled Tools and Internal Binaries Verified by Gates
++
++Bundled tools verified by base-image smoke/quality gates:
++
++- `codex`
++- `git`
++- `curl`
++- `jq`
++- `make`
++- `node`
++- `npm`
++- `pnpm`
++- `python3`
++- `pip`
++- `rg`
++- `bash`
++
++Internal binaries verified by smoke/quality gates:
++
++- `smithctl`
++- `smith-verify-completion`
++
++Verification commands:
++
++- `./scripts/check-base-tooling-smoke.sh loop-base:local`
++- `./scripts/check-base-internal-binaries-smoke.sh loop-base:local`
++- `./scripts/check-base-skills-mount-smoke.sh loop-base:local`
++- `./scripts/run-base-quality-gates.sh loop-base:local`
+
+ succeeded in 30.72s:
+[pre-commit] running quick checks...
+go test ./cmd/...
+go: downloading k8s.io/api v0.35.2
+go: downloading k8s.io/apimachinery v0.35.2
+go: downloading k8s.io/client-go v0.35.2
+go: downloading go.etcd.io/etcd/client/v3 v3.6.8
+go: downloading go.etcd.io/etcd/api/v3 v3.6.8
+go: downloading github.com/coreos/go-semver v0.3.1
+go: downloading go.etcd.io/etcd/client/pkg/v3 v3.6.8
+go: downloading go.uber.org/zap v1.27.0
+go: downloading google.golang.org/grpc v1.71.1
+go: downloading k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+go: downloading github.com/coreos/go-systemd/v22 v22.5.0
+go: downloading golang.org/x/sys v0.38.0
+go: downloading go.uber.org/multierr v1.11.0
+codex
+I’m finalizing the follow-up log commit now; pre-commit checks are running again and I’m waiting for the commit process to finish before confirming a clean tree.
+file update:
+diff --git a/README.md b/README.md
+index ca55c02d6353bcb14af91d00ae416151f5277a6a..4eaebcc6711e86170af51dd6ca24cd2ae35236db
+--- a/README.md
++++ b/README.md
+@@ -114,6 +114,9 @@
+ the runtime user (`dev`). The container startup command does not write to this
+ path, so a mounted skills volume is not overwritten at startup.
+ 
++Loop-definition examples for local and production-like contexts are documented
++in [`docs/loop-base-image-usage.md`](docs/loop-base-image-usage.md).
++
+ Skills mount smoke test (mounted + unmounted scenarios):
+ 
+ ```bash
+diff --git a/docs/index.md b/docs/index.md
+index dd5de4de3fee160ab963f20c2f5251ad88535f37..b49bfe0a291bc8c57a45bb9dfa3f7fee1af813cd
+--- a/docs/index.md
++++ b/docs/index.md
+@@ -47,6 +47,7 @@
+ 
+ - [Loop Ingress and CLI](loop-ingress-and-cli.md)
+ - [Loop Environment Profile](loop-environment-profile.md)
++- [Loop Base Image Usage](loop-base-image-usage.md)
+ - [Multi-Provider Skill Mount Abstraction](multi-provider-skill-mount-abstraction.md)
+ - [Repository Auth Options](repository-auth-options.md)
+ - [Git History Policy](git-history-policy.md)
+diff --git a/docs/loop-base-image-usage.md b/docs/loop-base-image-usage.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..263e172ddd71925d85038c36813fc01044c34e10
+--- /dev/null
++++ b/docs/loop-base-image-usage.md
+@@ -0,0 +1,166 @@
++# Loop Base Image Usage in Loop Definitions
++
++## Goal
++
++Give loop authors a single reference for using the base image and the skills
++mount contract together.
++
++## Required Contract
++
++- Base image reference must point to the loop base image:
++  - local development: `loop-base:local`
++  - production-like: registry tag or digest (for example
++    `ghcr.io/acme/loop-base:2026.03.09` or
++    `ghcr.io/acme/loop-base@sha256:<digest>`)
++- Skills root path in the container is fixed:
++  - `/home/dev/.codex/skills`
++- For loop skill mounts, set `skills[*].mount_path` to a path under that root
++  (for example `/home/dev/.codex/skills/commit`).
++
++## Local Development Example
++
++Loop definition payload:
++
++```json
++{
++  "title": "US-007 local base-image usage",
++  "description": "Validate local base image and skills mount path",
++  "source_type": "interactive",
++  "source_ref": "terminal/us-007-local",
++  "environment": {
++    "container_image": {
++      "ref": "loop-base:local",
++      "pull_policy": "IfNotPresent"
++    }
++  },
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skills/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++Equivalent `smithctl` command:
++
++```bash
++smithctl loop create \
++  --title "US-007 local base-image usage" \
++  --description "Validate local base image and skills mount path" \
++  --source-type interactive \
++  --source-ref terminal/us-007-local \
++  --env-image-ref loop-base:local \
++  --env-image-pull-policy IfNotPresent \
++  --skill name=commit,source=local://skills/commit,mount_path=/home/dev/.codex/skills/commit,read_only=true
++```
++
++Start-success smoke example using the same image and skills path:
++
++```bash
++mkdir -p tmp-skills/commit
++printf 'name: commit\n' > tmp-skills/commit/SKILL.md
++docker run --rm \
++  -v "$(pwd)/tmp-skills:/home/dev/.codex/skills:ro" \
++  loop-base:local \
++  sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md && codex --version'
++```
++
++Expected result: command exits `0`, proving the sample loop definition contract
++can start with the base image and mounted skills path.
++
++## Production-Like Example
++
++Use an immutable image reference and keep the same mount contract:
++
++```json
++{
++  "title": "US-007 prod-like base-image usage",
++  "source_type": "prd_task",
++  "source_ref": "docs/prd1.md#us-007",
++  "environment": {
++    "container_image": {
++      "ref": "ghcr.io/acme/loop-base@sha256:<digest>",
++      "pull_policy": "Always"
++    }
++  },
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skills/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++## Misconfigured Mount Path (Negative Case)
++
++Incorrect loop definition snippet:
++
++```json
++{
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skillz/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++Expected failure symptoms:
++
++- loop worker starts, but skill files are missing under
++  `/home/dev/.codex/skills/...`
++- commands that expect `/home/dev/.codex/skills/commit/SKILL.md` fail
++- runtime diagnostics show empty or missing entries in
++  `/home/dev/.codex/skills`
++
++Repro command for the failure symptom:
++
++```bash
++docker run --rm \
++  -v "$(pwd)/tmp-skills:/home/dev/.codex/skillz:ro" \
++  loop-base:local \
++  sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md'
++```
++
++Expected result: command exits non-zero.
++
++Correction: set the mount target to `/home/dev/.codex/skills` (or a child path
++under it, such as `/home/dev/.codex/skills/commit`).
++
++## Bundled Tools and Internal Binaries Verified by Gates
++
++Bundled tools verified by base-image smoke/quality gates:
++
++- `codex`
++- `git`
++- `curl`
++- `jq`
++- `make`
++- `node`
++- `npm`
++- `pnpm`
++- `python3`
++- `pip`
++- `rg`
++- `bash`
++
++Internal binaries verified by smoke/quality gates:
++
++- `smithctl`
++- `smith-verify-completion`
++
++Verification commands:
++
++- `./scripts/check-base-tooling-smoke.sh loop-base:local`
++- `./scripts/check-base-internal-binaries-smoke.sh loop-base:local`
++- `./scripts/check-base-skills-mount-smoke.sh loop-base:local`
++- `./scripts/run-base-quality-gates.sh loop-base:local`
+
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith.base-container-build succeeded in 51ms:
+ M .ralph/runs/run-20260309-043624-64079-iter-7.log
+file update:
+diff --git a/README.md b/README.md
+index ca55c02d6353bcb14af91d00ae416151f5277a6a..4eaebcc6711e86170af51dd6ca24cd2ae35236db
+--- a/README.md
++++ b/README.md
+@@ -114,6 +114,9 @@
+ the runtime user (`dev`). The container startup command does not write to this
+ path, so a mounted skills volume is not overwritten at startup.
+ 
++Loop-definition examples for local and production-like contexts are documented
++in [`docs/loop-base-image-usage.md`](docs/loop-base-image-usage.md).
++
+ Skills mount smoke test (mounted + unmounted scenarios):
+ 
+ ```bash
+diff --git a/docs/index.md b/docs/index.md
+index dd5de4de3fee160ab963f20c2f5251ad88535f37..b49bfe0a291bc8c57a45bb9dfa3f7fee1af813cd
+--- a/docs/index.md
++++ b/docs/index.md
+@@ -47,6 +47,7 @@
+ 
+ - [Loop Ingress and CLI](loop-ingress-and-cli.md)
+ - [Loop Environment Profile](loop-environment-profile.md)
++- [Loop Base Image Usage](loop-base-image-usage.md)
+ - [Multi-Provider Skill Mount Abstraction](multi-provider-skill-mount-abstraction.md)
+ - [Repository Auth Options](repository-auth-options.md)
+ - [Git History Policy](git-history-policy.md)
+diff --git a/docs/loop-base-image-usage.md b/docs/loop-base-image-usage.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..263e172ddd71925d85038c36813fc01044c34e10
+--- /dev/null
++++ b/docs/loop-base-image-usage.md
+@@ -0,0 +1,166 @@
++# Loop Base Image Usage in Loop Definitions
++
++## Goal
++
++Give loop authors a single reference for using the base image and the skills
++mount contract together.
++
++## Required Contract
++
++- Base image reference must point to the loop base image:
++  - local development: `loop-base:local`
++  - production-like: registry tag or digest (for example
++    `ghcr.io/acme/loop-base:2026.03.09` or
++    `ghcr.io/acme/loop-base@sha256:<digest>`)
++- Skills root path in the container is fixed:
++  - `/home/dev/.codex/skills`
++- For loop skill mounts, set `skills[*].mount_path` to a path under that root
++  (for example `/home/dev/.codex/skills/commit`).
++
++## Local Development Example
++
++Loop definition payload:
++
++```json
++{
++  "title": "US-007 local base-image usage",
++  "description": "Validate local base image and skills mount path",
++  "source_type": "interactive",
++  "source_ref": "terminal/us-007-local",
++  "environment": {
++    "container_image": {
++      "ref": "loop-base:local",
++      "pull_policy": "IfNotPresent"
++    }
++  },
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skills/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++Equivalent `smithctl` command:
++
++```bash
++smithctl loop create \
++  --title "US-007 local base-image usage" \
++  --description "Validate local base image and skills mount path" \
++  --source-type interactive \
++  --source-ref terminal/us-007-local \
++  --env-image-ref loop-base:local \
++  --env-image-pull-policy IfNotPresent \
++  --skill name=commit,source=local://skills/commit,mount_path=/home/dev/.codex/skills/commit,read_only=true
++```
++
++Start-success smoke example using the same image and skills path:
++
++```bash
++mkdir -p tmp-skills/commit
++printf 'name: commit\n' > tmp-skills/commit/SKILL.md
++docker run --rm \
++  -v "$(pwd)/tmp-skills:/home/dev/.codex/skills:ro" \
++  loop-base:local \
++  sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md && codex --version'
++```
++
++Expected result: command exits `0`, proving the sample loop definition contract
++can start with the base image and mounted skills path.
++
++## Production-Like Example
++
++Use an immutable image reference and keep the same mount contract:
++
++```json
++{
++  "title": "US-007 prod-like base-image usage",
++  "source_type": "prd_task",
++  "source_ref": "docs/prd1.md#us-007",
++  "environment": {
++    "container_image": {
++      "ref": "ghcr.io/acme/loop-base@sha256:<digest>",
++      "pull_policy": "Always"
++    }
++  },
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skills/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++## Misconfigured Mount Path (Negative Case)
++
++Incorrect loop definition snippet:
++
++```json
++{
++  "skills": [
++    {
++      "name": "commit",
++      "source": "local://skills/commit",
++      "mount_path": "/home/dev/.codex/skillz/commit",
++      "read_only": true
++    }
++  ]
++}
++```
++
++Expected failure symptoms:
++
++- loop worker starts, but skill files are missing under
++  `/home/dev/.codex/skills/...`
++- commands that expect `/home/dev/.codex/skills/commit/SKILL.md` fail
++- runtime diagnostics show empty or missing entries in
++  `/home/dev/.codex/skills`
++
++Repro command for the failure symptom:
++
++```bash
++docker run --rm \
++  -v "$(pwd)/tmp-skills:/home/dev/.codex/skillz:ro" \
++  loop-base:local \
++  sh -lc 'test -f /home/dev/.codex/skills/commit/SKILL.md'
++```
++
++Expected result: command exits non-zero.
++
++Correction: set the mount target to `/home/dev/.codex/skills` (or a child path
++under it, such as `/home/dev/.codex/skills/commit`).
++
++## Bundled Tools and Internal Binaries Verified by Gates
++
++Bundled tools verified by base-image smoke/quality gates:
++
++- `codex`
++- `git`
++- `curl`
++- `jq`
++- `make`
++- `node`
++- `npm`
++- `pnpm`
++- `python3`
++- `pip`
++- `rg`
++- `bash`
++
++Internal binaries verified by smoke/quality gates:
++
++- `smithctl`
++- `smith-verify-completion`
++
++Verification commands:
++
++- `./scripts/check-base-tooling-smoke.sh loop-base:local`
++- `./scripts/check-base-internal-binaries-smoke.sh loop-base:local`
++- `./scripts/check-base-skills-mount-smoke.sh loop-base:local`
++- `./scripts/run-base-quality-gates.sh loop-base:local`
+
+codex
+I’m making one final lightweight commit to capture the latest run-log mutation from this session so the recorded run artifacts stay in version control with the story outcome.
