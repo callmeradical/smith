@@ -114,6 +114,9 @@ The runtime image always creates `/home/dev/.codex/skills` and grants access to
 the runtime user (`dev`). The container startup command does not write to this
 path, so a mounted skills volume is not overwritten at startup.
 
+Loop-definition examples for local and production-like contexts are documented
+in [`docs/loop-base-image-usage.md`](docs/loop-base-image-usage.md).
+
 Skills mount smoke test (mounted + unmounted scenarios):
 
 ```bash

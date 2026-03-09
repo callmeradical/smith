@@ -47,6 +47,7 @@ Smith is an etcd-backed, Kubernetes-native autonomous orchestration platform.
 
 - [Loop Ingress and CLI](loop-ingress-and-cli.md)
 - [Loop Environment Profile](loop-environment-profile.md)
+- [Loop Base Image Usage](loop-base-image-usage.md)
 - [Multi-Provider Skill Mount Abstraction](multi-provider-skill-mount-abstraction.md)
 - [Repository Auth Options](repository-auth-options.md)
 - [Git History Policy](git-history-policy.md)
