@@ -23,6 +23,8 @@ import (
 	"smith/internal/source/store"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -31,13 +33,17 @@ const (
 )
 
 type config struct {
-	port            int
-	etcdEndpoints   []string
-	etcdDialTimeout time.Duration
-	operatorToken   string
-	authStorePath   string
-	defaultPreset   string
-	skillPolicy     model.SkillPolicy
+	port                  int
+	etcdEndpoints         []string
+	etcdDialTimeout       time.Duration
+	operatorToken         string
+	authStoreBackend      string
+	authStorePath         string
+	authStoreK8sNamespace string
+	authStoreK8sSecret    string
+	authStoreK8sKey       string
+	defaultPreset         string
+	skillPolicy           model.SkillPolicy
 }
 
 type server struct {
@@ -232,9 +238,14 @@ func main() {
 	}
 	defer func() { _ = es.Close() }()
 
+	tokenStore, err := newTokenStore(ctx, cfg)
+	if err != nil {
+		log.Fatalf("smith-api auth store init failed: %v", err)
+	}
+
 	authManager := provider.NewAuthManager(
 		provider.ProviderCodex,
-		provider.NewFileTokenStore(cfg.authStorePath),
+		tokenStore,
 		provider.NewMockDeviceAuthClient(),
 		&auditBridge{store: es},
 	)
@@ -263,6 +274,7 @@ func main() {
 	mux.HandleFunc("/v1/auth/codex/connect/complete", s.handleCodexAuthComplete)
 	mux.HandleFunc("/v1/auth/codex/connect/api-key", s.handleCodexAuthAPIKey)
 	mux.HandleFunc("/v1/auth/codex/status", s.handleCodexAuthStatus)
+	mux.HandleFunc("/v1/auth/codex/credential", s.handleCodexAuthCredential)
 	mux.HandleFunc("/v1/auth/codex/disconnect", s.handleCodexAuthDisconnect)
 
 	addr := fmt.Sprintf(":%d", cfg.port)
@@ -1366,6 +1378,40 @@ func (s *server) handleCodexAuthStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (s *server) handleCodexAuthCredential(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	cred, err := s.auth.StoredCredential(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out := map[string]any{
+		"connected": cred.Connected,
+		"provider":  provider.ProviderCodex,
+	}
+	if !cred.Connected {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out["auth_method"] = cred.AuthMethod
+	out["account_id"] = cred.AccountID
+	if strings.EqualFold(cred.AuthMethod, "api_key") {
+		out["api_key_masked"] = maskCredentialValue(cred.APIKey)
+		reveal := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("reveal")), "true")
+		if reveal {
+			out["api_key"] = cred.APIKey
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *server) handleCodexAuthDisconnect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -1401,6 +1447,31 @@ func (s *server) authorized(r *http.Request) bool {
 	return strings.TrimSpace(strings.TrimPrefix(auth, prefix)) == token
 }
 
+func newTokenStore(_ context.Context, cfg config) (provider.TokenStore, error) {
+	backend := strings.ToLower(strings.TrimSpace(cfg.authStoreBackend))
+	switch backend {
+	case "", "file":
+		return provider.NewFileTokenStore(cfg.authStorePath), nil
+	case "kubernetes", "k8s":
+		restConfig, err := rest.InClusterConfig()
+		if err != nil {
+			return nil, fmt.Errorf("kubernetes in-cluster config: %w", err)
+		}
+		clientset, err := kubernetes.NewForConfig(restConfig)
+		if err != nil {
+			return nil, fmt.Errorf("kubernetes clientset: %w", err)
+		}
+		return provider.NewSecretTokenStore(
+			clientset,
+			cfg.authStoreK8sNamespace,
+			cfg.authStoreK8sSecret,
+			cfg.authStoreK8sKey,
+		)
+	default:
+		return nil, fmt.Errorf("unsupported auth store backend %q", cfg.authStoreBackend)
+	}
+}
+
 func loadConfig() (config, error) {
 	endpoints := splitCSV(os.Getenv("SMITH_ETCD_ENDPOINTS"))
 	if len(endpoints) == 0 {
@@ -1411,14 +1482,22 @@ func loadConfig() (config, error) {
 		skillPolicy.AllowedSourcePrefixes = raw
 	}
 	skillPolicy.AllowWritable = envBool("SMITH_SKILL_ALLOW_WRITABLE", skillPolicy.AllowWritable)
+	authStoreBackend := strings.ToLower(strings.TrimSpace(envString("SMITH_AUTH_STORE_BACKEND", "file")))
+	authStoreK8sNamespace := strings.TrimSpace(envString("SMITH_AUTH_STORE_K8S_NAMESPACE", envString("POD_NAMESPACE", "default")))
+	authStoreK8sSecret := strings.TrimSpace(envString("SMITH_AUTH_STORE_K8S_SECRET", "smith-auth-store"))
+	authStoreK8sKey := strings.TrimSpace(envString("SMITH_AUTH_STORE_K8S_KEY", "tokens.json"))
 	return config{
-		port:            envInt("SMITH_API_PORT", defaultPort),
-		etcdEndpoints:   endpoints,
-		etcdDialTimeout: envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
-		operatorToken:   strings.TrimSpace(os.Getenv("SMITH_OPERATOR_TOKEN")),
-		authStorePath:   envString("SMITH_AUTH_STORE_PATH", "/tmp/smith-auth/tokens.json"),
-		defaultPreset:   strings.TrimSpace(os.Getenv("SMITH_DEFAULT_ENV_PRESET")),
-		skillPolicy:     skillPolicy,
+		port:                  envInt("SMITH_API_PORT", defaultPort),
+		etcdEndpoints:         endpoints,
+		etcdDialTimeout:       envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
+		operatorToken:         strings.TrimSpace(os.Getenv("SMITH_OPERATOR_TOKEN")),
+		authStoreBackend:      authStoreBackend,
+		authStorePath:         envString("SMITH_AUTH_STORE_PATH", "/tmp/smith-auth/tokens.json"),
+		authStoreK8sNamespace: authStoreK8sNamespace,
+		authStoreK8sSecret:    authStoreK8sSecret,
+		authStoreK8sKey:       authStoreK8sKey,
+		defaultPreset:         strings.TrimSpace(os.Getenv("SMITH_DEFAULT_ENV_PRESET")),
+		skillPolicy:           skillPolicy,
 	}, nil
 }
 
@@ -1622,6 +1701,17 @@ func formatRFC3339OrEmpty(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+func maskCredentialValue(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	if len(trimmed) <= 8 {
+		return strings.Repeat("*", len(trimmed))
+	}
+	return trimmed[:4] + strings.Repeat("*", len(trimmed)-8) + trimmed[len(trimmed)-4:]
 }
 
 func envDuration(name string, fallback time.Duration) time.Duration {

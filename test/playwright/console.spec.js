@@ -52,16 +52,16 @@ async function mockConsoleApi(page) {
     auth_method: '',
     expires_at: '',
     last_refresh_at: '',
+    api_key: '',
   };
   const overridePayloads = [];
   const createdLoopPayloads = [];
 
   await page.addInitScript(() => {
-    window.confirm = () => true;
-    window.__openedUrls = [];
-    window.open = (url) => {
-      window.__openedUrls.push(String(url));
-      return null;
+    window.__lastConfirmMessage = '';
+    window.confirm = (message) => {
+      window.__lastConfirmMessage = String(message || '');
+      return true;
     };
 
     class MockEventSource {
@@ -162,21 +162,26 @@ async function mockConsoleApi(page) {
     await jsonResponse(route, { ...authState });
   });
 
-  await page.route(/\/v1\/auth\/codex\/connect\/start$/, async (route) => {
-    await jsonResponse(route, {
-      device_code: 'device-123',
-      user_code: 'USER-1234',
-      verification_uri: 'https://verify.example.test',
-    });
-  });
-
-  await page.route(/\/v1\/auth\/codex\/connect\/complete$/, async (route) => {
-    authState.connected = true;
-    authState.account_id = 'acct-001';
-    authState.auth_method = 'openai_sign_in';
-    authState.expires_at = '2030-01-01T00:00:00Z';
-    authState.last_refresh_at = '2030-01-01T00:00:00Z';
-    await jsonResponse(route, { ok: true });
+  await page.route(/\/v1\/auth\/codex\/credential(\?.*)?$/, async (route) => {
+    if (!authState.connected) {
+      await jsonResponse(route, { connected: false });
+      return;
+    }
+    const url = new URL(route.request().url());
+    const reveal = String(url.searchParams.get('reveal') || '').toLowerCase() === 'true';
+    const key = String(authState.api_key || '');
+    const masked = key.length <= 8 ? '*'.repeat(key.length) : `${key.slice(0, 4)}${'*'.repeat(key.length - 8)}${key.slice(-4)}`;
+    const payload = {
+      connected: true,
+      provider: 'codex',
+      auth_method: authState.auth_method,
+      account_id: authState.account_id,
+      api_key_masked: masked,
+    };
+    if (reveal) {
+      payload.api_key = key;
+    }
+    await jsonResponse(route, payload);
   });
 
   await page.route(/\/v1\/auth\/codex\/connect\/api-key$/, async (route) => {
@@ -186,6 +191,7 @@ async function mockConsoleApi(page) {
     authState.auth_method = 'api_key';
     authState.expires_at = '2030-01-01T00:00:00Z';
     authState.last_refresh_at = '2030-01-01T00:00:00Z';
+    authState.api_key = payload.api_key || '';
     await jsonResponse(route, { ok: true });
   });
 
@@ -195,6 +201,7 @@ async function mockConsoleApi(page) {
     authState.auth_method = '';
     authState.expires_at = '';
     authState.last_refresh_at = '';
+    authState.api_key = '';
     await jsonResponse(route, { ok: true });
   });
 
@@ -244,35 +251,56 @@ test('filters tiles by state and search input', async ({ page }) => {
   await expect(page.locator('#grid .pod-tile .loop-id')).toHaveText('loop-beta');
 });
 
-test('supports provider catalog configure, OpenAI sign-in, API key auth, and sign out', async ({ page }) => {
+test('supports provider catalog API key auth and delete', async ({ page }) => {
   await mockConsoleApi(page);
   await page.goto('/');
   await page.locator('.page.active .sidebar-toggle').click();
   await page.locator('#nav-providers').click();
 
   await expect(page.locator('#provider-config-panel')).toBeHidden();
-  await expect(page.locator('#provider-list .provider-card')).toHaveCount(1);
+  await expect(page.locator('#provider-list button[data-provider-config="codex"]')).toBeVisible();
   await page.locator('#provider-list button[data-provider-config="codex"]').click();
   await expect(page.locator('#provider-config-panel')).toBeVisible();
-  await expect(page.locator('#provider-codex-panel')).toBeVisible();
-
-  await page.locator('#auth-sign-in').click();
-  await expect
-    .poll(async () => page.evaluate(() => window.__openedUrls))
-    .toContain('https://verify.example.test');
-  await expect(page.locator('#auth-connected')).toHaveText('yes');
-  await expect(page.locator('#auth-method')).toHaveText('OpenAI sign-in');
-
-  await page.locator('#auth-disconnect').click();
-  await expect(page.locator('#auth-connected')).toHaveText('no');
-
-  await page.locator('#auth-use-api-key').click();
+  await expect(page.locator('#provider-config-title')).toHaveText('OpenAI Codex CLI Configuration');
+  await page.locator('#auth-api-key').fill('invalid');
+  await page.locator('#auth-save-api-key').click();
+  await expect(page.locator('#toast-region .toast').last()).toContainText('valid OpenAI API key');
+  await expect(page.locator('#provider-list .provider-card.connected')).toHaveCount(0);
   await page.locator('#auth-api-key').fill('sk-test-123');
   await page.locator('#auth-account-id').fill('acct-api');
   await page.locator('#auth-save-api-key').click();
-  await expect(page.locator('#auth-connected')).toHaveText('yes');
-  await expect(page.locator('#auth-method')).toHaveText('API key');
-  await expect(page.locator('#auth-account')).toHaveText('acct-api');
+  await expect(page.locator('#toast-region .toast').last()).toContainText('API key saved');
+  await expect(page.locator('#provider-config-panel')).toBeHidden();
+  await expect(page.locator('#provider-list .provider-card.connected')).toHaveCount(1);
+
+  await page.locator('#provider-list button[data-provider-config="codex"]').click();
+  await expect(page.locator('#provider-config-panel')).toBeVisible();
+  await expect(page.locator('#auth-api-key')).toHaveValue('sk-t***-123');
+  await expect(page.locator('#auth-account-id')).toHaveValue('acct-api');
+
+  await page.locator('#auth-reveal-api-key').click();
+  await expect(page.locator('#auth-api-key')).toHaveValue('sk-test-123');
+  await expect(page.locator('#auth-reveal-api-key')).toHaveAttribute('aria-label', 'Hide API key');
+
+  await page.locator('#auth-reveal-api-key').click();
+  await expect(page.locator('#auth-api-key')).toHaveValue('sk-t***-123');
+  await expect(page.locator('#auth-reveal-api-key')).toHaveAttribute('aria-label', 'Reveal API key');
+
+  await page.locator('#auth-api-key').fill('sk-unsaved-999');
+  await page.locator('#auth-reveal-api-key').click();
+  await expect(page.locator('#auth-api-key')).toHaveValue('sk-unsaved-999');
+  await expect(page.locator('#auth-reveal-api-key')).toHaveAttribute('aria-label', 'Hide API key');
+  await page.locator('#auth-reveal-api-key').click();
+  await expect(page.locator('#auth-api-key')).toHaveValue('sk-unsaved-999');
+  await expect(page.locator('#auth-reveal-api-key')).toHaveAttribute('aria-label', 'Reveal API key');
+
+  await page.locator('#auth-disconnect').click();
+  await expect
+    .poll(() => page.evaluate(() => window.__lastConfirmMessage))
+    .toBe('Are you sure you wish to delete these credentials?');
+  await expect(page.locator('#toast-region .toast').last()).toContainText('Credential deleted');
+  await expect(page.locator('#provider-config-panel')).toBeHidden();
+  await expect(page.locator('#provider-list .provider-card.connected')).toHaveCount(0);
 });
 
 test('validates and submits override actions', async ({ page }) => {

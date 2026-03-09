@@ -57,6 +57,11 @@ Rollout policy:
 - Pair autoscaling with reconciliation and drift detection.
 - Ensure observability dashboards include scaling events, queue depth, and anomaly completion rate.
 
+### Secret Encryption at Rest
+- Enable Kubernetes API server encryption providers for `Secret` resources.
+- Prefer KMS-backed provider in production, with `identity` fallback only as last provider.
+- Apply the implementation steps in `docs/kubernetes-secrets-encryption-provider-runbook.md`.
+
 ## Non-Cloud / Local
 
 Local and CI environments (e.g., k3d + vCluster) remain valid for development and verification, but are not a substitute for production autoscaling validation.

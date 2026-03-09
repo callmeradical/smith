@@ -77,6 +77,12 @@ make build-local
 make deploy-local
 ```
 
+Optional: enable Kubernetes Secret encryption at rest in local `k3d`:
+
+```bash
+./scripts/integration/enable-k3d-secrets-encryption.sh
+```
+
 Expected deploy-local output includes a Helm success line similar to:
 
 ```text

@@ -108,6 +108,63 @@
       display: block;
     }
 
+    .provider-drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+      z-index: 31;
+    }
+
+    body.provider-drawer-open .provider-drawer-overlay {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .toast-region {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 60;
+      display: grid;
+      gap: 8px;
+      pointer-events: none;
+      width: min(360px, calc(100vw - 28px));
+    }
+
+    .toast {
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(7, 9, 14, 0.98);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 140ms ease, transform 140ms ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toast.ok {
+      border-color: rgba(16, 185, 129, 0.5);
+      color: #c9fce8;
+    }
+
+    .toast.err {
+      border-color: rgba(239, 68, 68, 0.5);
+      color: #ffd9d9;
+    }
+
     .brand {
       display: grid;
       gap: 4px;
@@ -163,24 +220,6 @@
       letter-spacing: 0.03em;
       text-transform: uppercase;
       color: var(--muted);
-    }
-
-    .panel-grid {
-      display: grid;
-      gap: 6px;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      font-size: 0.76rem;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .panel-grid span {
-      display: flex;
-      justify-content: space-between;
-      gap: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 7px;
-      background: rgba(255, 255, 255, 0.03);
-      padding: 5px 6px;
     }
 
     .quick-nav {
@@ -295,7 +334,72 @@
       box-shadow: inset 0 0 0 1px rgba(6, 182, 212, 0.45);
     }
 
-    .provider-actions,
+    .provider-drawer {
+      position: fixed;
+      right: 14px;
+      top: 14px;
+      bottom: 14px;
+      width: min(430px, calc(100vw - 28px));
+      border: 0;
+      border-radius: 14px;
+      background: rgba(7, 9, 14, 0.98);
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+      padding: 12px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      overflow: auto;
+      transform: translateX(120%);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform 180ms ease, opacity 180ms ease;
+      z-index: 32;
+    }
+
+    .provider-drawer.open {
+      transform: translateX(0);
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .provider-drawer-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 2px;
+    }
+
+    .provider-drawer-title {
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      font-size: 0.92rem;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .provider-drawer-close {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 8px;
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      font-size: 1rem;
+      padding: 0;
+    }
+
+    .provider-actions {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .override-controls {
       display: grid;
       gap: 6px;
@@ -309,15 +413,60 @@
     }
 
     .primary {
-      border-color: rgba(6, 182, 212, 0.58);
-      background: rgba(6, 182, 212, 0.2);
-      color: #bff4ff;
+      border-color: rgba(6, 182, 212, 0.9);
+      background: rgba(6, 182, 212, 0.36);
+      color: #e8fbff;
       font-weight: 700;
+    }
+
+    .primary:hover {
+      border-color: rgba(34, 211, 238, 1);
+      background: rgba(34, 211, 238, 0.46);
     }
 
     .provider-api-key {
       display: grid;
       gap: 6px;
+    }
+
+    .provider-api-key input {
+      width: 100%;
+    }
+
+    .input-with-icon {
+      position: relative;
+      width: 100%;
+    }
+
+    .input-with-icon input {
+      padding-right: 42px;
+    }
+
+    .field-icon-button {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--fg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .field-icon-button svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
 
     .project-actions {
@@ -460,22 +609,6 @@
       font-size: 0.92rem;
       line-height: 1;
       font-weight: 700;
-    }
-
-    .advanced-auth {
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 10px;
-      padding: 8px;
-      display: grid;
-      gap: 6px;
-    }
-
-    .advanced-auth > summary {
-      cursor: pointer;
-      color: var(--muted);
-      font-size: 0.78rem;
-      font-weight: 600;
-      user-select: none;
     }
 
     .icon-button {
@@ -905,6 +1038,18 @@
         bottom: 10px;
       }
 
+      .provider-drawer {
+        right: 10px;
+        top: 10px;
+        bottom: 10px;
+      }
+
+      .toast-region {
+        right: 10px;
+        bottom: 10px;
+        width: min(360px, calc(100vw - 20px));
+      }
+
       .board {
         grid-template-columns: 1fr;
       }
@@ -924,6 +1069,19 @@
       .stats {
         flex-wrap: wrap;
         gap: 12px;
+      }
+
+      .provider-drawer {
+        right: 10px;
+        top: 10px;
+        bottom: 10px;
+        width: calc(100vw - 20px);
+      }
+
+      .toast-region {
+        right: 10px;
+        bottom: 10px;
+        width: calc(100vw - 20px);
       }
 
       .provider-actions,
@@ -954,6 +1112,8 @@
 </head>
 <body>
   <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+  <div id="provider-drawer-overlay" class="provider-drawer-overlay" aria-hidden="true"></div>
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
   <div class="shell">
     <aside class="sidebar" aria-label="Console sidebar">
       <section class="brand">
@@ -1070,42 +1230,35 @@
           <div id="provider-catalog-status" class="status-note"></div>
           <div id="provider-empty" class="status-note hidden">No providers available.</div>
         </section>
-        <section id="provider-config-panel" class="hidden">
-          <div class="panel-title">
-            <span id="provider-config-title">Provider Configuration</span>
-            <button id="provider-back" type="button">back</button>
+        <aside id="provider-config-panel" class="provider-drawer" aria-hidden="true">
+          <div class="provider-drawer-head">
+            <div id="provider-config-title" class="provider-drawer-title">Provider Configuration</div>
+            <button id="provider-back" type="button" class="provider-drawer-close" aria-label="Close provider configuration">&times;</button>
           </div>
           <section id="provider-codex-panel" class="panel hidden">
           <div class="panel-title">
             <span>Codex Authentication</span>
-            <span id="auth-status" class="muted">not connected</span>
           </div>
-          <div class="status-note">Choose an authentication method for Codex.</div>
-          <div class="provider-actions">
-            <button id="auth-sign-in" class="primary">sign in with OpenAI</button>
-            <button id="auth-use-api-key">use API key</button>
-            <button id="auth-disconnect">sign out</button>
-          </div>
-          <div id="auth-api-key-panel" class="provider-api-key hidden">
-            <input id="auth-api-key" type="password" placeholder="OpenAI API key">
+          <div class="status-note">Provide an API key and optional label for Codex.</div>
+          <div id="auth-api-key-panel" class="provider-api-key">
+            <div class="input-with-icon">
+              <input id="auth-api-key" type="password" placeholder="OpenAI API key">
+              <button
+                id="auth-reveal-api-key"
+                class="field-icon-button"
+                type="button"
+                aria-label="Reveal API key"
+                title="Reveal API key"
+              ></button>
+            </div>
             <input id="auth-account-id" type="text" placeholder="account label (optional)">
-            <button id="auth-save-api-key">save API key</button>
           </div>
-          <div class="panel-grid">
-            <span><b>Connected</b><i id="auth-connected">--</i></span>
-            <span><b>Account</b><i id="auth-account">--</i></span>
-            <span><b>Method</b><i id="auth-method">--</i></span>
-            <span><b>Expires</b><i id="auth-expires">--</i></span>
-            <span><b>Refresh</b><i id="auth-refresh">--</i></span>
+          <div class="provider-actions">
+            <button id="auth-save-api-key" class="primary">Save</button>
+            <button id="auth-disconnect">delete</button>
           </div>
-          <div id="auth-flow-message" class="status-note"></div>
-          <details class="advanced-auth">
-            <summary>advanced</summary>
-            <input id="auth-token" type="password" placeholder="operator bearer token (optional)">
-            <input id="auth-actor" type="text" placeholder="actor (default: operator)">
-          </details>
           </section>
-        </section>
+        </aside>
       </section>
 
       <section id="page-controls" class="page config-page">
@@ -1174,6 +1327,7 @@
   <script>
     const config = window.__SMITH_CONFIG__ || {};
     const apiBase = String(config.apiBaseUrl || "").replace(/\/+$/, "");
+    const operatorToken = String(config.operatorToken || "").trim();
     const showComingSoonProviders = /^(1|true|yes|on)$/i.test(
       String(config.showComingSoonProviders || ""),
     );
@@ -1185,9 +1339,10 @@
       latencySamplesMs: [],
       journalSource: null,
       reconnectTimer: null,
-      authSession: null,
       authBusy: false,
+      authFormDirty: false,
       activeProvider: "",
+      providerCredentialRevealed: false,
       projects: [],
       projectCredentials: {},
       loopWorkflow: {},
@@ -1201,6 +1356,8 @@
           expires_at: "",
           last_refresh_at: "",
           auth_method: "",
+          api_key_masked: "",
+          api_key_revealed: "",
         },
       },
     };
@@ -1227,22 +1384,16 @@
     const apiDotEl = document.getElementById("api-dot");
     const journalLatencyEl = document.getElementById("journal-latency");
     const journalStatusEl = document.getElementById("journal-status");
-    const authStatusEl = document.getElementById("auth-status");
-    const authConnectedEl = document.getElementById("auth-connected");
-    const authAccountEl = document.getElementById("auth-account");
-    const authMethodEl = document.getElementById("auth-method");
-    const authExpiresEl = document.getElementById("auth-expires");
-    const authRefreshEl = document.getElementById("auth-refresh");
-    const authFlowMessageEl = document.getElementById("auth-flow-message");
-    const authApiKeyPanelEl = document.getElementById("auth-api-key-panel");
     const providerBackEl = document.getElementById("provider-back");
-    const providerListPanelEl = document.getElementById("provider-list-panel");
     const providerConfigPanelEl = document.getElementById("provider-config-panel");
     const providerConfigTitleEl = document.getElementById("provider-config-title");
     const providerListEl = document.getElementById("provider-list");
     const providerCatalogStatusEl = document.getElementById("provider-catalog-status");
     const providerEmptyEl = document.getElementById("provider-empty");
     const providerCodexPanelEl = document.getElementById("provider-codex-panel");
+    const authAPIKeyEl = document.getElementById("auth-api-key");
+    const authAccountIDEl = document.getElementById("auth-account-id");
+    const authRevealAPIKeyEl = document.getElementById("auth-reveal-api-key");
     const projectAddEl = document.getElementById("project-add");
     const projectListPanelEl = document.getElementById("project-list-panel");
     const projectConfigPanelEl = document.getElementById("project-config-panel");
@@ -1253,6 +1404,8 @@
     const overrideLoopEl = document.getElementById("override-loop");
     const sidebarEl = document.querySelector(".sidebar");
     const sidebarOverlayEl = document.getElementById("sidebar-overlay");
+    const providerDrawerOverlayEl = document.getElementById("provider-drawer-overlay");
+    const toastRegionEl = document.getElementById("toast-region");
     const sidebarToggleButtons = Array.from(document.querySelectorAll(".sidebar-toggle"));
     const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
     const pages = {
@@ -1261,6 +1414,10 @@
       providers: document.getElementById("page-providers"),
       controls: document.getElementById("page-controls"),
     };
+    const eyeIconMarkup =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path><circle cx="12" cy="12" r="2.7"></circle></svg>';
+    const eyeOffIconMarkup =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.7 6.3A10.8 10.8 0 0 1 12 6c6.5 0 10 6 10 6a19 19 0 0 1-4.2 4.6"></path><path d="M6.1 6.9C3.7 8.6 2 12 2 12s3.5 6 10 6c1.6 0 3-.3 4.3-.8"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>';
     const providerCatalog = [
       {
         id: "anthropic",
@@ -1326,7 +1483,6 @@
     const projectStorageKey = "smith.console.projects.v1";
 
     document.getElementById("api-url").textContent = apiBase || "(api unset)";
-    document.getElementById("auth-token").value = config.operatorToken || "";
 
     function pageFromHash() {
       const raw = String(window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
@@ -1353,7 +1509,7 @@
       if (updateHash) {
         window.location.hash = "#" + target;
       }
-      if (target === "providers") {
+      if (target !== "providers") {
         setProviderConfigOpen(false);
       }
     }
@@ -1376,8 +1532,7 @@
 
     async function fetchJSON(path) {
       const headers = { Accept: "application/json" };
-      const token = document.getElementById("auth-token").value.trim();
-      if (token) headers.Authorization = "Bearer " + token;
+      if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
       const res = await fetch(apiBase + path, { headers });
       if (!res.ok) {
         throw new Error("HTTP " + res.status + " for " + path);
@@ -1390,8 +1545,7 @@
         Accept: "application/json",
         "Content-Type": "application/json",
       };
-      const token = document.getElementById("auth-token").value.trim();
-      if (token) headers.Authorization = "Bearer " + token;
+      if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
       const res = await fetch(apiBase + path, {
         method: "POST",
         headers,
@@ -1408,7 +1562,7 @@
     }
 
     function authActor() {
-      return document.getElementById("auth-actor").value.trim() || "operator";
+      return "operator";
     }
 
     function shortTime(raw) {
@@ -1417,31 +1571,85 @@
       return new Date(ms).toLocaleString();
     }
 
-    function setAuthStatus(message, level) {
-      authStatusEl.textContent = message;
-      authStatusEl.style.color =
-        level === "ok"
-          ? "var(--ok)"
-          : level === "err"
-          ? "var(--err)"
-          : "var(--muted)";
+    function pushToast(message, level) {
+      const text = String(message || "").trim();
+      if (!text) return;
+      const tone = level === "ok" ? "ok" : level === "err" ? "err" : "muted";
+      const toast = document.createElement("div");
+      toast.className = "toast " + tone;
+      toast.textContent = text;
+      toastRegionEl.appendChild(toast);
+      while (toastRegionEl.children.length > 4) {
+        toastRegionEl.removeChild(toastRegionEl.firstChild);
+      }
+      requestAnimationFrame(() => toast.classList.add("show"));
+      window.setTimeout(() => {
+        toast.classList.remove("show");
+        window.setTimeout(() => {
+          if (toast.parentNode === toastRegionEl) {
+            toastRegionEl.removeChild(toast);
+          }
+        }, 160);
+      }, 3200);
     }
 
-    function authMethodLabel(raw) {
-      const method = String(raw || "").trim().toLowerCase();
-      if (!method) return "--";
-      if (method === "api_key") return "API key";
-      if (method === "openai_sign_in") return "OpenAI sign-in";
-      return method.replace(/_/g, " ");
+    function setAuthMessage(message, level) {
+      pushToast(message, level);
+    }
+
+    function syncAuthCredentialForm() {
+      const providerStatus = state.providerStatus.codex || {};
+      const connected = Boolean(providerStatus.connected);
+      const masked = String(providerStatus.api_key_masked || "");
+      const revealed = String(providerStatus.api_key_revealed || "");
+      if (!connected) {
+        state.providerCredentialRevealed = false;
+      }
+      if (connected && !state.authFormDirty) {
+        const showRevealed = connected && state.providerCredentialRevealed && revealed;
+        authAPIKeyEl.type = showRevealed ? "text" : "password";
+        authAPIKeyEl.value = showRevealed ? revealed : masked;
+        authAccountIDEl.value = String(providerStatus.account_id || "");
+      } else if (!connected && !state.authFormDirty) {
+        authAPIKeyEl.type = "password";
+        authAPIKeyEl.value = "";
+        authAccountIDEl.value = "";
+      } else {
+        authAPIKeyEl.type = state.providerCredentialRevealed ? "text" : "password";
+      }
+      authAPIKeyEl.placeholder = "OpenAI API key";
+      authAccountIDEl.placeholder = "account label (optional)";
+      const revealing = Boolean(state.providerCredentialRevealed);
+      authRevealAPIKeyEl.innerHTML = revealing ? eyeOffIconMarkup : eyeIconMarkup;
+      authRevealAPIKeyEl.setAttribute("aria-label", revealing ? "Hide API key" : "Reveal API key");
+      authRevealAPIKeyEl.setAttribute("title", revealing ? "Hide API key" : "Reveal API key");
+      const hasFieldValue = String(authAPIKeyEl.value || "").trim() !== "";
+      const canReveal = state.authFormDirty ? hasFieldValue : connected && (!!masked || !!revealed);
+      authRevealAPIKeyEl.disabled = state.authBusy || !canReveal;
+    }
+
+    function validateOpenAIAPIKey(apiKey) {
+      const key = String(apiKey || "").trim();
+      if (!key) {
+        return "API key required.";
+      }
+      if (!/^sk-[A-Za-z0-9][A-Za-z0-9._-]{2,}$/.test(key)) {
+        return "Enter a valid OpenAI API key (starts with sk-).";
+      }
+      return "";
     }
 
     function setProviderConfigOpen(open) {
       const isOpen = Boolean(open);
-      providerListPanelEl.classList.toggle("hidden", isOpen);
-      providerConfigPanelEl.classList.toggle("hidden", !isOpen);
+      document.body.classList.toggle("provider-drawer-open", isOpen);
+      providerConfigPanelEl.classList.toggle("open", isOpen);
+      providerConfigPanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      providerDrawerOverlayEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
       if (!isOpen) {
         providerCodexPanelEl.classList.add("hidden");
         state.activeProvider = "";
+        state.providerCredentialRevealed = false;
+        syncAuthCredentialForm();
         renderProviderList();
       }
     }
@@ -1474,7 +1682,6 @@
           '<span class="provider-card-name">' +
           escapeHtml(providerInfo.label) +
           "</span>" +
-          (connected ? '<span class="badge state-synced">connected</span>' : "") +
           "</div>" +
           '<div class="provider-card-desc">' +
           escapeHtml(providerInfo.subtitle || "") +
@@ -1496,8 +1703,12 @@
     function setActiveProvider(providerID) {
       const next = String(providerID || "").trim().toLowerCase();
       state.activeProvider = next;
+      state.authFormDirty = false;
+      state.providerCredentialRevealed = false;
+      state.authBusy = false;
       renderProviderList();
       setProviderConfigOpen(true);
+      setAuthBusy(false);
       const info = providerCatalog.find((item) => item.id === next);
       providerConfigTitleEl.textContent = (info ? info.label : next || "Provider") + " Configuration";
       providerCodexPanelEl.classList.toggle("hidden", next !== "codex");
@@ -1520,128 +1731,111 @@
 
     function setAuthBusy(busy) {
       state.authBusy = Boolean(busy);
-      const ids = [
-        "auth-sign-in",
-        "auth-use-api-key",
-        "auth-save-api-key",
-        "auth-disconnect",
-      ];
+      const ids = ["auth-save-api-key", "auth-disconnect"];
       for (const id of ids) {
         const el = document.getElementById(id);
         if (el) el.disabled = state.authBusy;
       }
-    }
-
-    function toggleApiKeyPanel(open) {
-      authApiKeyPanelEl.classList.toggle("hidden", !open);
+      syncAuthCredentialForm();
     }
 
     function renderAuthStatus(payload) {
       const connected = Boolean(payload && payload.connected);
       const method = payload && payload.auth_method ? String(payload.auth_method) : "";
-      authConnectedEl.textContent = connected ? "yes" : "no";
-      authAccountEl.textContent = connected ? String(payload.account_id || "--") : "--";
-      authMethodEl.textContent = connected ? authMethodLabel(method) : "--";
-      authExpiresEl.textContent = connected ? shortTime(payload.expires_at) : "--";
-      authRefreshEl.textContent = connected ? shortTime(payload.last_refresh_at) : "--";
       state.providerStatus.codex = {
         connected,
         account_id: connected ? String(payload.account_id || "") : "",
         expires_at: connected ? String(payload.expires_at || "") : "",
         last_refresh_at: connected ? String(payload.last_refresh_at || "") : "",
         auth_method: connected ? method : "",
+        api_key_masked: connected ? String(payload.api_key_masked || "") : "",
+        api_key_revealed: connected ? String(payload.api_key || "") : "",
       };
+      if (!connected) {
+        state.providerCredentialRevealed = false;
+      }
       renderProviderList();
-      setAuthStatus(connected ? "connected" : "disconnected", connected ? "ok" : "muted");
+      syncAuthCredentialForm();
+    }
+
+    function renderStoredCredential(payload) {
+      const connected = Boolean(payload && payload.connected);
+      const masked = connected ? String(payload.api_key_masked || "") : "";
+      const revealed = connected ? String(payload.api_key || "") : "";
+      const accountID = connected ? String(payload.account_id || "") : "";
+      state.providerStatus.codex.api_key_masked = masked;
+      state.providerStatus.codex.api_key_revealed = revealed;
+      state.authFormDirty = false;
+      if (!connected) {
+        state.providerCredentialRevealed = false;
+      }
+      if (connected && accountID) {
+        state.providerStatus.codex.account_id = accountID;
+      }
+      syncAuthCredentialForm();
+    }
+
+    async function refreshStoredCredential(reveal) {
+      try {
+        const query = reveal ? "?reveal=true" : "";
+        const credential = await fetchJSON("/v1/auth/codex/credential" + query);
+        renderStoredCredential(credential);
+      } catch (_) {
+        state.providerStatus.codex.api_key_masked = "";
+        state.providerStatus.codex.api_key_revealed = "";
+        state.authFormDirty = false;
+        syncAuthCredentialForm();
+      }
     }
 
     async function refreshAuthStatus() {
       try {
         const status = await fetchJSON("/v1/auth/codex/status");
         renderAuthStatus(status);
+        await refreshStoredCredential(true);
       } catch (err) {
         renderAuthStatus({ connected: false });
-        if (err && err.message && err.message.includes("HTTP 401")) {
-          setAuthStatus("unauthorized", "err");
-        } else {
-          setAuthStatus("status error", "err");
+        state.providerStatus.codex.api_key_masked = "";
+        state.providerStatus.codex.api_key_revealed = "";
+        syncAuthCredentialForm();
+        const shouldNotify =
+          document.body.classList.contains("provider-drawer-open") && state.activeProvider === "codex";
+        if (shouldNotify) {
+          if (err && err.message && err.message.includes("HTTP 401")) {
+            setAuthMessage("Unauthorized. Check operator token.", "err");
+          } else {
+            setAuthMessage("Failed to fetch provider status.", "err");
+          }
         }
       }
     }
 
-    function isRetryableConnectError(err) {
-      const msg = String((err && err.message) || "").toLowerCase();
-      return (
-        msg.includes("authorization_pending") ||
-        msg.includes("authorization pending") ||
-        msg.includes("slow_down") ||
-        msg.includes("slow down") ||
-        msg.includes("pending")
-      );
-    }
-
-    function delay(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    }
-
-    async function completeConnectWithPolling(deviceCode, intervalSeconds, maxAttempts) {
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        try {
-          await postJSON("/v1/auth/codex/connect/complete", {
-            actor: authActor(),
-            device_code: deviceCode,
-          });
-          return;
-        } catch (err) {
-          const retry = isRetryableConnectError(err) && attempt < maxAttempts - 1;
-          if (!retry) throw err;
-          await delay(Math.max(1, intervalSeconds) * 1000);
-        }
-      }
-    }
-
-    async function signInWithOpenAI() {
+    async function toggleStoredCredentialReveal() {
       if (state.activeProvider !== "codex") {
-        authFlowMessageEl.textContent = "Select Codex in the provider list first.";
         return;
       }
-      toggleApiKeyPanel(false);
-      setAuthBusy(true);
-      setAuthStatus("starting sign-in", "muted");
-      try {
-        const session = await postJSON("/v1/auth/codex/connect/start", { actor: authActor() });
-        state.authSession = session;
-        const userCode = session.user_code || "--";
-        const verifyURL = session.verification_uri || "";
-        authFlowMessageEl.textContent =
-          "Browser sign-in started. If prompted, enter code " + userCode + ".";
-        if (verifyURL) {
-          window.open(verifyURL, "_blank", "noopener,noreferrer");
-        }
-        const deviceCode = String(session.device_code || "").trim();
-        if (!deviceCode) {
-          throw new Error("missing device code");
-        }
-        await completeConnectWithPolling(deviceCode, Number(session.interval_seconds) || 3, 30);
-        state.authSession = null;
-        authFlowMessageEl.textContent = "Provider connected with OpenAI sign-in.";
-        await refreshAuthStatus();
-      } catch (err) {
-        setAuthStatus("sign-in failed", "err");
-        authFlowMessageEl.textContent = err.message || "sign-in error";
-      } finally {
-        setAuthBusy(false);
+      if (!state.providerStatus.codex.connected) {
+        return;
       }
+      state.providerCredentialRevealed = !state.providerCredentialRevealed;
+      syncAuthCredentialForm();
     }
 
     async function saveAPIKey() {
       if (state.activeProvider !== "codex") {
-        authFlowMessageEl.textContent = "Select Codex in the provider list first.";
+        setAuthMessage("Select Codex in the provider list first.", "err");
         return;
       }
-      const apiKey = document.getElementById("auth-api-key").value.trim();
-      if (!apiKey) {
-        setAuthStatus("API key required", "err");
+      const enteredAPIKey = authAPIKeyEl.value.trim();
+      const masked = String(state.providerStatus.codex.api_key_masked || "");
+      const revealed = String(state.providerStatus.codex.api_key_revealed || "");
+      const apiKey =
+        !state.authFormDirty && !state.providerCredentialRevealed && enteredAPIKey === masked && revealed
+          ? revealed
+          : enteredAPIKey;
+      const keyValidationError = validateOpenAIAPIKey(apiKey);
+      if (keyValidationError) {
+        setAuthMessage(keyValidationError, "err");
         return;
       }
       setAuthBusy(true);
@@ -1649,31 +1843,35 @@
         await postJSON("/v1/auth/codex/connect/api-key", {
           actor: authActor(),
           api_key: apiKey,
-          account_id: document.getElementById("auth-account-id").value.trim(),
+          account_id: authAccountIDEl.value.trim(),
         });
-        document.getElementById("auth-api-key").value = "";
-        document.getElementById("auth-account-id").value = "";
-        authFlowMessageEl.textContent = "API key saved and provider connected.";
-        toggleApiKeyPanel(false);
+        state.authFormDirty = false;
+        state.providerCredentialRevealed = false;
+        setAuthMessage("API key saved and provider connected.", "ok");
         await refreshAuthStatus();
+        setProviderConfigOpen(false);
       } catch (err) {
-        setAuthStatus("API key save failed", "err");
-        authFlowMessageEl.textContent = err.message || "API key auth error";
+        setAuthMessage(err.message || "API key auth error.", "err");
       } finally {
         setAuthBusy(false);
       }
     }
 
     async function disconnectProvider() {
+      const confirmed = window.confirm("Are you sure you wish to delete these credentials?");
+      if (!confirmed) {
+        return;
+      }
       setAuthBusy(true);
       try {
         await postJSON("/v1/auth/codex/disconnect", { actor: authActor() });
-        state.authSession = null;
-        authFlowMessageEl.textContent = "Provider signed out.";
+        state.authFormDirty = false;
+        state.providerCredentialRevealed = false;
+        setAuthMessage("Credential deleted.", "ok");
         await refreshAuthStatus();
+        setProviderConfigOpen(false);
       } catch (err) {
-        setAuthStatus("sign out failed", "err");
-        authFlowMessageEl.textContent = err.message || "sign out error";
+        setAuthMessage(err.message || "Delete error.", "err");
       } finally {
         setAuthBusy(false);
       }
@@ -2686,7 +2884,6 @@
     podCreateSubmitEl.addEventListener("click", () => {
       void startLoopFromIssue();
     });
-    document.getElementById("auth-token").addEventListener("change", refreshAuthStatus);
     document.getElementById("override-apply").addEventListener("click", applyOverride);
     document.getElementById("provider-back").addEventListener("click", () => setProviderConfigOpen(false));
     providerListEl.addEventListener("click", (ev) => {
@@ -2699,10 +2896,18 @@
         configureProvider(providerID);
       }
     });
-    document.getElementById("auth-sign-in").addEventListener("click", signInWithOpenAI);
-    document.getElementById("auth-use-api-key").addEventListener("click", () => toggleApiKeyPanel(true));
     document.getElementById("auth-save-api-key").addEventListener("click", saveAPIKey);
     document.getElementById("auth-disconnect").addEventListener("click", disconnectProvider);
+    authAPIKeyEl.addEventListener("input", () => {
+      state.authFormDirty = true;
+      syncAuthCredentialForm();
+    });
+    authAccountIDEl.addEventListener("input", () => {
+      state.authFormDirty = true;
+    });
+    document.getElementById("auth-reveal-api-key").addEventListener("click", () => {
+      void toggleStoredCredentialReveal();
+    });
     document.getElementById("project-add").addEventListener("click", openProjectEditor);
     document.getElementById("project-save").addEventListener("click", saveProject);
     document.getElementById("project-cancel").addEventListener("click", () => {
@@ -2731,8 +2936,10 @@
       });
     });
     sidebarOverlayEl.addEventListener("click", () => setSidebarOpen(false));
+    providerDrawerOverlayEl.addEventListener("click", () => setProviderConfigOpen(false));
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") setSidebarOpen(false);
+      if (ev.key === "Escape") setProviderConfigOpen(false);
       if (ev.key.toLowerCase() === "n") {
         const target = ev.target;
         const editing =

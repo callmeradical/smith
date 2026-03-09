@@ -103,6 +103,7 @@ Audit entries include actor, timestamp, provider, scope, and correlation ID.
 - `internal/source/provider/AuthManager`
 - `internal/source/provider/TokenStore` interface
 - `internal/source/provider/FileTokenStore` (0600 permissions)
+- `internal/source/provider/SecretTokenStore` (Kubernetes Secret-backed token persistence)
 - `internal/source/provider/MockDeviceAuthClient` (device-style flow harness)
 
 Lifecycle behavior:
@@ -120,6 +121,8 @@ Lifecycle behavior:
 
 Environment variables:
 - `SMITH_AUTH_STORE_PATH` for auth token storage path.
+- `SMITH_AUTH_STORE_BACKEND` (`file` or `kubernetes`).
+- `SMITH_AUTH_STORE_K8S_NAMESPACE`, `SMITH_AUTH_STORE_K8S_SECRET`, `SMITH_AUTH_STORE_K8S_KEY` for Kubernetes-backed storage.
 - `SMITH_OPERATOR_TOKEN` for operator auth gating.
 
 Auth lifecycle actions emit audit records through Smith audit append path.

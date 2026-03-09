@@ -34,6 +34,13 @@ type AuthStatus struct {
 	LastRefreshAt time.Time
 }
 
+type StoredCredential struct {
+	Connected  bool
+	AccountID  string
+	AuthMethod string
+	APIKey     string
+}
+
 type DeviceAuthSession struct {
 	DeviceCode      string    `json:"device_code"`
 	UserCode        string    `json:"user_code"`
@@ -163,6 +170,25 @@ func (m *AuthManager) ConnectAPIKey(ctx context.Context, actor string, apiKey st
 	}
 	_ = m.record(ctx, actor, "connected-api-key", map[string]string{"account_id": token.AccountID})
 	return token, nil
+}
+
+func (m *AuthManager) StoredCredential(ctx context.Context) (StoredCredential, error) {
+	token, found, err := m.store.Get(ctx, m.providerID)
+	if err != nil {
+		return StoredCredential{}, err
+	}
+	if !found || strings.TrimSpace(token.AccessToken) == "" {
+		return StoredCredential{}, nil
+	}
+	credential := StoredCredential{
+		Connected:  true,
+		AccountID:  token.AccountID,
+		AuthMethod: token.AuthMethod,
+	}
+	if strings.EqualFold(token.AuthMethod, "api_key") {
+		credential.APIKey = token.AccessToken
+	}
+	return credential, nil
 }
 
 func (m *AuthManager) Disconnect(ctx context.Context, actor string) error {

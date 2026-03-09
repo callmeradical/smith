@@ -33,6 +33,7 @@ Smith is an etcd-backed, Kubernetes-native autonomous orchestration platform.
 ## Deployment
 
 - [Deployment Recommendations](deployment-recommendations.md)
+- [Kubernetes Secrets Encryption Provider Runbook](kubernetes-secrets-encryption-provider-runbook.md)
 - [Cluster Autoscaler Prerequisites and Runbook](cluster-autoscaler-prerequisites-runbook.md)
 - [Image Tagging and Versioning](image-tagging-versioning.md)
 - [Helm Upgrade/Rollback Runbook](helm-upgrade-rollback-runbook.md)

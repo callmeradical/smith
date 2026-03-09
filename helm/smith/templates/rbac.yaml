@@ -26,4 +26,30 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "smith.fullname" . }}-core
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "smith.fullname" . }}-api
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["{{ include "smith.fullname" . }}-auth-store"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "smith.fullname" . }}-api
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "smith.serviceAccountName" (dict "component" "api" "root" .) }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "smith.fullname" . }}-api
 {{- end }}
