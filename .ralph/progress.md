@@ -195,3 +195,45 @@ Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309
   - Useful context
   - trivy scans Go binaries copied into runtime; builder Go patch level directly affects runtime vulnerability gates.
 ---
+## [2026-03-09 05:28:11 EDT] - US-005: Support skills volume mount contract
+Thread: ses_742e22
+Run: 20260309-043624-64079 (iteration 5)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-5.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-5.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 60c68e4 feat(base-image): support fixed skills mount path
+- Post-commit status: dirty (`.ralph/runs/run-20260309-043624-64079-iter-5.log`)
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/check-base-internal-binaries-smoke.sh loop-base:local -> PASS
+  - Command: ./scripts/check-base-skills-mount-smoke.sh loop-base:local -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
+  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
+  - Command: mkdir -p tmp-skills && echo "example-skill" > tmp-skills/example.txt && docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'ls -la /home/dev/.codex/skills' -> PASS
+  - Command: hadolint Dockerfile -> PASS
+  - Command: shellcheck scripts/*.sh -> PASS
+  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
+  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
+- Files changed:
+  - Dockerfile
+  - scripts/check-base-skills-mount-smoke.sh
+  - README.md
+  - AGENTS.md
+  - artifacts/sbom-loop-base.spdx.json
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260309-043624-64079-iter-5.log
+- What was implemented
+  - Added fixed runtime skills directory `/home/dev/.codex/skills` in the base image build and preserved runtime-user ownership/readability.
+  - Added `scripts/check-base-skills-mount-smoke.sh` to validate mounted and unmounted skills path behavior, including mounted-file content preservation.
+  - Documented the skills mount contract, behavior intent, and smoke verification commands in README and AGENTS.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - A sentinel-file mount check is a reliable way to validate that startup behavior does not overwrite host-mounted content.
+  - Gotchas encountered
+  - Creating host test files under `tmp-skills/` should be cleaned before the final commit to avoid artifact drift.
+  - Useful context
+  - `.ralph/runs/*iter-5.log` can continue updating after commands and may require a final sync commit for clean status.
+---
