@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-09 04:48:43 | run=20260309-043624-64079 | iter=1 | mode=build | story=US-001 | duration=739s | status=success
 
 ## Events
 
@@ -10,3 +11,8 @@
 [2026-03-09 04:42:17] Completed US-001 verification: story checks passed (including non-Alpine rejection); global gates run with one expected smoke fail for missing codex in current image
 [2026-03-09 04:44:40] Updated .ralph/progress.md with US-001 run summary, verification results, and commit details
 [2026-03-09 04:47:17] Finalized progress entry metadata for US-001 with final commit hash and clean status
+[2026-03-09 04:48:43] ITERATION 1 end (duration=739s)
+[2026-03-09 04:48:45] ITERATION 2 start (mode=build story=US-002)
+[2026-03-09 04:49:46] US-002: context loaded; scanning existing codex checks and docker verification scripts
+[2026-03-09 04:51:04] US-002 major change: Dockerfile now installs Codex CLI from npm latest channel and verifies codex is on PATH during build
+[2026-03-09 04:52:15] US-002 verification complete: docker build passed; codex smoke passed; global mixed smoke now fails at missing git (US-003 scope); hadolint/shellcheck/trivy/syft passed

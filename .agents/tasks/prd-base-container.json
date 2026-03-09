@@ -85,7 +85,7 @@
     {
       "id": "US-001",
       "title": "Define Alpine-based base image skeleton and runtime user",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [],
       "description": "As a platform engineer, I want a canonical Alpine-based Dockerfile skeleton so every loop starts from a consistent runtime baseline.",
       "acceptanceCriteria": [
@@ -96,13 +96,13 @@
         "Document the base image tag and rationale in repo docs."
       ],
       "startedAt": "2026-03-09T08:36:24.557751+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T08:36:24.557954+00:00"
+      "completedAt": "2026-03-09T08:48:43.389278+00:00",
+      "updatedAt": "2026-03-09T08:48:43.388713+00:00"
     },
     {
       "id": "US-002",
       "title": "Install Codex CLI in runtime image",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-001"
       ],
@@ -113,7 +113,10 @@
         "Example: `docker run --rm loop-base:local codex --version` returns a valid semantic version string.",
         "Negative case: if install step fails or binary is missing from PATH, smoke test exits non-zero and story is not complete.",
         "Record the installation command in Dockerfile comments or docs for maintainability."
-      ]
+      ],
+      "startedAt": "2026-03-09T08:48:45.459202+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T08:48:45.459445+00:00"
     },
     {
       "id": "US-003",
