@@ -1,0 +1,10 @@
+# Activity Log
+
+## Run Summary
+
+## Events
+
+[2026-03-09 04:36:24] ITERATION 1 start (mode=build story=US-001)
+[2026-03-09 04:36:48] Start US-001 implementation: audit guardrails, errors, PRD, and repository state
+[2026-03-09 04:39:02] Implemented US-001 core changes: added Alpine root Dockerfile with non-root dev user, working directory/shell defaults, and Alpine base enforcement; documented base tag rationale in README
+[2026-03-09 04:42:17] Completed US-001 verification: story checks passed (including non-Alpine rejection); global gates run with one expected smoke fail for missing codex in current image

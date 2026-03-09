@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "project": "Loop Base Container",
+  "overview": "Define a reusable base container image for all loops that standardizes runtime behavior, includes Codex CLI, ships common developer tooling, bundles internal binaries, and supports mounting skills as a volume at a fixed in-container path.",
+  "goals": [
+    "Provide one consistent base image definition used by every loop in the system",
+    "Include Codex CLI and a practical developer toolchain out of the box",
+    "Bundle internal binaries in the runtime image via deterministic multi-stage build",
+    "Guarantee a stable skills mount location at /home/dev/.codex/skills"
+  ],
+  "nonGoals": [
+    "No orchestration or runtime deployment-definition changes outside image definition",
+    "No CI/CD pipeline wiring changes in this phase",
+    "No runtime secret-management redesign"
+  ],
+  "successMetrics": [
+    "All target loops can build and start successfully using this base image without per-loop environment customization",
+    "Codex CLI, required developer tools, and internal binaries are available in runtime smoke tests",
+    "Security quality gate reports zero critical vulnerabilities at merge time"
+  ],
+  "openQuestions": [
+    "Which exact internal binary names and versions must be bundled in v1?",
+    "Which container registry/repository path should publish the canonical base image?",
+    "Should pnpm be installed via corepack or standalone package manager install?",
+    "What is the minimum supported CPU architecture set (amd64 only vs amd64+arm64)?"
+  ],
+  "stack": {
+    "framework": "Docker multi-stage build",
+    "hosting": "Existing container registry in current infrastructure (TBD)",
+    "database": "None",
+    "auth": "Not applicable for the image artifact; runtime auth remains owned by loop services"
+  },
+  "routes": [],
+  "uiNotes": [
+    "No UI routes or screens are required; deliverable is a container image definition and verification scripts."
+  ],
+  "dataModel": [
+    {
+      "entity": "BaseContainerSpec",
+      "fields": [
+        "baseImage",
+        "osPackages",
+        "codexInstallMethod",
+        "internalBinaries",
+        "skillsMountPath",
+        "entrypoint",
+        "defaultUser"
+      ]
+    },
+    {
+      "entity": "QualityGateResult",
+      "fields": [
+        "buildStatus",
+        "smokeStatus",
+        "lintStatus",
+        "securityStatus",
+        "sbomPath",
+        "timestamp"
+      ]
+    }
+  ],
+  "importFormat": {
+    "description": "Not applicable. No external import payload is required for this feature.",
+    "example": {}
+  },
+  "rules": [
+    "Base runtime image must be Alpine-based.",
+    "Codex CLI must be installed during image build and be executable in the final runtime image.",
+    "Developer toolchain must include: git, curl, jq, bash, ca-certificates, make, node, npm or pnpm, python3, pip, and ripgrep.",
+    "Internal binaries must be produced in a builder stage and copied into the runtime stage.",
+    "Skills mount path is fixed at /home/dev/.codex/skills and must be readable by the runtime user.",
+    "Image verification must include smoke test, lint checks, vulnerability scan, and SBOM generation.",
+    "No CI/CD pipeline integration changes are part of this iteration; commands must still run locally/reproducibly."
+  ],
+  "qualityGates": [
+    "docker build -t loop-base:local .",
+    "docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version'",
+    "docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills'",
+    "hadolint Dockerfile",
+    "shellcheck scripts/*.sh",
+    "trivy image --severity CRITICAL --exit-code 1 loop-base:local",
+    "syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json"
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Define Alpine-based base image skeleton and runtime user",
+      "status": "in_progress",
+      "dependsOn": [],
+      "description": "As a platform engineer, I want a canonical Alpine-based Dockerfile skeleton so every loop starts from a consistent runtime baseline.",
+      "acceptanceCriteria": [
+        "Create or update Dockerfile to use an Alpine base image and define a non-root runtime user with a stable home directory.",
+        "Set default working directory and shell behavior required by loop execution.",
+        "Example: running `docker run --rm loop-base:local sh -lc 'id && pwd'` shows non-root user and expected working directory.",
+        "Negative case: if Dockerfile uses non-Alpine base, validation fails with explicit message and build is rejected.",
+        "Document the base image tag and rationale in repo docs."
+      ],
+      "startedAt": "2026-03-09T08:36:24.557751+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T08:36:24.557954+00:00"
+    },
+    {
+      "id": "US-002",
+      "title": "Install Codex CLI in runtime image",
+      "status": "open",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As a loop runtime consumer, I want Codex CLI preinstalled so loop agents can run without manual bootstrapping.",
+      "acceptanceCriteria": [
+        "Add Codex CLI installation steps to Docker build and ensure binary is available on PATH in final stage.",
+        "Use latest install channel during build (no version pin), as specified for v1.",
+        "Example: `docker run --rm loop-base:local codex --version` returns a valid semantic version string.",
+        "Negative case: if install step fails or binary is missing from PATH, smoke test exits non-zero and story is not complete.",
+        "Record the installation command in Dockerfile comments or docs for maintainability."
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Add common developer tooling to image",
+      "status": "open",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As an engineer running loops, I want common development tools preinstalled so scripts and diagnostics work consistently across loops.",
+      "acceptanceCriteria": [
+        "Install required packages in Dockerfile with explicit commands, including `apk add --no-cache bash git curl jq ca-certificates make python3 py3-pip ripgrep nodejs npm` (or Alpine-equivalent package names available in target repo).",
+        "Install pnpm support via approved mechanism (corepack enable or explicit package install) and document which method was used.",
+        "Example: running tool checks in container returns success for git, curl, jq, make, node, npm/pnpm, python3, pip, and rg.",
+        "Negative case: if any required tool command is missing, smoke test reports the exact missing binary and fails.",
+        "Keep final image layer changes minimal by cleaning package caches where applicable."
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Bundle internal binaries via multi-stage build",
+      "status": "open",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As a platform engineer, I want internal binaries compiled in a builder stage and copied into runtime so builds are repeatable and runtime remains slim.",
+      "acceptanceCriteria": [
+        "Implement multi-stage Docker build where internal binaries are produced in a dedicated builder stage and copied into the runtime stage.",
+        "Place binaries in a documented runtime directory on PATH (for example `/usr/local/bin`).",
+        "Example: runtime container executes each required internal binary with `--version` successfully.",
+        "Negative case: if a binary is present in builder but not copied to runtime, smoke verification fails and names the missing binary.",
+        "Document builder inputs and expected artifacts so future binary additions follow the same pattern."
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Support skills volume mount contract",
+      "status": "open",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As a loop executor, I want a stable in-container skills mount path so external skill volumes can be attached consistently.",
+      "acceptanceCriteria": [
+        "Create and document fixed skills directory `/home/dev/.codex/skills` with runtime-user read access.",
+        "Ensure runtime behavior does not overwrite mounted content at startup.",
+        "Example: with `-v $(pwd)/tmp-skills:/home/dev/.codex/skills`, container lists mounted files from host.",
+        "Negative case: starting container without mounted skills must not fail; path exists and remains empty/readable.",
+        "Add a mount-path smoke test script that validates both mounted and unmounted scenarios."
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Add reproducible verification and security gates",
+      "status": "open",
+      "dependsOn": [
+        "US-002",
+        "US-003",
+        "US-004",
+        "US-005"
+      ],
+      "description": "As a maintainer, I want deterministic quality gate commands for build, smoke, lint, vulnerability scanning, and SBOM generation so image quality is enforceable.",
+      "acceptanceCriteria": [
+        "Provide script or documented command set that runs all top-level `qualityGates` in order and exits non-zero on first failure.",
+        "Include lint tooling invocation commands (`hadolint Dockerfile` and `shellcheck scripts/*.sh`) and required setup notes.",
+        "Include security scan command `trivy image --severity CRITICAL --exit-code 1 loop-base:local` and SBOM command `syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json`.",
+        "Example: running the full gate sequence after a valid build completes successfully and writes the SBOM artifact file.",
+        "Negative case: introducing a known critical-vulnerability image tag causes trivy gate to fail with non-zero exit code.",
+        "No CI/CD workflow files are modified in this story; only local/reusable command definitions are added."
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Document base image usage in loop definitions",
+      "status": "open",
+      "dependsOn": [
+        "US-006"
+      ],
+      "description": "As a loop author, I want clear usage documentation so each new loop can reference this base image and mount skills correctly.",
+      "acceptanceCriteria": [
+        "Add documentation showing how loop definitions reference the base image and mount skills at `/home/dev/.codex/skills`.",
+        "Include examples for local development and production-like execution contexts.",
+        "Example: sample loop definition starts successfully using the base image and mounted skills path.",
+        "Negative case: misconfigured mount path example is documented with expected failure symptoms and correction.",
+        "Documentation explicitly lists all bundled tools and internal binaries verified by quality gates."
+      ]
+    }
+  ]
+}

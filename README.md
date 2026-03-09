@@ -45,9 +45,21 @@ Smith is split into control-plane and data-plane components.
 
 - Helm chart: `helm/smith`
 - Dockerfiles: `docker/`
+- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
 - Core implementation: `internal/source/`
 - Supporting docs: `docs/`
 - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+
+## Loop Base Container Baseline
+
+The canonical loop base container skeleton is defined in the repository root
+`Dockerfile` and currently uses `alpine:3.21`.
+
+Why Alpine for the baseline:
+
+- small runtime footprint for faster image distribution,
+- simple package/runtime surface for reproducible loop environments,
+- clear security patch cadence with explicit minor tag pinning.
 
 ## Key API Endpoints
 
