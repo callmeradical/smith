@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"smith/internal/source/gitpolicy"
@@ -58,13 +59,20 @@ type SSHAuth struct {
 
 type JobRequest struct {
 	Namespace                 string
+	EtcdEndpoints             []string
 	LoopID                    string
 	CorrelationID             string
+	ProviderID                string
+	InvocationMethod          string
+	SourceType                string
+	SourceRef                 string
 	JobName                   string
 	Labels                    map[string]string
 	ServiceAccountName        string
 	Image                     string
 	ImagePullPolicy           string
+	WorkspaceSeedImage        string
+	WorkspaceSeedPullPolicy   string
 	Git                       GitContext
 	SkillMounts               []SkillMount
 	GitPolicy                 *gitpolicy.Policy
@@ -73,8 +81,12 @@ type JobRequest struct {
 	EnableJournalPolicyConfig bool
 	GitAuth                   *GitAuthConfig
 	HandoffConfigMapName      string
+	PRDConfigMapName          string
+	PRDConfigMapKey           string
+	WorkspacePRDPath          string
 	RuntimeSecretName         string
 	RuntimeCredentialsKey     string
+	RuntimeCredentialsValue   string
 	BackoffLimit              int32
 	ActiveDeadlineSeconds     int64
 	TTLSecondsAfterFinished   int32
@@ -109,6 +121,7 @@ type PodSpec struct {
 	ServiceAccountName string
 	RestartPolicy      string
 	Volumes            []Volume
+	InitContainers     []Container
 	Containers         []Container
 }
 
@@ -116,6 +129,7 @@ type Volume struct {
 	Name          string
 	ConfigMapName string
 	Optional      bool
+	EmptyDir      bool
 }
 
 type Container struct {
@@ -166,6 +180,14 @@ func NewJobGenerator(jobs JobsAPI) *JobGenerator {
 }
 
 func BuildReplicaJob(req JobRequest) (JobManifest, error) {
+	if strings.TrimSpace(req.PRDConfigMapName) != "" {
+		if strings.TrimSpace(req.PRDConfigMapKey) == "" {
+			req.PRDConfigMapKey = "prd.json"
+		}
+		if strings.TrimSpace(req.WorkspacePRDPath) == "" {
+			req.WorkspacePRDPath = ".agents/tasks/prd.json"
+		}
+	}
 	if err := validateRequest(req); err != nil {
 		return JobManifest{}, err
 	}
@@ -195,14 +217,31 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 		{Name: "STORY_ID", Value: req.LoopID},
 		{Name: "SMITH_LOOP_ID", Value: req.LoopID},
 		{Name: "SMITH_CORRELATION_ID", Value: req.CorrelationID},
+		{Name: "SMITH_ETCD_ENDPOINTS", Value: strings.Join(sanitizeEtcdEndpoints(req.EtcdEndpoints), ",")},
+		{Name: "SMITH_LOOP_PROVIDER", Value: strings.ToLower(strings.TrimSpace(req.ProviderID))},
+		{Name: "SMITH_LOOP_INVOCATION_METHOD", Value: strings.TrimSpace(req.InvocationMethod)},
+		{Name: "SMITH_LOOP_SOURCE_TYPE", Value: strings.TrimSpace(req.SourceType)},
+		{Name: "SMITH_LOOP_SOURCE_REF", Value: strings.TrimSpace(req.SourceRef)},
 		{Name: "SMITH_GIT_REPOSITORY", Value: req.Git.Repository},
 		{Name: "SMITH_GIT_BRANCH", Value: req.Git.Branch},
 		{Name: "SMITH_GIT_COMMIT_SHA", Value: req.Git.CommitSHA},
 		{Name: "SMITH_HANDOFF_PATH", Value: "/smith/handoff/latest.json"},
 	}
-	if req.RuntimeSecretName != "" {
+	if strings.TrimSpace(req.RuntimeCredentialsValue) != "" {
+		env = append(env,
+			EnvVar{Name: "SMITH_RUNTIME_CREDENTIALS", Value: req.RuntimeCredentialsValue},
+			EnvVar{Name: "OPENAI_API_KEY", Value: req.RuntimeCredentialsValue},
+		)
+	} else if req.RuntimeSecretName != "" {
 		env = append(env, EnvVar{
 			Name: "SMITH_RUNTIME_CREDENTIALS",
+			SecretKeyRef: &SecretKeyRef{
+				Name: req.RuntimeSecretName,
+				Key:  req.RuntimeCredentialsKey,
+			},
+		})
+		env = append(env, EnvVar{
+			Name: "OPENAI_API_KEY",
 			SecretKeyRef: &SecretKeyRef{
 				Name: req.RuntimeSecretName,
 				Key:  req.RuntimeCredentialsKey,
@@ -273,6 +312,10 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 
 	volumes := []Volume{
 		{
+			Name:     "workspace",
+			EmptyDir: true,
+		},
+		{
 			Name:          "handoff",
 			ConfigMapName: req.HandoffConfigMapName,
 			Optional:      false,
@@ -281,10 +324,23 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 
 	volumeMounts := []VolumeMount{
 		{
+			Name:      "workspace",
+			MountPath: "/workspace",
+			ReadOnly:  false,
+		},
+		{
 			Name:      "handoff",
 			MountPath: "/smith/handoff",
 			ReadOnly:  true,
 		},
+	}
+	hasPRDConfig := strings.TrimSpace(req.PRDConfigMapName) != ""
+	if hasPRDConfig {
+		volumes = append(volumes, Volume{
+			Name:          "workspace-prd",
+			ConfigMapName: req.PRDConfigMapName,
+			Optional:      false,
+		})
 	}
 	resolvedSkillNames := make([]string, 0, len(req.SkillMounts))
 	for i, skill := range req.SkillMounts {
@@ -307,6 +363,57 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 			EnvVar{Name: "SMITH_SKILL_MOUNTS", Value: strings.Join(resolvedSkillNames, ",")},
 		)
 	}
+	initContainers := []Container{}
+	if seedImage := strings.TrimSpace(req.WorkspaceSeedImage); seedImage != "" {
+		pullPolicy := strings.TrimSpace(req.WorkspaceSeedPullPolicy)
+		if pullPolicy == "" {
+			pullPolicy = req.ImagePullPolicy
+		}
+		initContainers = append(initContainers, Container{
+			Name:            "workspace-seed",
+			Image:           seedImage,
+			ImagePullPolicy: pullPolicy,
+			Command: []string{
+				"sh",
+				"-lc",
+				"set -eu; mkdir -p /workspace; if [ -d /seed ]; then cp -a /seed/. /workspace/; fi",
+			},
+			VolumeMounts: []VolumeMount{
+				{
+					Name:      "workspace",
+					MountPath: "/workspace",
+					ReadOnly:  false,
+				},
+			},
+		})
+	}
+	if hasPRDConfig {
+		targetPath := workspacePRDAbsolutePath(req.WorkspacePRDPath)
+		targetDir := path.Dir(targetPath)
+		sourcePath := "/smith/prd/" + strings.TrimSpace(req.PRDConfigMapKey)
+		initContainers = append(initContainers, Container{
+			Name:            "workspace-prd",
+			Image:           req.Image,
+			ImagePullPolicy: req.ImagePullPolicy,
+			Command: []string{
+				"sh",
+				"-lc",
+				"set -eu; mkdir -p " + shellQuote(targetDir) + "; cp " + shellQuote(sourcePath) + " " + shellQuote(targetPath),
+			},
+			VolumeMounts: []VolumeMount{
+				{
+					Name:      "workspace",
+					MountPath: "/workspace",
+					ReadOnly:  false,
+				},
+				{
+					Name:      "workspace-prd",
+					MountPath: "/smith/prd",
+					ReadOnly:  true,
+				},
+			},
+		})
+	}
 
 	return JobManifest{
 		APIVersion: "batch/v1",
@@ -328,6 +435,7 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 					ServiceAccountName: req.ServiceAccountName,
 					RestartPolicy:      "Never",
 					Volumes:            volumes,
+					InitContainers:     initContainers,
 					Containers: []Container{
 						{
 							Name:            "replica",
@@ -369,6 +477,8 @@ func validateRequest(req JobRequest) error {
 	switch {
 	case strings.TrimSpace(req.Namespace) == "":
 		return fmt.Errorf("%w: namespace is required", ErrInvalidJobRequest)
+	case len(sanitizeEtcdEndpoints(req.EtcdEndpoints)) == 0:
+		return fmt.Errorf("%w: at least one etcd endpoint is required", ErrInvalidJobRequest)
 	case strings.TrimSpace(req.LoopID) == "":
 		return fmt.Errorf("%w: loop id is required", ErrInvalidJobRequest)
 	case strings.TrimSpace(req.CorrelationID) == "":
@@ -385,6 +495,17 @@ func validateRequest(req JobRequest) error {
 		return fmt.Errorf("%w: git commit sha is required", ErrInvalidJobRequest)
 	case strings.TrimSpace(req.HandoffConfigMapName) == "":
 		return fmt.Errorf("%w: handoff configmap is required", ErrInvalidJobRequest)
+	}
+	if strings.TrimSpace(req.PRDConfigMapName) != "" {
+		if strings.TrimSpace(req.PRDConfigMapKey) == "" {
+			return fmt.Errorf("%w: prd configmap key is required when prd configmap is set", ErrInvalidJobRequest)
+		}
+		if strings.Contains(strings.TrimSpace(req.PRDConfigMapKey), "/") {
+			return fmt.Errorf("%w: prd configmap key must not contain '/'", ErrInvalidJobRequest)
+		}
+		if workspacePathUnsafe(req.WorkspacePRDPath) {
+			return fmt.Errorf("%w: workspace prd path is unsafe", ErrInvalidJobRequest)
+		}
 	}
 
 	if req.BackoffLimit < 0 || req.ActiveDeadlineSeconds <= 0 || req.TTLSecondsAfterFinished < 0 {
@@ -460,6 +581,23 @@ func validateRequest(req JobRequest) error {
 	return nil
 }
 
+func sanitizeEtcdEndpoints(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]struct{}{}
+	for _, raw := range in {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
 func skillConfigMapName(source string) string {
 	trimmed := strings.TrimSpace(source)
 	name := strings.TrimPrefix(trimmed, "local://skills/")
@@ -531,4 +669,37 @@ func sanitizeKubernetesLabelValue(raw string) string {
 		out = "x"
 	}
 	return out + "-" + suffix
+}
+
+func workspacePathUnsafe(raw string) bool {
+	value := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if value == "" {
+		return true
+	}
+	if strings.HasPrefix(value, "/") {
+		return true
+	}
+	cleaned := path.Clean(value)
+	if cleaned == "." || cleaned == ".." {
+		return true
+	}
+	if strings.HasPrefix(cleaned, "../") || strings.Contains(cleaned, "/../") {
+		return true
+	}
+	return false
+}
+
+func workspacePRDAbsolutePath(raw string) string {
+	relative := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if relative == "" || workspacePathUnsafe(relative) {
+		relative = ".agents/tasks/prd.json"
+	}
+	cleaned := path.Clean(relative)
+	cleaned = strings.TrimPrefix(cleaned, "./")
+	return path.Join("/workspace", cleaned)
+}
+
+func shellQuote(raw string) string {
+	escaped := strings.ReplaceAll(raw, `'`, `'\''`)
+	return "'" + escaped + "'"
 }

@@ -14,6 +14,11 @@ SMITH_REPLICA_IMAGE ?= ghcr.io/smith/replica:v0.1.0
 SMITH_CONSOLE_IMAGE ?= ghcr.io/smith/console:v0.1.0
 SMITH_TEST_ARTIFACTS_DIR ?= /tmp/smith-test-artifacts
 SMITH_FIXTURE_DIR ?= /tmp/smith-test-repo
+SMITH_K3D_CLUSTER_NAME ?= smith-int
+SMITH_LOCAL_CORE_IMAGE ?= smith-core:local
+SMITH_LOCAL_API_IMAGE ?= smith-api:local
+SMITH_LOCAL_REPLICA_IMAGE ?= smith-replica:local
+SMITH_LOCAL_CONSOLE_IMAGE ?= smith-console:local
 SMITH_MIN_GO_VERSION ?= 1.22.0
 SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
 SMITH_MIN_HELM_VERSION ?= 3.13.0
@@ -224,7 +229,23 @@ build: ## Build all Go binaries
 	go build ./...
 
 build-local: ## Build local binaries for deploy-local workflow
-	go build ./cmd/smith-core ./cmd/smith-api ./cmd/smith-replica ./cmd/smithctl
+	go build ./cmd/smith ./cmd/smith-core ./cmd/smith-api ./cmd/smith-replica ./cmd/smithctl
+	docker build -f docker/core.Dockerfile -t "$(SMITH_LOCAL_CORE_IMAGE)" .
+	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
+	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
+	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
+	@set -euo pipefail; \
+	if k3d cluster list | awk 'NR>1 {print $$1}' | grep -q "^$(SMITH_K3D_CLUSTER_NAME)$$"; then \
+	  echo "build-local: importing local images into k3d cluster $(SMITH_K3D_CLUSTER_NAME)"; \
+	  k3d image import \
+	    "$(SMITH_LOCAL_CORE_IMAGE)" \
+	    "$(SMITH_LOCAL_API_IMAGE)" \
+	    "$(SMITH_LOCAL_REPLICA_IMAGE)" \
+	    "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
+	    -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+	else \
+	  echo "build-local: k3d cluster $(SMITH_K3D_CLUSTER_NAME) not found; skipped k3d image import"; \
+	fi
 
 image-build-local: ## Build local Smith container images with deploy-local tags
 	docker build -f docker/core.Dockerfile -t "$(SMITH_CORE_IMAGE)" .

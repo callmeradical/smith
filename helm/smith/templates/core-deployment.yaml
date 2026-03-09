@@ -36,6 +36,12 @@ spec:
               value: "{{ .Values.core.replicaImage.repository }}:{{ .Values.core.replicaImage.tag }}"
             - name: SMITH_REPLICA_IMAGE_PULL_POLICY
               value: {{ .Values.core.replicaImage.pullPolicy | quote }}
+            {{- if and (ne (trim .Values.core.workspaceSeedImage.repository) "") (ne (trim .Values.core.workspaceSeedImage.tag) "") }}
+            - name: SMITH_WORKSPACE_SEED_IMAGE
+              value: "{{ .Values.core.workspaceSeedImage.repository }}:{{ .Values.core.workspaceSeedImage.tag }}"
+            - name: SMITH_WORKSPACE_SEED_IMAGE_PULL_POLICY
+              value: {{ .Values.core.workspaceSeedImage.pullPolicy | quote }}
+            {{- end }}
             - name: SMITH_LOOP_POLICY_MAX_ATTEMPTS
               value: {{ .Values.core.loopPolicy.maxAttempts | quote }}
             - name: SMITH_LOOP_POLICY_BACKOFF_INITIAL

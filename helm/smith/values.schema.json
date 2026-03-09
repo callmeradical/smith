@@ -134,6 +134,19 @@
       },
       "required": ["repository", "tag", "pullPolicy"]
     },
+    "optionalComponentImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      },
+      "required": ["repository", "tag", "pullPolicy"]
+    },
     "serviceAccount": {
       "type": "object",
       "additionalProperties": false,
@@ -270,6 +283,7 @@
         "autoscaling": { "$ref": "#/definitions/autoscaling" },
         "image": { "$ref": "#/definitions/componentImage" },
         "replicaImage": { "$ref": "#/definitions/componentImage" },
+        "workspaceSeedImage": { "$ref": "#/definitions/optionalComponentImage" },
         "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
         "loopPolicy": { "$ref": "#/definitions/loopPolicy" },
         "replicaTemplate": { "$ref": "#/definitions/replicaTemplate" },
