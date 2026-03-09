@@ -57,14 +57,18 @@ Implemented today:
 - `POST /v1/ingress/github/issues` ingest one or more GitHub issues into loop specs.
 - `POST /v1/ingress/prd` ingest markdown/json PRD inputs into loop specs.
 - `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
+- `GET /v1/loops/{id}/runtime` to resolve namespace/pod/container attachability for console terminal control.
+- `POST /v1/loops/{id}/control/attach`, `/command`, and `/detach` for authenticated operator interactive terminal control.
 - `POST /v1/control/override` for operator state overrides with reason/audit trail.
 - `POST /v1/auth/codex/connect/start|complete`, `GET /v1/auth/codex/status`, and `POST /v1/auth/codex/disconnect` for provider auth lifecycle.
 - `GET /v1/reporting/cost?loop_id={id}` for loop token/cost aggregation from journal metadata.
 
 Aspirational (planned, not implemented yet):
 - `GET /v1/loops/{id}/handoffs`, `GET /v1/loops/{id}/overrides`, and `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
-- `POST /v1/loops/{id}/control/attach`, `/detach`, and `/command` for authenticated operator interactive control actions.
 - `GET /v1/audit?loop_id={id}` for immutable operator/auth action audit records.
+
+Terminal control API contracts, required auth/RBAC permissions, and troubleshooting are documented in:
+- [`docs/loop-ingress-and-cli.md`](docs/loop-ingress-and-cli.md)
 
 ## Local Git Hooks
 

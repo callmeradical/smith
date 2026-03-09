@@ -333,7 +333,9 @@ async function mockConsoleApi(page, options = {}) {
     const stdout =
       command === 'pwd'
         ? `/workspace/${loopID}\n`
-        : `executed: ${command}\n`;
+        : command === 'echo ok'
+          ? 'ok\n'
+          : `executed: ${command}\n`;
     for (const line of stdout.split('\n').map((value) => value.trim()).filter(Boolean)) {
       await emitJournal(loopID, actor, line, 'info');
     }
@@ -528,12 +530,12 @@ test('supports pod detail terminal control states', async ({ page }) => {
   await expect(page.locator('#pod-view-command')).toBeEnabled();
   await expect(page.locator('#pod-view-control-message')).toContainText('Press Enter or Run');
 
-  await page.locator('#pod-view-command').fill('pwd');
+  await page.locator('#pod-view-command').fill('echo ok');
   await expect(page.locator('#pod-view-run')).toBeEnabled();
   await page.locator('#pod-view-command').press('Enter');
   await expect(page.locator('#pod-view-terminal-state')).toHaveText('attached');
   await expect(page.locator('#pod-view-command')).toHaveValue('');
-  await expect(page.locator('#terminal')).toContainText('/workspace/loop-alpha');
+  await expect(page.locator('#terminal')).toContainText('ok');
   await expect
     .poll(() => api.commandPayloads.length)
     .toBe(1);

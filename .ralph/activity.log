@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-09 05:45:55 | run=20260309-043236-60668 | iter=5 | mode=build | story=US-005 | duration=734s | status=success
 - 2026-03-09 05:33:39 | run=20260309-043236-60668 | iter=4 | mode=build | story=US-004 | duration=1467s | status=success
 - 2026-03-09 05:09:10 | run=20260309-043236-60668 | iter=3 | mode=build | story=US-003 | duration=825s | status=success
 - 2026-03-09 04:55:23 | run=20260309-043236-60668 | iter=2 | mode=build | story=US-002 | duration=707s | status=success
@@ -38,3 +39,9 @@
 [2026-03-09 05:41:19] Implemented US-005 backend hardening: unauthorized audit rejection, per-session command rate limiting, explicit API error codes, and added smith-api tests for auth/rate/audit behavior
 [2026-03-09 05:42:25] Completed required verification gates for US-005: make build, go tests (api/source/all), frontend Playwright suite, and test matrix all passing
 [2026-03-09 05:44:12] Updated US-005 progress entry with commit hash, verification results, and implementation notes
+[2026-03-09 05:45:55] ITERATION 5 end (duration=734s)
+[2026-03-09 05:45:57] ITERATION 6 start (mode=build story=US-006)
+[2026-03-09 05:46:47] US-006 iteration 6 start: reviewing guardrails, errors, and PRD context before implementation
+[2026-03-09 05:52:06] US-006: added API unit/integration-style tests for runtime resolution, lifecycle, command validation, and simulated kube exec success/failure
+[2026-03-09 05:54:44] US-006: updated Playwright terminal flow to use echo ok and refreshed terminal-control docs/contracts in loop-ingress-and-cli + README
+[2026-03-09 05:55:41] US-006: completed full verification gates (make build, go test suites, npm frontend tests, make test-matrix) all passing

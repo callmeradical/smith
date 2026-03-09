@@ -217,7 +217,7 @@
     {
       "id": "US-005",
       "title": "Harden security and operational limits for web terminal control",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-003"
       ],
@@ -231,13 +231,13 @@
         "Negative case: rapid burst exceeding rate policy returns throttling response and records throttle reason in audit metadata."
       ],
       "startedAt": "2026-03-09T09:33:41.446244+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T09:33:41.446537+00:00"
+      "completedAt": "2026-03-09T09:45:55.314595+00:00",
+      "updatedAt": "2026-03-09T09:45:55.313731+00:00"
     },
     {
       "id": "US-006",
       "title": "Verification coverage and operator documentation",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-001",
         "US-002",
@@ -253,7 +253,10 @@
         "Update docs/loop-ingress-and-cli.md and console-facing docs with API contracts, required permissions, and troubleshooting steps.",
         "Example: test suite demonstrates attach plus `echo ok` command flow and terminal output visibility in UI artifacts.",
         "Negative case: documented troubleshooting includes pod missing/not-running scenario and expected console/API error surfaces."
-      ]
+      ],
+      "startedAt": "2026-03-09T09:45:57.378289+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T09:45:57.378507+00:00"
     }
   ]
 }
