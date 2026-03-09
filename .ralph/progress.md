@@ -201,3 +201,38 @@ Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043
   - Useful context
   - Pre-commit hooks run `go test ./cmd/...` and can append to iteration run logs after commit, requiring a follow-up commit to restore clean status.
 ---
+## [2026-03-09 05:57:23 EDT] - US-006: Verification coverage and operator documentation
+Thread: codex_60138
+Run: 20260309-043236-60668 (iteration 6)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-6.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-6.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 3adf22a test(terminal-control): expand verification coverage
+- Post-commit status: `.ralph/runs/run-20260309-043236-60668-iter-6.log`
+- Verification:
+  - Command: make build -> PASS
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
+- Files changed:
+  - README.md
+  - cmd/smith-api/main_test.go
+  - cmd/smith-api/pod_exec_runner_test.go
+  - docs/loop-ingress-and-cli.md
+  - test/playwright/console.spec.js
+- What was implemented
+  - Expanded API verification coverage for runtime resolution fallback behavior, attach/detach lifecycle rejection handling, command payload validation, and command execution result handling for non-zero exits and execution transport errors.
+  - Added simulated Kubernetes exec-flow tests for `kubePodExecRunner.Execute` covering success, non-zero exit status mapping, and stream failures with output capture.
+  - Updated Playwright pod detail terminal coverage to explicitly run `echo ok` and verify terminal output visibility before detach.
+  - Updated operator-facing documentation with terminal API contracts, auth/RBAC permissions, and troubleshooting for missing/not-running pods and not-attached command failures.
+- **Learnings for future iterations:**
+  - Patterns discovered
+    - `kubePodExecRunner` can be tested without a live cluster by injecting a fake REST client and remote executor.
+  - Gotchas encountered
+    - Long-running hooks and run logging can mutate `.ralph/runs/*` after a commit; always re-check status and finalize with a cleanup commit.
+  - Useful context
+    - Terminal command API returns structured error codes for validation/auth/rate-limit failures but attach runtime conflicts currently return text error messages.
+---
