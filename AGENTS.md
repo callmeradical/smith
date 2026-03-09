@@ -11,9 +11,10 @@ Build the loop base image:
 docker build -t loop-base:local .
 ```
 
-Run tooling smoke checks:
+Run smoke checks:
 
 ```bash
 ./scripts/check-base-tooling-smoke.sh loop-base:local
 ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+./scripts/check-base-skills-mount-smoke.sh loop-base:local
 ```

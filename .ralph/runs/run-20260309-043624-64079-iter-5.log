@@ -1,0 +1,3035 @@
+2026-03-09T09:22:27.680108Z ERROR codex_core::skills::loader: failed to stat skills entry /Users/lars/.codex/skills/dev-browser/profiles/browser-data/RunningChromeVersion (symlink): No such file or directory (os error 2)
+2026-03-09T09:22:27.680204Z ERROR codex_core::skills::loader: failed to stat skills entry /Users/lars/.codex/skills/dev-browser/profiles/browser-data/SingletonCookie (symlink): No such file or directory (os error 2)
+2026-03-09T09:22:27.680213Z ERROR codex_core::skills::loader: failed to stat skills entry /Users/lars/.codex/skills/dev-browser/profiles/browser-data/SingletonLock (symlink): No such file or directory (os error 2)
+OpenAI Codex v0.111.0 (research preview)
+--------
+workdir: /Users/lars/Dev/smith.base-container-build
+model: gpt-5.3-codex
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: high
+reasoning summaries: none
+session id: 019cd1e7-af13-7101-a95a-775d4ccd9e43
+--------
+user
+# Build
+
+You are an autonomous coding agent. Your task is to complete the work for exactly one story and record the outcome.
+
+## Paths
+- PRD: /Users/lars/Dev/smith.base-container-build/.agents/tasks/prd-base-container.json
+- AGENTS (optional): /Users/lars/Dev/smith.base-container-build/AGENTS.md
+- Progress Log: /Users/lars/Dev/smith.base-container-build/.ralph/progress.md
+- Guardrails: /Users/lars/Dev/smith.base-container-build/.ralph/guardrails.md
+- Guardrails Reference: /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph/references/GUARDRAILS.md
+- Context Reference: /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph/references/CONTEXT_ENGINEERING.md
+- Errors Log: /Users/lars/Dev/smith.base-container-build/.ralph/errors.log
+- Activity Log: /Users/lars/Dev/smith.base-container-build/.ralph/activity.log
+- Activity Logger: /Users/lars/Dev/smith.base-container-build/ralph log
+- No-commit: false
+- Repo Root: /Users/lars/Dev/smith.base-container-build
+- Run ID: 20260309-043624-64079
+- Iteration: 5
+- Run Log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-5.log
+- Run Summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-5.md
+
+## Global Quality Gates (apply to every story)
+- docker build -t loop-base:local .
+- docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version'
+- docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills'
+- hadolint Dockerfile
+- shellcheck scripts/*.sh
+- trivy image --severity CRITICAL --exit-code 1 loop-base:local
+- syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json
+
+## Selected Story (Do not change scope)
+ID: US-005
+Title: Support skills volume mount contract
+
+Story details:
+### US-005: Support skills volume mount contract
+Status: in_progress
+Depends on: US-001
+
+Description:
+As a loop executor, I want a stable in-container skills mount path so external skill volumes can be attached consistently.
+
+Acceptance Criteria:
+- [ ] Create and document fixed skills directory `/home/dev/.codex/skills` with runtime-user read access.
+- [ ] Ensure runtime behavior does not overwrite mounted content at startup.
+- [ ] Example: with `-v $(pwd)/tmp-skills:/home/dev/.codex/skills`, container lists mounted files from host.
+- [ ] Negative case: starting container without mounted skills must not fail; path exists and remains empty/readable.
+- [ ] Add a mount-path smoke test script that validates both mounted and unmounted scenarios.
+
+
+If the story details are empty or missing, STOP and report that the PRD story format could not be parsed.
+
+## Rules (Non-Negotiable)
+- Implement **only** the work required to complete the selected story.
+- Complete all tasks associated with this story (and only this story).
+- Do NOT ask the user questions.
+- Do NOT change unrelated code.
+- Do NOT assume something is unimplemented — confirm by reading code.
+- Implement completely; no placeholders or stubs.
+- If No-commit is true, do NOT commit or push changes.
+- Do NOT edit the PRD JSON (status is handled by the loop).
+- All changes made during the run must be committed (including updates to progress/logs).
+ - Before committing, perform a final **security**, **performance**, and **regression** review of your changes.
+
+## Your Task (Do this in order)
+1. Read /Users/lars/Dev/smith.base-container-build/.ralph/guardrails.md before any code changes.
+2. Read /Users/lars/Dev/smith.base-container-build/.ralph/errors.log for repeated failures to avoid.
+3. Read /Users/lars/Dev/smith.base-container-build/.agents/tasks/prd-base-container.json for global context (do not edit).
+4. Fully audit and read all necessary files to understand the task end-to-end before implementing. Do not assume missing functionality.
+5. If /Users/lars/Dev/smith.base-container-build/AGENTS.md exists, follow its build/test instructions.
+6. Implement only the tasks that belong to US-005.
+7. Run verification commands listed in the story, the global quality gates, and in /Users/lars/Dev/smith.base-container-build/AGENTS.md (if required).
+8. If the project has a build or dev workflow, run what applies:
+   - Build step (e.g., `npm run build`) if defined.
+   - Dev server (e.g., `npm run dev`, `wrangler dev`) if it is the normal validation path.
+   - Confirm no runtime/build errors in the console.
+9. Perform a brief audit before committing:
+   - **Security:** check for obvious vulnerabilities or unsafe handling introduced by your changes.
+   - **Performance:** check for avoidable regressions (extra queries, heavy loops, unnecessary re-renders).
+   - **Regression:** verify existing behavior that could be impacted still works.
+10. If No-commit is false, commit changes using the `$commit` skill.
+    - Stage everything: `git add -A`
+    - Confirm a clean working tree after commit: `git status --porcelain` should be empty.
+    - After committing, capture the commit hash and subject using:
+      `git show -s --format="%h %s" HEAD`.
+11. Append a progress entry to /Users/lars/Dev/smith.base-container-build/.ralph/progress.md with run/commit/test details (format below).
+    If No-commit is true, skip committing and note it in the progress entry.
+
+## Progress Entry Format (Append Only)
+```
+## [Date/Time] - US-005: Support skills volume mount contract
+Thread: [codex exec session id if available, otherwise leave blank]
+Run: 20260309-043624-64079 (iteration 5)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-5.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-5.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: <hash> <subject> (or `none` + reason)
+- Post-commit status: `clean` or list remaining files
+- Verification:
+  - Command: <exact command> -> PASS/FAIL
+  - Command: <exact command> -> PASS/FAIL
+- Files changed:
+  - <file path>
+  - <file path>
+- What was implemented
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Gotchas encountered
+  - Useful context
+---
+```
+
+## Completion Signal
+Only output the completion signal when the **selected story** is fully complete and verified.
+When the selected story is complete, output:
+<promise>COMPLETE</promise>
+
+Otherwise, end normally without the signal.
+
+## Additional Guardrails
+- When authoring documentation, capture the why (tests + implementation intent).
+- If you learn how to run/build/test the project, update /Users/lars/Dev/smith.base-container-build/AGENTS.md briefly (operational only).
+- Keep AGENTS operational only; progress notes belong in /Users/lars/Dev/smith.base-container-build/.ralph/progress.md.
+- If you hit repeated errors, log them in /Users/lars/Dev/smith.base-container-build/.ralph/errors.log and add a Sign to /Users/lars/Dev/smith.base-container-build/.ralph/guardrails.md using /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph/references/GUARDRAILS.md as the template.
+
+## Activity Logging (Required)
+Log major actions to /Users/lars/Dev/smith.base-container-build/.ralph/activity.log using the helper:
+```
+/Users/lars/Dev/smith.base-container-build/ralph log "message"
+```
+Log at least:
+- Start of work on the story
+- After major code changes
+- After tests/verification
+- After updating progress log
+
+## Browser Testing (Required for Frontend Stories)
+If the selected story changes UI, you MUST verify it in the browser:
+1. Load the `dev-browser` skill.
+2. Navigate to the relevant page.
+3. Verify the UI changes work as expected.
+4. Take a screenshot if helpful for the progress log.
+
+A frontend story is NOT complete until browser verification passes.
+
+mcp: MCP_DOCKER starting
+mcp: MCP_DOCKER ready
+mcp startup: ready: MCP_DOCKER
+codex
+I’m starting US-005 now and will follow the repo guardrails first. I’ll open `td` for this session, read the required Ralph/PRD/AGENTS files, then audit the current Docker + scripts behavior before making any changes.
+exec
+/bin/zsh -lc 'td usage --new-session' in /Users/lars/Dev/smith.base-container-build succeeded in 190ms:
+You have access to `td`, a local task management CLI.
+
+NEW SESSION: ses_742e22 on branch: base-container-build
+
+CURRENT SESSION: ses_742e22 [codex_27989] on branch: base-container-build
+WORK SESSION: ws-454a "reopen-gh-2-14-15" (3 issues tagged)
+
+FOCUSED ISSUE: td-f6f789 "Simplified console UX with sidebar and pod tiles" [in_progress]
+  Last handoff (3h ago):
+
+READY TO START (3 issues):
+  td-744ecf "Implement Replica startup memory transfer" P1 feature
+  td-e0abfb "Implement backup/restore and disaster recovery validation" P1 chore
+  td-c38e55 "Add Helm environment overlays and profiles" P1 task
+
+WORKFLOW:
+
+  1. `td start <id>` to begin work
+     Multi-issue: `td ws start "name"` then `td ws tag <ids>`
+  2. `td log "msg"` to track progress
+exec
+/bin/zsh -lc './ralph log "US-005 iteration 5: start story work and preflight review"' in /Users/lars/Dev/smith.base-container-build exited 127 in 51ms:
+zsh:1: no such file or directory: ./ralph
+exec
+/bin/zsh -lc '/Users/lars/Dev/smith.base-container-build/ralph log "US-005 iteration 5: start story work and preflight review"' in /Users/lars/Dev/smith.base-container-build exited 127 in 51ms:
+zsh:1: no such file or directory: /Users/lars/Dev/smith.base-container-build/ralph
+codex
+I opened the required `td` session and now I’m gathering the mandatory repo context files. I also need to locate the `ralph log` helper path since the provided path isn’t present as-is.
+exec
+/bin/zsh -lc 'pwd && ls -la' in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc "rg --files -g '*ralph*'" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc "rg --files -g 'guardrails.md' -g 'errors.log' -g 'prd-base-container.json' -g 'AGENTS.md'" in /Users/lars/Dev/smith.base-container-build succeeded in 50ms:
+/Users/lars/Dev/smith.base-container-build
+total 168
+drwxr-xr-x@ 32 lars  staff   1024 Mar  9 04:39 .
+drwxr-xr-x  36 lars  staff   1152 Mar  9 04:31 ..
+drwxr-xr-x@  3 lars  staff     96 Mar  9 04:32 .agents
+-rw-r--r--@  1 lars  staff     57 Mar  9 04:31 .dockerignore
+-rw-r--r--@  1 lars  staff     72 Mar  9 04:31 .git
+drwxr-xr-x@  5 lars  staff    160 Mar  9 04:31 .githooks
+drwxr-xr-x@  3 lars  staff     96 Mar  9 04:31 .github
+-rw-r--r--@  1 lars  staff    147 Mar  9 04:31 .gitignore
+-rw-r--r--@  1 lars  staff      0 Mar  9 04:31 .gitkeep
+drwxr-xr-x@  8 lars  staff    256 Mar  9 04:36 .ralph
+-rw-r--r--@  1 lars  staff    436 Mar  9 05:12 AGENTS.md
+drwxr-xr-x@  3 lars  staff     96 Mar  9 04:41 artifacts
+drwxr-xr-x@  7 lars  staff    224 Mar  9 04:31 cmd
+drwxr-xr-x@  7 lars  staff    224 Mar  9 04:31 console
+drwxr-xr-x@  7 lars  staff    224 Mar  9 05:11 docker
+-rw-r--r--@  1 lars  staff   2294 Mar  9 05:16 Dockerfile
+drwxr-xr-x@ 41 lars  staff   1312 Mar  9 04:31 docs
+-rw-r--r--@  1 lars  staff   3033 Mar  9 04:31 go.mod
+ succeeded in 53ms:
+AGENTS.md
+ exited 1 in 53ms:
+
+exec
+/bin/zsh -lc "which ralph || command -v ralph || echo 'ralph-not-found'" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc "sed -n '1,220p' .ralph/guardrails.md" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc "sed -n '1,220p' .ralph/errors.log" in /Users/lars/Dev/smith.base-container-build succeeded in 50ms:
+/Users/lars/.nvm/versions/node/v22.20.0/bin/ralph
+ succeeded in 50ms:
+# Error Log
+
+> Failures and repeated issues. Use this to add guardrails.
+
+[2026-03-09 04:48:43] ITERATION 1 left uncommitted changes; review run summary at /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-1.md
+[2026-03-09 04:56:11] ITERATION 2 left uncommitted changes; review run summary at /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.md
+[2026-03-09 05:08:04] ITERATION 3 left uncommitted changes; review run summary at /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-3.md
+[2026-03-09 05:22:25] ITERATION 4 left uncommitted changes; review run summary at /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-4.md
+ succeeded in 51ms:
+# Guardrails (Signs)
+
+> Lessons learned from failures. Read before acting.
+
+## Core Signs
+
+### Sign: Read Before Writing
+- **Trigger**: Before modifying any file
+- **Instruction**: Read the file first
+- **Added after**: Core principle
+
+### Sign: Test Before Commit
+- **Trigger**: Before committing changes
+- **Instruction**: Run required tests and verify outputs
+- **Added after**: Core principle
+
+---
+
+## Learned Signs
+
+exec
+/bin/zsh -lc 'ralph log "US-005 iteration 5: start story work and preflight review"' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+Using bundled templates: /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph
+codex
+I’ve confirmed guardrails and prior failure pattern (earlier iterations ended with uncommitted changes), so I’ll enforce commit completion this run. I’ll now read the PRD/AGENTS and audit current Docker/scripts for US-005; I’ll also use the `commit` skill at the end to format the required commit message.
+exec
+/bin/zsh -lc "sed -n '1,260p' .agents/tasks/prd-base-container.json" in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+{
+  "version": 1,
+  "project": "Loop Base Container",
+  "overview": "Define a reusable base container image for all loops that standardizes runtime behavior, includes Codex CLI, ships common developer tooling, bundles internal binaries, and supports mounting skills as a volume at a fixed in-container path.",
+  "goals": [
+    "Provide one consistent base image definition used by every loop in the system",
+    "Include Codex CLI and a practical developer toolchain out of the box",
+    "Bundle internal binaries in the runtime image via deterministic multi-stage build",
+    "Guarantee a stable skills mount location at /home/dev/.codex/skills"
+  ],
+  "nonGoals": [
+    "No orchestration or runtime deployment-definition changes outside image definition",
+    "No CI/CD pipeline wiring changes in this phase",
+    "No runtime secret-management redesign"
+  ],
+  "successMetrics": [
+    "All target loops can build and start successfully using this base image without per-loop environment customization",
+    "Codex CLI, required developer tools, and internal binaries are available in runtime smoke tests",
+    "Security quality gate reports zero critical vulnerabilities at merge time"
+  ],
+exec
+/bin/zsh -lc "sed -n '1,260p' AGENTS.md" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc 'git status --short' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+## MANDATORY: Use td for Task Management
+
+You must run td usage --new-session at conversation start (or after /clear) to see current work.
+Use td usage -q for subsequent reads.
+
+## Base Image Validation
+
+Build the loop base image:
+
+```bash
+docker build -t loop-base:local .
+```
+
+Run tooling smoke checks:
+
+```bash
+./scripts/check-base-tooling-smoke.sh loop-base:local
+./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+```
+ succeeded in 52ms:
+ M .agents/tasks/prd-base-container.json
+ M .ralph/activity.log
+ M .ralph/errors.log
+ M .ralph/runs/run-20260309-043624-64079-iter-4.log
+?? .ralph/.tmp/prompt-20260309-043624-64079-5.md
+?? .ralph/.tmp/story-20260309-043624-64079-5.json
+?? .ralph/.tmp/story-20260309-043624-64079-5.md
+?? .ralph/runs/run-20260309-043624-64079-iter-4.md
+?? .ralph/runs/run-20260309-043624-64079-iter-5.log
+exec
+/bin/zsh -lc "sed -n '1,260p' Dockerfile" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc "rg -n \"/home/dev/.codex/skills|skills\" Dockerfile README.md docs scripts -g '*.md' -g '*.sh'" in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+# syntax=docker/dockerfile:1.7
+
+ARG ALPINE_TAG=3.21
+ARG GO_ALPINE_TAG=1.25.7-alpine
+
+FROM golang:${GO_ALPINE_TAG} AS internal-binaries-builder
+
+WORKDIR /src
+
+# hadolint ignore=DL3018
+RUN apk add --no-cache \
+      ca-certificates \
+      git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Inputs for the internal binary build contract:
+# - source packages in ./cmd
+# - shared code in ./internal
+ succeeded in 51ms:
+scripts/validate-acceptance.sh:382:expect_rg "Codex defaults to /smith/skills/<name>" "cmd/smithctl/main.go" "smithctl help documents codex default mountpoint"
+docs/skill-volume-mounts.md:11:  - from loop definition (`loop.skills`), or
+docs/skill-volume-mounts.md:17:`loop.skills` array entries:
+docs/skill-volume-mounts.md:28:  "skills": [
+docs/skill-volume-mounts.md:31:      "source": "local://skills/commit",
+docs/skill-volume-mounts.md:33:      "mount_path": "/smith/skills/commit",
+docs/skill-volume-mounts.md:42:- `loop.skills[*].mount_path` (explicit) overrides provider default mountpoint.
+docs/skill-volume-mounts.md:44:- `loop.skills` entries are the authoritative request payload in MVP; runtime policy presets may append/override only in future follow-up work.
+docs/skill-volume-mounts.md:48:- If `mount_path` omitted, use Codex default mountpoint: `/smith/skills/<skill-name>`.
+docs/skill-volume-mounts.md:49:- Mount skills as read-only volumes by default.
+docs/skill-volume-mounts.md:61:  --skill name=commit,source=local://skills/commit
+docs/skill-volume-mounts.md:69:- `mount_path` (optional; if omitted, Codex default `/smith/skills/<name>` is applied server-side)
+docs/skill-volume-mounts.md:74:- Agent Core resolves requested skills before Replica job creation.
+docs/skill-volume-mounts.md:75:- K8s Job spec includes volume + volumeMount entries for resolved skills.
+docs/skill-volume-mounts.md:76:- Missing or invalid skills fail fast with actionable error state.
+docs/skill-volume-mounts.md:91:- MVP provider support is Codex only; non-Codex providers reject `loop.skills` with a clear error.
+docs/requirements-fr-nfr.md:115:  - Replica job generation injects resolved skill mounts and fails fast on invalid/missing skills.
+docs/multi-provider-skill-mount-abstraction.md:9:- Canonical loop input: `loop.skills[]`.
+docs/multi-provider-skill-mount-abstraction.md:11:- Default mount path when omitted: `/smith/skills/<name>`.
+docs/multi-provider-skill-mount-abstraction.md:25:Provider adapters must consume canonical skills and return provider-specific runtime bindings.
+exec
+/bin/zsh -lc 'ls -la scripts && rg --files scripts' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+total 80
+drwxr-xr-x@ 10 lars  staff    320 Mar  9 05:11 .
+drwxr-xr-x@ 32 lars  staff   1024 Mar  9 04:39 ..
+-rwxr-xr-x@  1 lars  staff   1002 Mar  9 05:14 check-base-internal-binaries-smoke.sh
+-rwxr-xr-x@  1 lars  staff    433 Mar  9 04:58 check-base-tooling-smoke.sh
+drwxr-xr-x@  3 lars  staff     96 Mar  9 04:31 docs
+drwxr-xr-x@  4 lars  staff    128 Mar  9 04:31 fixtures
+drwxr-xr-x@ 12 lars  staff    384 Mar  9 04:31 integration
+drwxr-xr-x@  3 lars  staff     96 Mar  9 04:31 release
+drwxr-xr-x@ 12 lars  staff    384 Mar  9 04:31 test
+-rwxr-xr-x@  1 lars  staff  30172 Mar  9 04:31 validate-acceptance.sh
+scripts/check-base-tooling-smoke.sh
+scripts/validate-acceptance.sh
+scripts/fixtures/verify-smith-test-repo.sh
+scripts/fixtures/provision-smith-test-repo.sh
+scripts/check-base-internal-binaries-smoke.sh
+scripts/docs/quality-check.sh
+scripts/release/pre-release-system-gate.sh
+scripts/integration/env-down.sh
+scripts/integration/env-up.sh
+codex
+I found the current gap: Dockerfile creates `/home/dev/.codex` but not the fixed `/home/dev/.codex/skills` path yet. I’m now checking existing docs and smoke scripts so I can add exactly the US-005 behavior and test coverage without touching unrelated stories.
+exec
+/bin/zsh -lc "sed -n '1,220p' scripts/check-base-tooling-smoke.sh" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc "sed -n '1,260p' README.md" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc "sed -n '1,220p' scripts/check-base-internal-binaries-smoke.sh" in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE="${1:-loop-base:local}"
+BINARY_LIST_FILE="${BINARY_LIST_FILE:-docker/base-internal-binaries.txt}"
+
+if [[ ! -f "$BINARY_LIST_FILE" ]]; then
+  echo "missing binary list file: $BINARY_LIST_FILE" >&2
+  exit 1
+fi
+
+required_binaries="$(
+  awk '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    { print $1 }
+  ' "$BINARY_LIST_FILE"
+)"
+
+if [[ -z "$required_binaries" ]]; then
+ succeeded in 52ms:
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE="${1:-loop-base:local}"
+REQUIRED_TOOLS="${REQUIRED_TOOLS:-git curl jq make node npm pnpm python3 pip rg bash}"
+
+docker run --rm "$IMAGE" sh -lc "
+missing=0
+for tool in $REQUIRED_TOOLS; do
+  if ! command -v \"\$tool\" >/dev/null 2>&1; then
+    echo \"missing binary: \$tool\" >&2
+    missing=1
+  fi
+done
+
+if [ \"\$missing\" -ne 0 ]; then
+  exit 1
+fi
+
+echo \"tooling smoke check passed\"
+ succeeded in 52ms:
+# Smith
+
+Smith is an etcd-backed, Kubernetes-native autonomous orchestration platform.
+
+## Purpose
+
+Smith coordinates autonomous execution loops as a state machine stored in etcd. It is designed to:
+
+- accept operator ingress requests (direct, GitHub issues, PRD tasks),
+- convert each request into a deterministic loop lifecycle (`unresolved -> overwriting -> synced|flatline|cancelled`),
+- enforce safe concurrency with per-loop locks and revision-checked state transitions,
+- run loop workers as Kubernetes Jobs and preserve execution evidence (journal, handoff, override, audit).
+
+In this repository, the focus is the MVP control plane, deployment assets, and verification/test harnesses.
+
+## Philosophy
+
+Smith intentionally does not personify agents.
+
+- Agents are modeled as homogeneous and omnicapable execution units, not distinct personalities.
+exec
+/bin/zsh -lc 'rg -n "loop-base:local|skills mount|/home/dev/.codex/skills|check-base-skills|tmp-skills" README.md scripts Dockerfile docs' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+README.md:74:./scripts/check-base-tooling-smoke.sh loop-base:local
+README.md:80:REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
+README.md:102:./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+README.md:108:BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+scripts/check-base-tooling-smoke.sh:4:IMAGE="${1:-loop-base:local}"
+scripts/check-base-internal-binaries-smoke.sh:4:IMAGE="${1:-loop-base:local}"
+exec
+/bin/zsh -lc "sed -n '1,260p' .ralph/progress.md" in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+# Progress Log
+Started: Mon Mar  9 04:36:24 EDT 2026
+
+## Codebase Patterns
+- (add reusable patterns here)
+
+---
+## [2026-03-09 04:44:08 EDT] - US-001: Define Alpine-based base image skeleton and runtime user
+Thread: 
+Run: 20260309-043624-64079 (iteration 1)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-1.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-1.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 08004be chore(progress): sync run log after execution
+- Post-commit status: clean
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+  - Command: docker build -f <temp-non-alpine-dockerfile> -t loop-base:nonalpine-test . -> PASS (expected failure with explicit Alpine message)
+codex
+I’ve completed the audit and confirmed US-005 is still missing a fixed skills directory plus a dedicated mount smoke test.  
+Plan for this story only:
+1. Update `Dockerfile` to create `/home/dev/.codex/skills` during image build and keep ownership on runtime user `dev`.
+2. Add `scripts/check-base-skills-mount-smoke.sh` to validate both cases:
+   - mounted host volume exposes host files and preserves content
+   - unmounted run succeeds with an existing, readable, empty skills directory
+3. Document the mount contract and smoke command in `README.md` (and `AGENTS.md` only if needed operationally).
+4. Run all required verification:
+   - AGENTS build + tooling/internal smoke
+   - US-005 mount smoke script
+   - all global quality gates (docker run checks, hadolint, shellcheck, trivy, syft)
+5. Run final security/performance/regression review, commit with conventional message (`commit` skill), append `.ralph/progress.md`, log required activity events, and verify clean git status.
+codex
+I’m now applying code changes: first the Dockerfile path creation, then a new mount smoke script, then docs updates to capture the contract and verification commands.
+file update
+M /Users/lars/Dev/smith.base-container-build/Dockerfile
+@@ -75,3 +75,3 @@
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+apply_patch(auto_approved=true) exited 0 in 32ms:
+Success. Updated the following files:
+M /Users/lars/Dev/smith.base-container-build/Dockerfile
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+
+file update
+A /Users/lars/Dev/smith.base-container-build/scripts/check-base-skills-mount-smoke.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE="${1:-loop-base:local}"
+SKILLS_PATH="/home/dev/.codex/skills"
+
+host_skills_dir="$(mktemp -d)"
+trap 'rm -rf "$host_skills_dir"' EXIT
+
+sentinel_file="host-skill.txt"
+sentinel_content="skills-mount-ok"
+printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
+
+docker run --rm \
+  -v "${host_skills_dir}:${SKILLS_PATH}" \
+  "$IMAGE" sh -lc "
+    set -eu
+    test -d '${SKILLS_PATH}'
+    test -r '${SKILLS_PATH}'
+    test -f '${SKILLS_PATH}/${sentinel_file}'
+    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
+    test \"\$value\" = '${sentinel_content}'
+  "
+
+host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
+if [[ "$host_value" != "$sentinel_content" ]]; then
+  echo "mounted skills content changed unexpectedly" >&2
+  exit 1
+fi
+
+docker run --rm "$IMAGE" sh -lc "
+  set -eu
+  test -d '${SKILLS_PATH}'
+  test -r '${SKILLS_PATH}'
+  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
+"
+
+echo "skills mount smoke check passed"
+apply_patch(auto_approved=true) exited 0 in 42ms:
+Success. Updated the following files:
+A /Users/lars/Dev/smith.base-container-build/scripts/check-base-skills-mount-smoke.sh
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc 'chmod +x scripts/check-base-skills-mount-smoke.sh' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc "nl -ba README.md | sed -n '56,170p'" in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+    56	`Dockerfile` and currently uses `alpine:3.21`.
+    57	
+    58	Why Alpine for the baseline:
+    59	
+    60	- small runtime footprint for faster image distribution,
+    61	- simple package/runtime surface for reproducible loop environments,
+    62	- clear security patch cadence with explicit minor tag pinning.
+    63	
+    64	Bundled developer tooling in the base image includes:
+    65	`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
+    66	`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
+    67	
+    68	pnpm support is installed via explicit global npm install
+    69	(`npm install --global pnpm@latest`) in the Dockerfile.
+    70	
+    71	Tooling smoke test:
+    72	
+    73	```bash
+    74	./scripts/check-base-tooling-smoke.sh loop-base:local
+    75	```
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+file update
+M /Users/lars/Dev/smith.base-container-build/README.md
+@@ -110,2 +110,22 @@
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+apply_patch(auto_approved=true) exited 0 in 58ms:
+Success. Updated the following files:
+M /Users/lars/Dev/smith.base-container-build/README.md
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc "nl -ba AGENTS.md | sed -n '1,200p'" in /Users/lars/Dev/smith.base-container-build succeeded in 51ms:
+     1	## MANDATORY: Use td for Task Management
+     2	
+     3	You must run td usage --new-session at conversation start (or after /clear) to see current work.
+     4	Use td usage -q for subsequent reads.
+     5	
+     6	## Base Image Validation
+     7	
+     8	Build the loop base image:
+     9	
+    10	```bash
+    11	docker build -t loop-base:local .
+    12	```
+    13	
+    14	Run tooling smoke checks:
+    15	
+    16	```bash
+    17	./scripts/check-base-tooling-smoke.sh loop-base:local
+    18	./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+    19	```
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+file update
+M /Users/lars/Dev/smith.base-container-build/AGENTS.md
+@@ -13,3 +13,3 @@
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+@@ -18,2 +18,3 @@
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+apply_patch(auto_approved=true) exited 0 in 72ms:
+Success. Updated the following files:
+M /Users/lars/Dev/smith.base-container-build/AGENTS.md
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc 'ralph log "US-005 iteration 5: added fixed skills dir and new skills mount smoke script; updated README/AGENTS docs"' in /Users/lars/Dev/smith.base-container-build succeeded in 51ms:
+Using bundled templates: /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+codex
+Code changes are in place; next I’m running the full verification set (AGENTS smoke checks, US-005 mount smoke, and all global quality gates) against a fresh `loop-base:local` build.
+exec
+/bin/zsh -lc 'docker build -t loop-base:local .' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+ succeeded in 2.29s:
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.34kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 0.5s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 resolve docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e 0.0s done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/alpine:3.21
+#4 DONE 0.2s
+
+#5 [internal] load metadata for docker.io/library/golang:1.25.7-alpine
+#5 DONE 0.3s
+
+#6 [internal] load .dockerignore
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+codex
+The image rebuilt cleanly with the new `/home/dev/.codex/skills` creation step. I’m now running smoke checks, then lint/security/SBOM gates.
+exec
+/bin/zsh -lc './scripts/check-base-tooling-smoke.sh loop-base:local' in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc './scripts/check-base-internal-binaries-smoke.sh loop-base:local' in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc './scripts/check-base-skills-mount-smoke.sh loop-base:local' in /Users/lars/Dev/smith.base-container-build succeeded in 1.15s:
+internal binary smoke check passed
+ succeeded in 1.23s:
+tooling smoke check passed
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+ succeeded in 2.37s:
+skills mount smoke check passed
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc "docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version'" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc 'docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc '"'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills'" in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc 'hadolint Dockerfile' in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc 'shellcheck scripts/*.sh' in /Users/lars/Dev/smith.base-container-build succeeded in 137ms:
+
+ succeeded in 249ms:
+
+ succeeded in 463ms:
+total 4
+drwxr-xr-x    2 dev      dev             64 Mar  9 08:39 .
+drwxr-sr-x    3 dev      dev           4096 Mar  9 09:25 ..
+ succeeded in 692ms:
+codex-cli 0.112.0
+git version 2.47.3
+v22.15.1
+Python 3.12.12
+ripgrep 14.1.1
+
+features:+pcre2
+simd(compile):+NEON
+simd(runtime):+NEON
+
+PCRE2 10.43 is available (JIT is available)
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+codex
+Core smoke and lint gates are passing so far, including the new skills mount smoke script. I’m running the remaining security and SBOM gates now (`trivy`, then `syft`).
+exec
+/bin/zsh -lc 'trivy image --severity CRITICAL --exit-code 1 loop-base:local' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+ succeeded in 2.39s:
+2026-03-09T05:25:35-04:00	INFO	[vuln] Vulnerability scanning is enabled
+2026-03-09T05:25:35-04:00	INFO	[secret] Secret scanning is enabled
+2026-03-09T05:25:35-04:00	INFO	[secret] If your scanning is slow, please try '--scanners vuln' to disable secret scanning
+2026-03-09T05:25:35-04:00	INFO	[secret] Please see https://trivy.dev/docs/v0.69/guide/scanner/secret#recommendation for faster secret detection
+2026-03-09T05:25:37-04:00	INFO	Detected OS	family="alpine" version="3.21.6"
+2026-03-09T05:25:37-04:00	INFO	[alpine] Detecting vulnerabilities...	os_version="3.21" repository="3.21" pkg_num=65
+2026-03-09T05:25:37-04:00	INFO	Number of language-specific files	num=3
+2026-03-09T05:25:37-04:00	INFO	[gobinary] Detecting vulnerabilities...
+2026-03-09T05:25:37-04:00	INFO	[node-pkg] Detecting vulnerabilities...
+2026-03-09T05:25:37-04:00	WARN	Using severities from other vendors for some vulnerabilities. Read https://trivy.dev/docs/v0.69/guide/scanner/vulnerability#severity-selection for details.
+
+Report Summary
+
+┌──────────────────────────────────────────────────────────────────────────────────┬──────────┬─────────────────┬─────────┐
+│                                      Target                                      │   Type   │ Vulnerabilities │ Secrets │
+├──────────────────────────────────────────────────────────────────────────────────┼──────────┼─────────────────┼─────────┤
+│ loop-base:local (alpine 3.21.6)                                                  │  alpine  │        0        │    -    │
+├──────────────────────────────────────────────────────────────────────────────────┼──────────┼─────────────────┼─────────┤
+│ usr/local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64- │ node-pkg │        0        │    -    │
+│ /package.json                                                                    │          │                 │         │
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc 'syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+ succeeded in 8.10s:
+Command "packages" is deprecated, use `syft scan` instead
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc 'ls -l scripts/check-base-skills-mount-smoke.sh' in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc 'git diff -- Dockerfile scripts/check-base-skills-mount-smoke.sh README.md AGENTS.md' in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc 'git status --short' in /Users/lars/Dev/smith.base-container-build succeeded in 51ms:
+-rwxr-xr-x@ 1 lars  staff  978 Mar  9 05:24 scripts/check-base-skills-mount-smoke.sh
+ succeeded in 52ms:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2..d708b2f 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@ Build the loop base image:
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f..26b0f88 100644
+--- a/Dockerfile
++++ b/Dockerfile
+ succeeded in 52ms:
+ M .agents/tasks/prd-base-container.json
+ M .ralph/activity.log
+ M .ralph/errors.log
+ M .ralph/runs/run-20260309-043624-64079-iter-4.log
+ M AGENTS.md
+ M Dockerfile
+ M README.md
+ M artifacts/sbom-loop-base.spdx.json
+?? .ralph/.tmp/prompt-20260309-043624-64079-5.md
+?? .ralph/.tmp/story-20260309-043624-64079-5.json
+?? .ralph/.tmp/story-20260309-043624-64079-5.md
+?? .ralph/runs/run-20260309-043624-64079-iter-4.md
+?? .ralph/runs/run-20260309-043624-64079-iter-5.log
+?? scripts/check-base-skills-mount-smoke.sh
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc "nl -ba scripts/check-base-skills-mount-smoke.sh | sed -n '1,220p'" in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+     1	#!/usr/bin/env bash
+     2	set -euo pipefail
+     3	
+     4	IMAGE="${1:-loop-base:local}"
+     5	SKILLS_PATH="/home/dev/.codex/skills"
+     6	
+     7	host_skills_dir="$(mktemp -d)"
+     8	trap 'rm -rf "$host_skills_dir"' EXIT
+     9	
+    10	sentinel_file="host-skill.txt"
+    11	sentinel_content="skills-mount-ok"
+    12	printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
+    13	
+    14	docker run --rm \
+    15	  -v "${host_skills_dir}:${SKILLS_PATH}" \
+    16	  "$IMAGE" sh -lc "
+    17	    set -eu
+    18	    test -d '${SKILLS_PATH}'
+    19	    test -r '${SKILLS_PATH}'
+    20	    test -f '${SKILLS_PATH}/${sentinel_file}'
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+exec
+/bin/zsh -lc 'mkdir -p tmp-skills && echo "example-skill" > tmp-skills/example.txt && docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc '"'ls -la /home/dev/.codex/skills'" in /Users/lars/Dev/smith.base-container-build succeeded in 310ms:
+total 8
+drwxr-xr-x    3 dev      dev             96 Mar  9 09:26 .
+drwxr-sr-x    3 dev      dev           4096 Mar  9 09:25 ..
+-rw-r--r--    1 dev      dev             14 Mar  9 09:26 example.txt
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+codex
+All verification gates are passing, including mounted-file visibility and unmounted empty-path behavior. Next I’ll run a final security/performance/regression review, then commit and update the progress log.
+exec
+/bin/zsh -lc 'ralph log "US-005 iteration 5: completed verification gates (build, smoke checks, lint, trivy, syft)"' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+Using bundled templates: /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph
+file update:
+diff --git a/AGENTS.md b/AGENTS.md
+index 5a695c2e04cea8dcb5f816e840d185359bcdce7b..d708b2fb70fd705161b8cd662a899124d8927f3b
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,9 +11,10 @@
+ docker build -t loop-base:local .
+ ```
+ 
+-Run tooling smoke checks:
++Run smoke checks:
+ 
+ ```bash
+ ./scripts/check-base-tooling-smoke.sh loop-base:local
+ ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
+ ```
+diff --git a/Dockerfile b/Dockerfile
+index 6ebbd4f49071ba40c92ee339672e7c4f7065bbd4..26b0f88c049e34085bd8bac1460645c8b39be63d
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -73,7 +73,7 @@
+ 
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+-    && mkdir -p /workspace "${HOME}/.codex" \
++    && mkdir -p /workspace "${HOME}/.codex/skills" \
+     && chown -R dev:dev /workspace "${HOME}"
+ 
+ WORKDIR /workspace
+diff --git a/README.md b/README.md
+index dd4069b8212cdefd3a6ef1882c2b9b5a1ff1aceb..da10fc54630c8754be421521fa6cfad05380c59c
+--- a/README.md
++++ b/README.md
+@@ -108,6 +108,26 @@
+ BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
+ ```
+ 
++### Skills Volume Mount Contract
++
++The runtime image always creates `/home/dev/.codex/skills` and grants access to
++the runtime user (`dev`). The container startup command does not write to this
++path, so a mounted skills volume is not overwritten at startup.
++
++Skills mount smoke test (mounted + unmounted scenarios):
++
++```bash
++./scripts/check-base-skills-mount-smoke.sh loop-base:local
++```
++
++Example host mount:
++
++```bash
++mkdir -p tmp-skills
++echo "example-skill" > tmp-skills/example.txt
++docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
++```
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+diff --git a/scripts/check-base-skills-mount-smoke.sh b/scripts/check-base-skills-mount-smoke.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..696edc913ca2bb54ded9ea9b6f8e66044bd653cf
+--- /dev/null
++++ b/scripts/check-base-skills-mount-smoke.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++IMAGE="${1:-loop-base:local}"
++SKILLS_PATH="/home/dev/.codex/skills"
++
++host_skills_dir="$(mktemp -d)"
++trap 'rm -rf "$host_skills_dir"' EXIT
++
++sentinel_file="host-skill.txt"
++sentinel_content="skills-mount-ok"
++printf '%s\n' "$sentinel_content" > "${host_skills_dir}/${sentinel_file}"
++
++docker run --rm \
++  -v "${host_skills_dir}:${SKILLS_PATH}" \
++  "$IMAGE" sh -lc "
++    set -eu
++    test -d '${SKILLS_PATH}'
++    test -r '${SKILLS_PATH}'
++    test -f '${SKILLS_PATH}/${sentinel_file}'
++    value=\$(cat '${SKILLS_PATH}/${sentinel_file}')
++    test \"\$value\" = '${sentinel_content}'
++  "
++
++host_value="$(cat "${host_skills_dir}/${sentinel_file}")"
++if [[ "$host_value" != "$sentinel_content" ]]; then
++  echo "mounted skills content changed unexpectedly" >&2
++  exit 1
++fi
++
++docker run --rm "$IMAGE" sh -lc "
++  set -eu
++  test -d '${SKILLS_PATH}'
++  test -r '${SKILLS_PATH}'
++  [ -z \"\$(ls -A '${SKILLS_PATH}')\" ]
++"
++
++echo "skills mount smoke check passed"
+
+codex
+I’m at the commit phase now: I’ve completed a quick security/performance/regression audit (no new risky patterns, no startup writes to the mount path, and no runtime regressions in gates). I’ll create the story commit first, then append the required progress entry and commit the final run/log updates so the tree ends clean.

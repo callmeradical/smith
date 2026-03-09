@@ -73,7 +73,7 @@ COPY --from=internal-binaries-builder /out/ /usr/local/bin/
 
 RUN addgroup -S -g 1000 dev \
     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
-    && mkdir -p /workspace "${HOME}/.codex" \
+    && mkdir -p /workspace "${HOME}/.codex/skills" \
     && chown -R dev:dev /workspace "${HOME}"
 
 WORKDIR /workspace

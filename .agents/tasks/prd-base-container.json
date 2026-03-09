@@ -140,7 +140,7 @@
     {
       "id": "US-004",
       "title": "Bundle internal binaries via multi-stage build",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-001"
       ],
@@ -153,13 +153,13 @@
         "Document builder inputs and expected artifacts so future binary additions follow the same pattern."
       ],
       "startedAt": "2026-03-09T09:08:06.371580+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T09:08:06.371801+00:00"
+      "completedAt": "2026-03-09T09:22:25.315368+00:00",
+      "updatedAt": "2026-03-09T09:22:25.314675+00:00"
     },
     {
       "id": "US-005",
       "title": "Support skills volume mount contract",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-001"
       ],
@@ -170,7 +170,10 @@
         "Example: with `-v $(pwd)/tmp-skills:/home/dev/.codex/skills`, container lists mounted files from host.",
         "Negative case: starting container without mounted skills must not fail; path exists and remains empty/readable.",
         "Add a mount-path smoke test script that validates both mounted and unmounted scenarios."
-      ]
+      ],
+      "startedAt": "2026-03-09T09:22:27.414552+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T09:22:27.415009+00:00"
     },
     {
       "id": "US-006",

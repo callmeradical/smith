@@ -108,6 +108,26 @@ Negative-case check (example):
 BINARY_LIST_FILE=/tmp/does-not-exist ./scripts/check-base-internal-binaries-smoke.sh loop-base:local
 ```
 
+### Skills Volume Mount Contract
+
+The runtime image always creates `/home/dev/.codex/skills` and grants access to
+the runtime user (`dev`). The container startup command does not write to this
+path, so a mounted skills volume is not overwritten at startup.
+
+Skills mount smoke test (mounted + unmounted scenarios):
+
+```bash
+./scripts/check-base-skills-mount-smoke.sh loop-base:local
+```
+
+Example host mount:
+
+```bash
+mkdir -p tmp-skills
+echo "example-skill" > tmp-skills/example.txt
+docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
+```
+
 ## Key API Endpoints
 
 Implemented today:
