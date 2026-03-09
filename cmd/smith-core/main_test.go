@@ -185,6 +185,68 @@ func TestSkillSourceConfigMapName(t *testing.T) {
 	}
 }
 
+func TestLoopInvocationMethodFor(t *testing.T) {
+	if got := loopInvocationMethodFor(model.Anomaly{
+		SourceType: "manual",
+		Metadata: map[string]string{
+			"invocation_method": "console_issue",
+			"ingress_mode":      "prd",
+		},
+	}); got != "console_issue" {
+		t.Fatalf("expected invocation_method override, got %q", got)
+	}
+
+	if got := loopInvocationMethodFor(model.Anomaly{
+		SourceType: "github_issue",
+		Metadata: map[string]string{
+			"ingress_mode": "prd",
+		},
+	}); got != "prd" {
+		t.Fatalf("expected ingress_mode fallback, got %q", got)
+	}
+
+	if got := loopInvocationMethodFor(model.Anomaly{SourceType: "github_issue"}); got != "github_issue" {
+		t.Fatalf("expected source type fallback, got %q", got)
+	}
+
+	if got := loopInvocationMethodFor(model.Anomaly{}); got != "unknown" {
+		t.Fatalf("expected unknown fallback, got %q", got)
+	}
+}
+
+func TestLoopProviderFor(t *testing.T) {
+	if got := loopProviderFor(model.Anomaly{
+		ProviderID: "codex",
+		Metadata: map[string]string{
+			"workspace_provider": "claude",
+			"workspace_agent":    "droid",
+		},
+	}); got != "codex" {
+		t.Fatalf("expected provider_id precedence, got %q", got)
+	}
+
+	if got := loopProviderFor(model.Anomaly{
+		Metadata: map[string]string{
+			"workspace_provider": "claude",
+			"workspace_agent":    "droid",
+		},
+	}); got != "claude" {
+		t.Fatalf("expected workspace_provider fallback, got %q", got)
+	}
+
+	if got := loopProviderFor(model.Anomaly{
+		Metadata: map[string]string{
+			"workspace_agent": "droid",
+		},
+	}); got != "droid" {
+		t.Fatalf("expected workspace_agent fallback, got %q", got)
+	}
+
+	if got := loopProviderFor(model.Anomaly{}); got != model.DefaultProviderID {
+		t.Fatalf("expected default provider %q, got %q", model.DefaultProviderID, got)
+	}
+}
+
 func TestLoadConfigGitPolicyDefaults(t *testing.T) {
 	t.Setenv("SMITH_GIT_POLICY_CONFIG_ENABLED", "")
 	cfg, err := loadConfig()

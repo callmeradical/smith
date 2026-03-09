@@ -58,13 +58,20 @@ type SSHAuth struct {
 
 type JobRequest struct {
 	Namespace                 string
+	EtcdEndpoints             []string
 	LoopID                    string
 	CorrelationID             string
+	ProviderID                string
+	InvocationMethod          string
+	SourceType                string
+	SourceRef                 string
 	JobName                   string
 	Labels                    map[string]string
 	ServiceAccountName        string
 	Image                     string
 	ImagePullPolicy           string
+	WorkspaceSeedImage        string
+	WorkspaceSeedPullPolicy   string
 	Git                       GitContext
 	SkillMounts               []SkillMount
 	GitPolicy                 *gitpolicy.Policy
@@ -75,6 +82,7 @@ type JobRequest struct {
 	HandoffConfigMapName      string
 	RuntimeSecretName         string
 	RuntimeCredentialsKey     string
+	RuntimeCredentialsValue   string
 	BackoffLimit              int32
 	ActiveDeadlineSeconds     int64
 	TTLSecondsAfterFinished   int32
@@ -109,6 +117,7 @@ type PodSpec struct {
 	ServiceAccountName string
 	RestartPolicy      string
 	Volumes            []Volume
+	InitContainers     []Container
 	Containers         []Container
 }
 
@@ -116,6 +125,7 @@ type Volume struct {
 	Name          string
 	ConfigMapName string
 	Optional      bool
+	EmptyDir      bool
 }
 
 type Container struct {
@@ -195,14 +205,31 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 		{Name: "STORY_ID", Value: req.LoopID},
 		{Name: "SMITH_LOOP_ID", Value: req.LoopID},
 		{Name: "SMITH_CORRELATION_ID", Value: req.CorrelationID},
+		{Name: "SMITH_ETCD_ENDPOINTS", Value: strings.Join(sanitizeEtcdEndpoints(req.EtcdEndpoints), ",")},
+		{Name: "SMITH_LOOP_PROVIDER", Value: strings.ToLower(strings.TrimSpace(req.ProviderID))},
+		{Name: "SMITH_LOOP_INVOCATION_METHOD", Value: strings.TrimSpace(req.InvocationMethod)},
+		{Name: "SMITH_LOOP_SOURCE_TYPE", Value: strings.TrimSpace(req.SourceType)},
+		{Name: "SMITH_LOOP_SOURCE_REF", Value: strings.TrimSpace(req.SourceRef)},
 		{Name: "SMITH_GIT_REPOSITORY", Value: req.Git.Repository},
 		{Name: "SMITH_GIT_BRANCH", Value: req.Git.Branch},
 		{Name: "SMITH_GIT_COMMIT_SHA", Value: req.Git.CommitSHA},
 		{Name: "SMITH_HANDOFF_PATH", Value: "/smith/handoff/latest.json"},
 	}
-	if req.RuntimeSecretName != "" {
+	if strings.TrimSpace(req.RuntimeCredentialsValue) != "" {
+		env = append(env,
+			EnvVar{Name: "SMITH_RUNTIME_CREDENTIALS", Value: req.RuntimeCredentialsValue},
+			EnvVar{Name: "OPENAI_API_KEY", Value: req.RuntimeCredentialsValue},
+		)
+	} else if req.RuntimeSecretName != "" {
 		env = append(env, EnvVar{
 			Name: "SMITH_RUNTIME_CREDENTIALS",
+			SecretKeyRef: &SecretKeyRef{
+				Name: req.RuntimeSecretName,
+				Key:  req.RuntimeCredentialsKey,
+			},
+		})
+		env = append(env, EnvVar{
+			Name: "OPENAI_API_KEY",
 			SecretKeyRef: &SecretKeyRef{
 				Name: req.RuntimeSecretName,
 				Key:  req.RuntimeCredentialsKey,
@@ -273,6 +300,10 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 
 	volumes := []Volume{
 		{
+			Name:     "workspace",
+			EmptyDir: true,
+		},
+		{
 			Name:          "handoff",
 			ConfigMapName: req.HandoffConfigMapName,
 			Optional:      false,
@@ -280,6 +311,11 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 	}
 
 	volumeMounts := []VolumeMount{
+		{
+			Name:      "workspace",
+			MountPath: "/workspace",
+			ReadOnly:  false,
+		},
 		{
 			Name:      "handoff",
 			MountPath: "/smith/handoff",
@@ -307,6 +343,30 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 			EnvVar{Name: "SMITH_SKILL_MOUNTS", Value: strings.Join(resolvedSkillNames, ",")},
 		)
 	}
+	initContainers := []Container{}
+	if seedImage := strings.TrimSpace(req.WorkspaceSeedImage); seedImage != "" {
+		pullPolicy := strings.TrimSpace(req.WorkspaceSeedPullPolicy)
+		if pullPolicy == "" {
+			pullPolicy = req.ImagePullPolicy
+		}
+		initContainers = append(initContainers, Container{
+			Name:            "workspace-seed",
+			Image:           seedImage,
+			ImagePullPolicy: pullPolicy,
+			Command: []string{
+				"sh",
+				"-lc",
+				"set -eu; mkdir -p /workspace; if [ -d /seed ]; then cp -a /seed/. /workspace/; fi",
+			},
+			VolumeMounts: []VolumeMount{
+				{
+					Name:      "workspace",
+					MountPath: "/workspace",
+					ReadOnly:  false,
+				},
+			},
+		})
+	}
 
 	return JobManifest{
 		APIVersion: "batch/v1",
@@ -328,6 +388,7 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 					ServiceAccountName: req.ServiceAccountName,
 					RestartPolicy:      "Never",
 					Volumes:            volumes,
+					InitContainers:     initContainers,
 					Containers: []Container{
 						{
 							Name:            "replica",
@@ -369,6 +430,8 @@ func validateRequest(req JobRequest) error {
 	switch {
 	case strings.TrimSpace(req.Namespace) == "":
 		return fmt.Errorf("%w: namespace is required", ErrInvalidJobRequest)
+	case len(sanitizeEtcdEndpoints(req.EtcdEndpoints)) == 0:
+		return fmt.Errorf("%w: at least one etcd endpoint is required", ErrInvalidJobRequest)
 	case strings.TrimSpace(req.LoopID) == "":
 		return fmt.Errorf("%w: loop id is required", ErrInvalidJobRequest)
 	case strings.TrimSpace(req.CorrelationID) == "":
@@ -458,6 +521,23 @@ func validateRequest(req JobRequest) error {
 		return fmt.Errorf("%w: unsupported git auth provider %q", ErrInvalidJobRequest, req.GitAuth.Provider)
 	}
 	return nil
+}
+
+func sanitizeEtcdEndpoints(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]struct{}{}
+	for _, raw := range in {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 func skillConfigMapName(source string) string {

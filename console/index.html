@@ -1315,7 +1315,7 @@
     .pod-command-row {
       display: grid;
       gap: 8px;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: auto 1fr auto;
       align-items: center;
     }
 
@@ -1323,6 +1323,24 @@
       width: 100%;
       font-family: var(--mono);
       font-size: 0.8rem;
+    }
+
+    .journal-prompt-row {
+      margin-top: 8px;
+    }
+
+    .journal-prompt-glyph {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      color: #9cb2cc;
+      padding: 0 3px;
+      user-select: none;
+    }
+
+    .pod-attach-toggle-row {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
     }
 
     .journal.hidden {
@@ -1368,9 +1386,6 @@
         height: 44vh;
       }
 
-      .pod-command-row {
-        grid-template-columns: 1fr;
-      }
     }
 
     @media (max-width: 760px) {
@@ -1512,11 +1527,11 @@
                   <strong>Create from Issue</strong>
                   <span>Select a GitHub issue from a project and create a loop.</span>
                 </button>
-                <button type="button" class="pod-create-method-button" data-pod-create-method="generate_prd" disabled aria-disabled="true" title="Coming soon">
+                <button type="button" class="pod-create-method-button" data-pod-create-method="generate_prd">
                   <strong>Generate a PRD</strong>
                   <span>Build a PRD before loop creation.</span>
                 </button>
-                <button type="button" class="pod-create-method-button" data-pod-create-method="load_prd" disabled aria-disabled="true" title="Coming soon">
+                <button type="button" class="pod-create-method-button" data-pod-create-method="load_prd">
                   <strong>Load a PRD</strong>
                   <span>Use an existing PRD as loop source.</span>
                 </button>
@@ -1535,10 +1550,10 @@
                 <div id="pod-create-issue-preview" class="status-note">Select a project to load issues.</div>
               </div>
               <div id="pod-create-method-generate-prd" class="status-note hidden" data-pod-create-method-panel="generate_prd">
-                Generate a PRD flow is coming soon.
+                Select a project and optionally an issue, then provide a prompt in step 3 to generate a PRD.
               </div>
               <div id="pod-create-method-load-prd" class="status-note hidden" data-pod-create-method-panel="load_prd">
-                Load a PRD flow is coming soon.
+                Select a project, then paste or upload PRD JSON in step 3.
               </div>
             </section>
 
@@ -1549,7 +1564,8 @@
               <select id="pod-create-provider" aria-label="Provider">
                 <option value="">Select provider</option>
               </select>
-              <textarea id="pod-create-prompt" rows="6" placeholder="optional prompt"></textarea>
+              <textarea id="pod-create-prompt" rows="6" placeholder="optional prompt or PRD JSON"></textarea>
+              <input id="pod-create-prd-file" type="file" accept=".json,application/json">
             </section>
 
             <div class="pod-create-footer">
@@ -1595,28 +1611,11 @@
             <div id="pod-view-title" class="topbar-title">Pod Detail</div>
           </div>
           <div class="controls">
-            <button id="pod-view-attach" type="button">attach</button>
-            <button id="pod-view-detach" type="button">detach</button>
+            <button id="pod-view-cancel" type="button">cancel</button>
+            <button id="pod-view-terminate" type="button" class="danger">terminate</button>
             <button id="pod-view-delete" type="button" class="danger">delete loop</button>
           </div>
         </header>
-        <section class="pod-control-panel" aria-label="Terminal command controls">
-          <div class="pod-control-row">
-            <strong id="pod-view-runtime-target" class="pod-runtime-summary">runtime target: --</strong>
-            <span id="pod-view-terminal-state" class="pod-terminal-state state-idle" aria-live="polite">idle</span>
-          </div>
-          <div id="pod-view-control-message" class="status-note">Select a loop to resolve runtime target.</div>
-          <div class="pod-command-row">
-            <input
-              id="pod-view-command"
-              type="text"
-              placeholder="Run command (for example: pwd)"
-              autocomplete="off"
-              spellcheck="false"
-            >
-            <button id="pod-view-run" type="button">run</button>
-          </div>
-        </section>
         <section class="journal">
           <div class="journal-header">
             <strong id="journal-title">Pod Detail Journal</strong>
@@ -1624,6 +1623,27 @@
           </div>
           <pre id="terminal" class="terminal">[journal] select a pod tile to open pod detail view
 </pre>
+          <div class="pod-command-row journal-prompt-row">
+            <span class="journal-prompt-glyph" aria-hidden="true">$</span>
+            <input
+              id="pod-view-command"
+              type="text"
+              placeholder="Attach to run commands"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button id="pod-view-run" type="button">run</button>
+          </div>
+        </section>
+        <section class="pod-control-panel" aria-label="Runtime controls">
+          <div class="pod-control-row">
+            <strong id="pod-view-runtime-target" class="pod-runtime-summary">runtime target: --</strong>
+            <span id="pod-view-terminal-state" class="pod-terminal-state state-idle" aria-live="polite">idle</span>
+          </div>
+          <div id="pod-view-control-message" class="status-note">Select a loop to resolve runtime target.</div>
+          <div class="pod-attach-toggle-row">
+            <button id="pod-view-attach" type="button">attach</button>
+          </div>
         </section>
       </section>
 
@@ -1724,6 +1744,18 @@
             <input id="project-repo-url" type="url" placeholder="repository URL (https://github.com/org/repo.git)">
             <input id="project-github-user" type="text" placeholder="GitHub username or app/bot name">
             <input id="project-github-credential" type="password" placeholder="GitHub credential (PAT or token)">
+            <input id="project-runtime-image" type="text" placeholder="runtime image (optional, e.g. smith-replica:local)">
+            <select id="project-runtime-pull-policy" aria-label="Runtime image pull policy">
+              <option value="IfNotPresent">Runtime pull policy: IfNotPresent</option>
+              <option value="Always">Runtime pull policy: Always</option>
+              <option value="Never">Runtime pull policy: Never</option>
+            </select>
+            <input id="project-skills-image" type="text" placeholder="skills/seed image (optional, image with /seed content)">
+            <select id="project-skills-pull-policy" aria-label="Skills seed image pull policy">
+              <option value="IfNotPresent">Skills image pull policy: IfNotPresent</option>
+              <option value="Always">Skills image pull policy: Always</option>
+              <option value="Never">Skills image pull policy: Never</option>
+            </select>
             <div class="status-note">
               Credential is saved to backend secret storage.
             </div>
@@ -1743,6 +1775,10 @@
     const config = window.__SMITH_CONFIG__ || {};
     const apiBase = String(config.apiBaseUrl || "").replace(/\/+$/, "");
     const operatorToken = String(config.operatorToken || "").trim();
+    const requestTimeoutMs = (() => {
+      const parsed = Number(config.requestTimeoutMs || 20000);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 20000;
+    })();
     const showComingSoonProviders = /^(1|true|yes|on)$/i.test(
       String(config.showComingSoonProviders || ""),
     );
@@ -1769,6 +1805,9 @@
       podCreateMethod: "issue",
       attachBusyLoopID: "",
       loopDeleteBusy: false,
+      loopControlBusy: false,
+      loopControlAction: "",
+      loopControlBusyLoopID: "",
       pendingPodViewLoopID: "",
       terminalUIState: "idle",
       terminalMessage: "",
@@ -1792,7 +1831,8 @@
     const terminalEl = document.getElementById("terminal");
     const podViewBackEl = document.getElementById("pod-view-back");
     const podViewAttachEl = document.getElementById("pod-view-attach");
-    const podViewDetachEl = document.getElementById("pod-view-detach");
+    const podViewCancelEl = document.getElementById("pod-view-cancel");
+    const podViewTerminateEl = document.getElementById("pod-view-terminate");
     const podViewDeleteEl = document.getElementById("pod-view-delete");
     const podViewCommandEl = document.getElementById("pod-view-command");
     const podViewRunEl = document.getElementById("pod-view-run");
@@ -1811,6 +1851,7 @@
     const podCreateSourceBranchEl = document.getElementById("pod-create-source-branch");
     const podCreateProviderEl = document.getElementById("pod-create-provider");
     const podCreatePromptEl = document.getElementById("pod-create-prompt");
+    const podCreatePRDFileEl = document.getElementById("pod-create-prd-file");
     const podCreateIssuePreviewEl = document.getElementById("pod-create-issue-preview");
     const podCreateBackEl = document.getElementById("pod-create-back");
     const podCreateNextEl = document.getElementById("pod-create-next");
@@ -2067,32 +2108,73 @@
       const runtime = selectedLoopRuntime();
       const loadingRuntime = hasSelection && state.runtimeBusyLoopID === selectedLoopID;
       const runtimeAttachable = Boolean(runtime && runtime.attachable);
+      const runtimePhase = String((runtime && runtime.pod_phase) || "").trim().toLowerCase();
+      const runtimeUnhealthy =
+        !runtimeAttachable ||
+        runtimePhase === "pending" ||
+        runtimePhase === "unknown" ||
+        runtimePhase === "failed";
       const attachedToSelected = hasSelection && state.terminalAttachedLoopID === selectedLoopID;
       const terminalState = normalizeTerminalState(state.terminalUIState);
       const attaching = terminalState === "attaching";
       const executing = terminalState === "executing";
       const detaching = terminalState === "detaching";
+      const loopControlBusy = Boolean(state.loopControlBusy);
+      const controlBusyOnSelected =
+        loopControlBusy && state.loopControlBusyLoopID === selectedLoopID;
+      const cancelling = controlBusyOnSelected && state.loopControlAction === "cancel";
+      const terminating = controlBusyOnSelected && state.loopControlAction === "terminate";
       const controlsLocked =
-        state.loopDeleteBusy || loadingRuntime || attaching || executing || detaching;
+        state.loopDeleteBusy || loopControlBusy || loadingRuntime || attaching || executing || detaching;
 
-      podViewAttachEl.disabled =
-        !hasSelection || !runtimeAttachable || attachedToSelected || controlsLocked;
-      if (loadingRuntime) {
+      const canToggleAttach =
+        hasSelection && !controlsLocked && (attachedToSelected || runtimeAttachable);
+      podViewAttachEl.disabled = !canToggleAttach;
+      if (loadingRuntime && !attachedToSelected) {
         podViewAttachEl.textContent = "loading...";
+      } else if (attaching) {
+        podViewAttachEl.textContent = "attaching...";
+      } else if (detaching) {
+        podViewAttachEl.textContent = "detaching...";
+      } else if (attachedToSelected) {
+        podViewAttachEl.textContent = "detach";
       } else {
-        podViewAttachEl.textContent = attaching ? "attaching..." : "attach";
+        podViewAttachEl.textContent = "attach";
       }
 
-      podViewDetachEl.disabled = !hasSelection || !attachedToSelected || controlsLocked;
-      podViewDetachEl.textContent = detaching ? "detaching..." : "detach";
+      const canCancel = hasSelection && isActive(selected.status) && !controlsLocked;
+      podViewCancelEl.disabled = !canCancel;
+      podViewCancelEl.textContent = cancelling ? "cancelling..." : "cancel";
+      podViewCancelEl.title = canCancel
+        ? "Request graceful stop for this active loop."
+        : "Cancel is only available for active loops.";
+
+      const canTerminate =
+        hasSelection &&
+        selected.status === "overwriting" &&
+        runtimeUnhealthy &&
+        !controlsLocked;
+      podViewTerminateEl.disabled = !canTerminate;
+      podViewTerminateEl.textContent = terminating ? "terminating..." : "terminate";
+      podViewTerminateEl.title = canTerminate
+        ? "Force stop a hung runtime."
+        : "Terminate is available when an overwriting loop runtime is not healthy.";
 
       const canDelete = hasSelection && !isActive(selected.status) && !controlsLocked;
       podViewDeleteEl.disabled = !canDelete;
       podViewDeleteEl.textContent = state.loopDeleteBusy ? "deleting..." : "delete loop";
+      if (hasSelection && isActive(selected.status)) {
+        podViewDeleteEl.title = "Active loops cannot be deleted. Cancel/complete the loop first.";
+      } else {
+        podViewDeleteEl.title = "Delete selected loop and history.";
+      }
 
       const commandEnabled = hasSelection && attachedToSelected && !controlsLocked;
       const commandText = String(podViewCommandEl.value || "").trim();
       podViewCommandEl.disabled = !commandEnabled;
+      podViewCommandEl.placeholder = commandEnabled
+        ? "Run command (for example: pwd)"
+        : "Attach to run commands";
       podViewRunEl.disabled = !commandEnabled || commandText === "";
       podViewRunEl.textContent = executing ? "running..." : "run";
 
@@ -2148,10 +2230,35 @@
       return status === "unresolved" || status === "overwriting";
     }
 
+    async function fetchWithTimeout(url, options, timeoutMs, label) {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...(options || {}), signal: controller.signal });
+      } catch (err) {
+        if (err && err.name === "AbortError") {
+          throw new Error(
+            "Request timed out after " +
+              String(Math.ceil(timeoutMs / 1000)) +
+              "s for " +
+              String(label || url),
+          );
+        }
+        throw err;
+      } finally {
+        window.clearTimeout(timer);
+      }
+    }
+
     async function fetchJSON(path) {
       const headers = { Accept: "application/json" };
       if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
-      const res = await fetch(apiBase + path, { headers });
+      const res = await fetchWithTimeout(
+        apiBase + path,
+        { headers },
+        requestTimeoutMs,
+        path,
+      );
       if (!res.ok) {
         throw new Error("HTTP " + res.status + " for " + path);
       }
@@ -2176,11 +2283,16 @@
         "Content-Type": "application/json",
       };
       if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
-      const res = await fetch(apiBase + path, {
-        method,
-        headers,
-        body: payload === undefined ? undefined : JSON.stringify(payload),
-      });
+      const res = await fetchWithTimeout(
+        apiBase + path,
+        {
+          method,
+          headers,
+          body: payload === undefined ? undefined : JSON.stringify(payload),
+        },
+        requestTimeoutMs,
+        path,
+      );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = body.error || "HTTP " + res.status;
@@ -2559,6 +2671,7 @@
       podCreateSourceBranchEl.disabled = state.podCreateBusy;
       podCreateProviderEl.disabled = state.podCreateBusy || podCreateProviderEl.options.length <= 1;
       podCreatePromptEl.disabled = state.podCreateBusy;
+      podCreatePRDFileEl.disabled = state.podCreateBusy;
       podCreateBackEl.disabled = state.podCreateBusy;
       podCreateNextEl.disabled = state.podCreateBusy;
       podCreateSubmitEl.disabled = state.podCreateBusy || state.podCreateStep !== 3;
@@ -2579,7 +2692,8 @@
     }
 
     function podCreateMethodEnabled(method) {
-      return normalizePodCreateMethod(method) === "issue";
+      const normalized = normalizePodCreateMethod(method);
+      return normalized === "issue" || normalized === "generate_prd" || normalized === "load_prd";
     }
 
     function setPodCreateMethod(method) {
@@ -2610,7 +2724,7 @@
       }
       for (const panel of podCreateMethodPanels) {
         const method = normalizePodCreateMethod(panel.getAttribute("data-pod-create-method-panel") || "");
-        panel.classList.toggle("hidden", method !== state.podCreateMethod);
+        panel.classList.toggle("hidden", method !== "issue");
       }
       podCreateBackEl.classList.toggle("hidden", step <= 1);
       podCreateNextEl.classList.toggle("hidden", step >= 3);
@@ -2705,23 +2819,28 @@
     }
 
     function validatePodCreateStep(step) {
+      const method = normalizePodCreateMethod(state.podCreateMethod);
       if (step === 1) {
-        if (!podCreateMethodEnabled(state.podCreateMethod)) {
+        if (!podCreateMethodEnabled(method)) {
           return "Select a supported loop start method.";
         }
         return "";
       }
       if (step === 2) {
-        if (state.podCreateMethod === "issue") {
-          if (!selectedPodProject()) return "Select a project first.";
-          if (!selectedPodIssue()) return "Select an issue first.";
-          return "";
-        }
-        return "This flow is not available yet.";
+        if (!selectedPodProject()) return "Select a project first.";
+        return "";
       }
       if (step === 3) {
         if (!selectedPodProject()) return "Select a project first.";
-        if (!selectedPodIssue()) return "Select an issue first.";
+        const prompt = String(podCreatePromptEl.value || "").trim();
+        const hasIssue = Boolean(selectedPodIssue());
+        const hasProvidedPRD = Boolean(parsePromptAsPRDJSON(prompt));
+        if (method === "load_prd" && !hasProvidedPRD) {
+          return "Provide PRD JSON (paste or upload) before creating a loop.";
+        }
+        if (!hasIssue && !prompt) {
+          return "Select an issue or provide a prompt.";
+        }
         const configuredProviders = configuredLoopProviders();
         if (configuredProviders.length === 0) {
           return "Configure at least one provider before starting a loop.";
@@ -2754,6 +2873,7 @@
       podCreateSourceBranchEl.value = "main";
       podCreateProviderEl.value = "";
       podCreatePromptEl.value = "";
+      podCreatePRDFileEl.value = "";
       podCreateIssuePreviewEl.textContent = "Select a project to load issues.";
       setPodCreateStatus("", "muted");
       syncPodCreateWorkflow();
@@ -2936,9 +3056,11 @@
         if (credential) {
           headers.Authorization = "Bearer " + credential;
         }
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           "https://api.github.com/repos/" + repository + "/issues?state=open&per_page=50",
           { headers },
+          requestTimeoutMs,
+          "github issues",
         );
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -2964,6 +3086,7 @@
                       )
                       .filter(Boolean)
                   : [],
+                raw: item,
               }))
               .filter((item) => Number.isFinite(item.number) && item.number > 0 && item.title)
           : [];
@@ -2977,24 +3100,100 @@
       }
     }
 
-    async function startLoopFromIssue() {
-      if (state.podCreateMethod !== "issue") {
-        setPodCreateStatus("Only issue-based loop creation is available right now.", "err");
-        return;
+    function stringifyMetadataJSON(value, maxLength) {
+      try {
+        const raw = JSON.stringify(value);
+        if (!maxLength || raw.length <= maxLength) return raw;
+        return raw.slice(0, maxLength) + "\n...[truncated]";
+      } catch (_err) {
+        return "";
       }
+    }
+
+    function parsePromptAsPRDJSON(rawPrompt) {
+      const text = String(rawPrompt || "").trim();
+      if (!text) return null;
+      try {
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== "object") return null;
+        if (!Array.isArray(parsed.stories)) return null;
+        return parsed;
+      } catch (_err) {
+        return null;
+      }
+    }
+
+    async function fetchIssueContext(project, repository, issueNumber) {
+      const headers = { Accept: "application/vnd.github+json" };
+      const credential = await ensureProjectCredential(project.id);
+      if (credential) {
+        headers.Authorization = "Bearer " + credential;
+      }
+
+      const issueURL =
+        "https://api.github.com/repos/" +
+        repository +
+        "/issues/" +
+        encodeURIComponent(String(issueNumber));
+      const commentsURL =
+        issueURL + "/comments?per_page=100";
+
+      const issueRes = await fetchWithTimeout(
+        issueURL,
+        { headers },
+        requestTimeoutMs,
+        "github issue",
+      );
+      const issueBody = await issueRes.json().catch(() => ({}));
+      if (!issueRes.ok) {
+        const msg = issueBody && issueBody.message ? String(issueBody.message) : "issue fetch failed";
+        throw new Error(msg);
+      }
+
+      const commentsRes = await fetchWithTimeout(
+        commentsURL,
+        { headers },
+        requestTimeoutMs,
+        "github issue comments",
+      );
+      const commentsBody = await commentsRes.json().catch(() => ([]));
+      if (!commentsRes.ok) {
+        const msg =
+          commentsBody && commentsBody.message
+            ? String(commentsBody.message)
+            : "issue comments fetch failed";
+        throw new Error(msg);
+      }
+
+      return {
+        issue: issueBody,
+        comments: Array.isArray(commentsBody) ? commentsBody : [],
+        fetched_at: new Date().toISOString(),
+      };
+    }
+
+    async function startLoopFromIssue() {
+      const method = normalizePodCreateMethod(state.podCreateMethod);
       const project = selectedPodProject();
       if (!project) {
         setPodCreateStatus("Select a project first.", "err");
         return;
       }
       const issue = selectedPodIssue();
-      if (!issue) {
-        setPodCreateStatus("Select an issue first.", "err");
-        return;
-      }
       const repository = parseGitHubRepository(project.repo_url);
       if (!repository) {
         setPodCreateStatus("Project repository URL must be a valid github.com repo.", "err");
+        return;
+      }
+      const prompt = String(podCreatePromptEl.value || "").trim();
+      const providedPRD = parsePromptAsPRDJSON(prompt);
+      const hasProvidedPRD = Boolean(providedPRD);
+      if (method === "load_prd" && !hasProvidedPRD) {
+        setPodCreateStatus("Provide PRD JSON (paste or upload) before creating a loop.", "err");
+        return;
+      }
+      if (!issue && !prompt) {
+        setPodCreateStatus("Select an issue or provide a prompt.", "err");
         return;
       }
       const configuredProviders = configuredLoopProviders();
@@ -3009,57 +3208,117 @@
         return;
       }
       const enteredLoopName = String(podCreateLoopNameEl.value || "").trim();
-      const loopName = enteredLoopName || defaultPodLoopName(issue);
+      const promptDefaultName = "prompt-" + String(Date.now());
+      const loopName = enteredLoopName || (issue ? defaultPodLoopName(issue) : promptDefaultName);
       const loopNameSlug = slugifySegment(loopName);
       const branchDefault = defaultPodBranchName(project, issue) || loopNameSlug;
       const branch = normalizeBranchName(podCreateBranchEl.value) || branchDefault;
       const sourceBranch = normalizeBranchName(podCreateSourceBranchEl.value) || "main";
-      const prompt = String(podCreatePromptEl.value || "").trim();
       const loopID =
         slugifySegment(project.name || project.id || "project") + "-" + loopNameSlug;
-      const sourceRef = repository + "#" + String(issue.number);
+      const sourceType =
+        issue
+          ? "github_issue"
+          : method === "generate_prd"
+          ? "interactive_prompt"
+          : "prompt";
+      const sourcePrefix =
+        method === "generate_prd" ? "generate-prd" : method === "load_prd" ? "load-prd" : "prompt";
+      const sourceRef = issue
+        ? repository + "#" + String(issue.number)
+        : sourcePrefix + ":" + slugifySegment(project.id || project.name || "project") + ":" + loopNameSlug;
+      const idempotencyKey =
+        method === "issue" && issue
+          ? "github:" + repository + "#" + String(issue.number)
+          : method + ":" + sourceRef + ":" + loopID;
       const descriptionParts = [
         "Loop request from console",
         "",
+        "Method: " + method,
         "Loop Name: " + loopName,
         "Branch: " + branch,
         "Base branch: " + sourceBranch,
         "Provider: " + providerInfo.label,
-        "Issue: " + sourceRef,
+        issue ? "Issue: " + sourceRef : "Prompt Source: " + sourceRef,
       ];
-      if (prompt) {
+      if (prompt && !hasProvidedPRD) {
         descriptionParts.push("", "Prompt:", prompt);
       }
-      if (issue.body) {
+      if (hasProvidedPRD) {
+        descriptionParts.push("", "PRD provided inline via console input.");
+      }
+      if (issue && issue.body) {
         descriptionParts.push("", "Issue Body:", issue.body.trim());
       }
 
       setPodCreateBusy(true);
-      setPodCreateStatus("Creating loop...", "muted");
+      setPodCreateStatus(issue ? "Loading issue context..." : "Creating loop...", "muted");
       try {
+        let issueContext = null;
+        let issueContextJSON = "";
+        let issueContextTruncated = false;
+        if (issue) {
+          issueContext = await fetchIssueContext(project, repository, issue.number);
+          issueContextJSON = stringifyMetadataJSON(issueContext, 120000);
+          issueContextTruncated =
+            issueContextJSON.length >= 120000 && issueContextJSON.endsWith("...[truncated]");
+          setPodCreateStatus("Creating loop...", "muted");
+        }
+
+        setPodCreateStatus("Creating loop...", "muted");
         const payload = {
           loop_id: loopID,
-          idempotency_key: "github:" + repository + "#" + String(issue.number),
-          title: "Loop " + loopName + ": " + issue.title,
+          idempotency_key: idempotencyKey,
+          title: issue ? "Loop " + loopName + ": " + issue.title : "Loop " + loopName + ": prompt request",
           description: descriptionParts.join("\n"),
-          source_type: "github_issue",
+          provider_id: provider,
+          source_type: sourceType,
           source_ref: sourceRef,
           metadata: {
             project_id: project.id,
             project_name: project.name,
             github_repository: repository,
-            github_issue_number: String(issue.number),
-            github_issue_url: issue.url,
-            github_labels: issue.labels.join(","),
+            github_issue_number: issue ? String(issue.number) : "",
+            github_issue_url: issue ? issue.url : "",
+            github_labels: issue ? issue.labels.join(",") : "",
+            github_issue_context_json: issue ? issueContextJSON : "",
+            github_issue_comment_count: issueContext
+              ? String(Array.isArray(issueContext.comments) ? issueContext.comments.length : 0)
+              : "0",
+            github_issue_context_truncated: String(issueContextTruncated),
             workspace_branch: branch,
             workspace_source_branch: sourceBranch,
             workspace_agent: provider,
             workspace_provider: provider,
-            workspace_prompt: prompt,
+            invocation_method: method,
+            workspace_prompt: hasProvidedPRD ? "" : prompt,
+            workspace_prd_json: hasProvidedPRD ? stringifyMetadataJSON(providedPRD, 120000) : "",
+            workspace_prd_path: ".agents/tasks/prd.json",
+            workspace_seed_image: String(project.skills_image || "").trim(),
+            workspace_seed_pull_policy:
+              String(project.skills_pull_policy || "").trim() || "IfNotPresent",
           },
         };
+        const runtimeImage = String(project.runtime_image || "").trim();
+        if (runtimeImage) {
+          payload.environment = {
+            container_image: {
+              ref: runtimeImage,
+              pull_policy:
+                String(project.runtime_pull_policy || "").trim() || "IfNotPresent",
+            },
+          };
+        }
         const result = await postJSON("/v1/loops", payload);
-        setPodCreateStatus("Loop started for issue #" + String(issue.number) + ".", "ok");
+        if (method === "load_prd") {
+          setPodCreateStatus("PRD-based loop started.", "ok");
+        } else if (method === "generate_prd") {
+          setPodCreateStatus(issue ? "PRD generation loop started for issue #" + String(issue.number) + "." : "PRD generation loop started.", "ok");
+        } else if (issue) {
+          setPodCreateStatus("Loop started for issue #" + String(issue.number) + ".", "ok");
+        } else {
+          setPodCreateStatus("Prompt-based loop started.", "ok");
+        }
         setPodCreateOpen(false);
         await refreshLoops();
         if (result && result.loop_id) {
@@ -3089,6 +3348,12 @@
             repo_url: String(item.repo_url || "").trim(),
             github_user: String(item.github_user || "").trim(),
             credential_set: Boolean(item.credential_set),
+            runtime_image: String(item.runtime_image || "").trim(),
+            runtime_pull_policy:
+              String(item.runtime_pull_policy || "").trim() || "IfNotPresent",
+            skills_image: String(item.skills_image || "").trim(),
+            skills_pull_policy:
+              String(item.skills_pull_policy || "").trim() || "IfNotPresent",
             updated_at: String(item.updated_at || ""),
             workflow_status: String(item.workflow_status || "new").trim() || "new",
             last_action_at: String(item.last_action_at || ""),
@@ -3106,6 +3371,10 @@
         repo_url: project.repo_url,
         github_user: project.github_user,
         credential_set: Boolean(project.credential_set),
+        runtime_image: project.runtime_image || "",
+        runtime_pull_policy: project.runtime_pull_policy || "IfNotPresent",
+        skills_image: project.skills_image || "",
+        skills_pull_policy: project.skills_pull_policy || "IfNotPresent",
         updated_at: project.updated_at,
         workflow_status: project.workflow_status || "new",
         last_action_at: project.last_action_at || "",
@@ -3131,6 +3400,10 @@
         "project-repo-url",
         "project-github-user",
         "project-github-credential",
+        "project-runtime-image",
+        "project-runtime-pull-policy",
+        "project-skills-image",
+        "project-skills-pull-policy",
         "project-save",
         "project-delete",
         "project-back",
@@ -3184,6 +3457,10 @@
       projectInput("project-repo-url").value = "";
       projectInput("project-github-user").value = "";
       projectInput("project-github-credential").value = "";
+      projectInput("project-runtime-image").value = "";
+      projectInput("project-runtime-pull-policy").value = "IfNotPresent";
+      projectInput("project-skills-image").value = "";
+      projectInput("project-skills-pull-policy").value = "IfNotPresent";
       projectFormStatusEl.textContent = "";
       document.getElementById("project-save").textContent = "save project";
       syncProjectDeleteControl("");
@@ -3342,6 +3619,12 @@
       projectInput("project-repo-url").value = project.repo_url;
       projectInput("project-github-user").value = project.github_user;
       projectInput("project-github-credential").value = "";
+      projectInput("project-runtime-image").value = String(project.runtime_image || "");
+      projectInput("project-runtime-pull-policy").value =
+        String(project.runtime_pull_policy || "IfNotPresent") || "IfNotPresent";
+      projectInput("project-skills-image").value = String(project.skills_image || "");
+      projectInput("project-skills-pull-policy").value =
+        String(project.skills_pull_policy || "IfNotPresent") || "IfNotPresent";
       document.getElementById("project-save").textContent = "update project";
       syncProjectDeleteControl(project.id);
       syncProjectCredentialControl(project.id, Boolean(project.credential_set));
@@ -3500,6 +3783,14 @@
       const repoURL = projectInput("project-repo-url").value.trim();
       const githubUser = projectInput("project-github-user").value.trim();
       const githubCredential = projectInput("project-github-credential").value.trim();
+      const runtimeImage = projectInput("project-runtime-image").value.trim();
+      const runtimePullPolicy =
+        String(projectInput("project-runtime-pull-policy").value || "").trim() ||
+        "IfNotPresent";
+      const skillsImage = projectInput("project-skills-image").value.trim();
+      const skillsPullPolicy =
+        String(projectInput("project-skills-pull-policy").value || "").trim() ||
+        "IfNotPresent";
 
       if (!name) {
         setProjectFormStatus("project name is required", "err");
@@ -3555,6 +3846,10 @@
           repo_url: repoURL,
           github_user: githubUser,
           credential_set: credentialSet,
+          runtime_image: runtimeImage,
+          runtime_pull_policy: runtimePullPolicy,
+          skills_image: skillsImage,
+          skills_pull_policy: skillsPullPolicy,
           updated_at: new Date().toISOString(),
           workflow_status: existing && existing.workflow_status ? existing.workflow_status : "new",
           last_action_at: existing && existing.last_action_at ? existing.last_action_at : "",
@@ -3787,7 +4082,7 @@
             setActivePage("pods", true);
           }
         } else if (state.selectedLoop && pages.podView.classList.contains("active")) {
-          void loadLoopRuntime(state.selectedLoop, false);
+          void loadLoopRuntime(state.selectedLoop, true);
         }
       } catch (_) {
         apiDotEl.className = "dot err";
@@ -3939,7 +4234,7 @@
       setTerminalUIState("attaching", "");
       renderGrid();
       try {
-        const runtime = await loadLoopRuntime(id, false);
+        const runtime = await loadLoopRuntime(id, true);
         if (!runtime || !runtime.attachable) {
           setTerminalUIState("error", runtimeReason(runtime) || "runtime target not attachable");
           return;
@@ -4018,6 +4313,93 @@
       } finally {
         syncPodViewActions();
       }
+    }
+
+    async function applyLoopControlOverride(loopID, targetState, reason, successMessage) {
+      const id = String(loopID || "").trim();
+      if (!id || state.loopControlBusy) {
+        return;
+      }
+      const action = targetState === "flatline" ? "terminate" : "cancel";
+      state.loopControlBusy = true;
+      state.loopControlAction = action;
+      state.loopControlBusyLoopID = id;
+      syncPodViewActions();
+      try {
+        await postJSON("/v1/control/override", {
+          loop_id: id,
+          target_state: targetState,
+          reason,
+          actor: authActor(),
+        });
+        if (state.terminalAttachedLoopID === id) {
+          state.terminalAttachedLoopID = "";
+          setTerminalUIState("idle", "");
+        }
+        pushToast(successMessage, "ok");
+        await refreshLoops();
+        if (state.selectedLoop === id) {
+          void loadLoopRuntime(id, true);
+        }
+      } catch (err) {
+        const message = err && err.message ? err.message : action + " failed";
+        pushToast("Failed to " + action + " loop: " + message, "err");
+      } finally {
+        state.loopControlBusy = false;
+        state.loopControlAction = "";
+        state.loopControlBusyLoopID = "";
+        syncPodViewActions();
+      }
+    }
+
+    async function cancelSelectedLoop() {
+      const selected = selectedLoopRecord();
+      if (!selected) {
+        pushToast("Select a loop first.", "err");
+        return;
+      }
+      if (!isActive(selected.status)) {
+        pushToast("Cancel is only available for active loops.", "err");
+        return;
+      }
+      const loopID = String(selected.loopID || "").trim();
+      await applyLoopControlOverride(
+        loopID,
+        "cancelled",
+        "operator requested cancellation via pod detail",
+        "Cancel requested for " + loopID + ".",
+      );
+    }
+
+    async function terminateSelectedLoop() {
+      const selected = selectedLoopRecord();
+      if (!selected) {
+        pushToast("Select a loop first.", "err");
+        return;
+      }
+      if (selected.status !== "overwriting") {
+        pushToast("Terminate is only available for overwriting loops.", "err");
+        return;
+      }
+      const runtime = selectedLoopRuntime();
+      const runtimePhase = String((runtime && runtime.pod_phase) || "").trim().toLowerCase();
+      const runtimeUnhealthy =
+        !runtime ||
+        !runtime.attachable ||
+        runtimePhase === "pending" ||
+        runtimePhase === "unknown" ||
+        runtimePhase === "failed";
+      if (!runtimeUnhealthy) {
+        pushToast("Runtime appears healthy; use cancel first.", "err");
+        return;
+      }
+      const loopID = String(selected.loopID || "").trim();
+      await applyLoopControlOverride(
+        loopID,
+        "flatline",
+        "operator terminated hung runtime via pod detail",
+        "Terminate requested for " + loopID + ".",
+      );
     }
 
     async function deleteSelectedLoop() {
@@ -4182,16 +4564,21 @@
     });
     podViewAttachEl.addEventListener("click", () => {
       if (state.selectedLoop) {
-        void attachLoopTerminal(state.selectedLoop);
-      }
-    });
-    podViewDetachEl.addEventListener("click", () => {
-      if (state.selectedLoop) {
-        void detachLoopTerminal(state.selectedLoop);
+        if (state.terminalAttachedLoopID === state.selectedLoop) {
+          void detachLoopTerminal(state.selectedLoop);
+        } else {
+          void attachLoopTerminal(state.selectedLoop);
+        }
       }
     });
     podViewRunEl.addEventListener("click", () => {
       void runSelectedLoopCommand();
+    });
+    podViewCancelEl.addEventListener("click", () => {
+      void cancelSelectedLoop();
+    });
+    podViewTerminateEl.addEventListener("click", () => {
+      void terminateSelectedLoop();
     });
     podViewCommandEl.addEventListener("input", () => {
       syncPodViewActions();
@@ -4234,6 +4621,17 @@
     });
     podCreateIssueEl.addEventListener("change", () => {
       renderPodIssuePreview();
+    });
+    podCreatePRDFileEl.addEventListener("change", async () => {
+      const file = podCreatePRDFileEl.files && podCreatePRDFileEl.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        podCreatePromptEl.value = text;
+        setPodCreateStatus("Loaded PRD file: " + file.name, "ok");
+      } catch (_err) {
+        setPodCreateStatus("Failed to read PRD file.", "err");
+      }
     });
     podCreateSubmitEl.addEventListener("click", () => {
       void startLoopFromIssue();
@@ -4337,8 +4735,18 @@
     renderSelectedLoop();
     refreshLoops();
     refreshAuthStatus();
+    const autoRefreshEl = document.getElementById("auto-refresh");
     setInterval(() => {
-      if (document.getElementById("auto-refresh").checked) refreshLoops();
+      if (!(autoRefreshEl instanceof HTMLInputElement) || !autoRefreshEl.checked) {
+        return;
+      }
+      if (pages.podView.classList.contains("active")) {
+        if (state.selectedLoop) {
+          void loadLoopRuntime(state.selectedLoop, true);
+        }
+        return;
+      }
+      void refreshLoops();
     }, 2000);
   </script>
 </body>

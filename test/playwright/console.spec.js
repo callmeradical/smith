@@ -521,12 +521,14 @@ test('supports pod detail terminal control states', async ({ page }) => {
   await expect(page.locator('#pod-view-terminal-state')).toHaveText('idle');
   await expect(page.locator('#pod-view-control-message')).toContainText('Attach to enable');
   await expect(page.locator('#pod-view-attach')).toBeEnabled();
-  await expect(page.locator('#pod-view-detach')).toBeDisabled();
+  await expect(page.locator('#pod-view-cancel')).toBeEnabled();
+  await expect(page.locator('#pod-view-terminate')).toBeDisabled();
   await expect(page.locator('#pod-view-command')).toBeDisabled();
   await expect(page.locator('#pod-view-run')).toBeDisabled();
 
   await page.locator('#pod-view-attach').click();
   await expect(page.locator('#pod-view-terminal-state')).toHaveText('attached');
+  await expect(page.locator('#pod-view-attach')).toHaveText('detach');
   await expect(page.locator('#pod-view-command')).toBeEnabled();
   await expect(page.locator('#pod-view-control-message')).toContainText('Press Enter or Run');
 
@@ -546,8 +548,9 @@ test('supports pod detail terminal control states', async ({ page }) => {
   await expect(page.locator('#pod-view-command')).toHaveValue('fail-command');
   await expect(page.locator('#pod-view-control-message')).toContainText('command failed in runtime');
 
-  await page.locator('#pod-view-detach').click();
+  await page.locator('#pod-view-attach').click();
   await expect(page.locator('#pod-view-terminal-state')).toHaveText('idle');
+  await expect(page.locator('#pod-view-attach')).toHaveText('attach');
   await expect(page.locator('#pod-view-command')).toBeDisabled();
   await expect(page.locator('#pod-view-run')).toBeDisabled();
 
@@ -556,8 +559,87 @@ test('supports pod detail terminal control states', async ({ page }) => {
   await expect(page.locator('#pod-view-control-message')).toContainText('loop not active');
   await expect(page.locator('#pod-view-terminal-state')).toHaveText('idle');
   await expect(page.locator('#pod-view-attach')).toBeDisabled();
+  await expect(page.locator('#pod-view-cancel')).toBeDisabled();
+  await expect(page.locator('#pod-view-terminate')).toBeDisabled();
   await expect(page.locator('#pod-view-command')).toBeDisabled();
   await expect(page.locator('#pod-view-run')).toBeDisabled();
+});
+
+test('supports cancel and terminate controls from pod detail', async ({ page }) => {
+  const api = await mockConsoleApi(page);
+  await page.route(/\/v1\/loops\/loop-beta\/runtime$/, async (route) => {
+    await jsonResponse(route, {
+      loop_id: 'loop-beta',
+      namespace: 'smith-system',
+      pod_name: 'smith-replica-loop-beta-abc',
+      container_name: 'replica',
+      pod_phase: 'Pending',
+      attachable: false,
+      reason: 'runtime pod not running',
+    });
+  });
+  await page.goto('/');
+
+  await page.locator('#grid .pod-tile', { hasText: 'loop-alpha' }).click();
+  await expect(page.locator('#pod-view-cancel')).toBeEnabled();
+  await expect(page.locator('#pod-view-terminate')).toBeDisabled();
+  await page.locator('#pod-view-cancel').click();
+  await expect
+    .poll(() => api.overridePayloads.length)
+    .toBe(1);
+  expect(api.overridePayloads[0]).toMatchObject({
+    loop_id: 'loop-alpha',
+    target_state: 'cancelled',
+  });
+
+  await page.locator('#pod-view-back').click();
+  await page.locator('#grid .pod-tile', { hasText: 'loop-beta' }).click();
+  await expect(page.locator('#pod-view-terminate')).toBeEnabled();
+  await page.locator('#pod-view-terminate').click();
+  await expect
+    .poll(() => api.overridePayloads.length)
+    .toBe(2);
+  expect(api.overridePayloads[1]).toMatchObject({
+    loop_id: 'loop-beta',
+    target_state: 'flatline',
+  });
+});
+
+test('retries runtime lookup on repeated tile attach attempts', async ({ page }) => {
+  await mockConsoleApi(page);
+  let alphaRuntimeCalls = 0;
+  await page.route(/\/v1\/loops\/loop-alpha\/runtime$/, async (route) => {
+    alphaRuntimeCalls += 1;
+    if (alphaRuntimeCalls === 1) {
+      await jsonResponse(route, {
+        loop_id: 'loop-alpha',
+        namespace: 'smith-system',
+        container_name: 'replica',
+        attachable: false,
+        reason: 'runtime pod not found',
+      });
+      return;
+    }
+    await jsonResponse(route, {
+      loop_id: 'loop-alpha',
+      namespace: 'smith-system',
+      pod_name: 'smith-replica-loop-alpha-xyz',
+      container_name: 'replica',
+      pod_phase: 'Running',
+      attachable: true,
+      reason: '',
+    });
+  });
+
+  await page.goto('/');
+  const alphaTile = page.locator('#grid .pod-tile', { hasText: 'loop-alpha' });
+
+  await alphaTile.locator('[data-tile-attach]').click();
+  await expect.poll(() => alphaRuntimeCalls).toBe(1);
+
+  await alphaTile.locator('[data-tile-attach]').click();
+  await expect(page.locator('#toast-region .toast').last()).toContainText('Attached to loop-alpha');
+  await expect.poll(() => alphaRuntimeCalls).toBeGreaterThanOrEqual(2);
 });
 
 test('deletes a completed loop from pod detail view', async ({ page }) => {
@@ -798,6 +880,7 @@ test('starts loop from project issue with loop modal flow', async ({ page }) => 
     .poll(() => api.createdLoopPayloads.length)
     .toBe(1);
   expect(api.createdLoopPayloads[0]).toMatchObject({
+    provider_id: 'codex',
     source_type: 'github_issue',
     source_ref: 'callmeradical/smith#132',
     metadata: {
@@ -806,4 +889,250 @@ test('starts loop from project issue with loop modal flow', async ({ page }) => 
     },
   });
   expect(api.createdLoopPayloads[0].loop_id).toContain('alpha-issue-132-');
+});
+
+test('starts prompt-based loop when no issue is selected', async ({ page }) => {
+  const api = await mockConsoleApi(page);
+  await page.goto('/');
+
+  await page.evaluate(async () => {
+    await fetch('/v1/auth/codex/connect/api-key', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        actor: 'operator',
+        api_key: 'sk-test-123',
+        account_id: 'acct-api',
+      }),
+    });
+  });
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-providers').click();
+  await page.locator('#provider-list button[data-provider-config="codex"]').click();
+  await expect(page.locator('#provider-config-panel')).toBeVisible();
+  await expect(page.locator('#provider-list .provider-card.connected')).toHaveCount(1);
+  await page.locator('#provider-back').click();
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-projects').click();
+  await page.locator('#project-add').click();
+  await page.locator('#project-name').fill('alpha');
+  await page.locator('#project-repo-url').fill('https://github.com/callmeradical/smith.git');
+  await page.locator('#project-github-user').fill('smith-bot');
+  await page.locator('#project-github-credential').fill('ghp_test_123');
+  await page.locator('#project-save').click();
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-pods').click();
+  await page.keyboard.press('n');
+
+  await page.locator('#pod-create-next').click();
+  await page.locator('#pod-create-project').selectOption({ label: 'alpha' });
+  await page.locator('#pod-create-next').click();
+
+  await expect(page.locator('#pod-create-provider')).toHaveValue('codex');
+  await page.locator('#pod-create-prompt').fill('Create a PRD for improving pod runtime diagnostics.');
+  await page.locator('#pod-create-submit').click();
+
+  await expect(page.locator('#pod-create-panel')).toBeHidden();
+  await expect
+    .poll(() => api.createdLoopPayloads.length)
+    .toBe(1);
+  expect(api.createdLoopPayloads[0]).toMatchObject({
+    provider_id: 'codex',
+    source_type: 'prompt',
+    metadata: {
+      workspace_prompt: 'Create a PRD for improving pod runtime diagnostics.',
+      workspace_agent: 'codex',
+    },
+  });
+  expect(String(api.createdLoopPayloads[0].source_ref || '')).toContain('prompt:');
+});
+
+test('accepts pasted PRD JSON in loop prompt field', async ({ page }) => {
+  const api = await mockConsoleApi(page);
+  await page.goto('/');
+
+  await page.evaluate(async () => {
+    await fetch('/v1/auth/codex/connect/api-key', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        actor: 'operator',
+        api_key: 'sk-test-123',
+        account_id: 'acct-api',
+      }),
+    });
+  });
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-providers').click();
+  await page.locator('#provider-list button[data-provider-config="codex"]').click();
+  await expect(page.locator('#provider-config-panel')).toBeVisible();
+  await expect(page.locator('#provider-list .provider-card.connected')).toHaveCount(1);
+  await page.locator('#provider-back').click();
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-projects').click();
+  await page.locator('#project-add').click();
+  await page.locator('#project-name').fill('alpha');
+  await page.locator('#project-repo-url').fill('https://github.com/callmeradical/smith.git');
+  await page.locator('#project-github-user').fill('smith-bot');
+  await page.locator('#project-github-credential').fill('ghp_test_123');
+  await page.locator('#project-save').click();
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-pods').click();
+  await page.keyboard.press('n');
+
+  await page.locator('#pod-create-next').click();
+  await page.locator('#pod-create-project').selectOption({ label: 'alpha' });
+  await page.locator('#pod-create-next').click();
+
+  await expect(page.locator('#pod-create-provider')).toHaveValue('codex');
+  await page
+    .locator('#pod-create-prompt')
+    .fill('{"stories":[{"id":"US-001","title":"Story","status":"open"}]}');
+  await page.locator('#pod-create-submit').click();
+
+  await expect
+    .poll(() => api.createdLoopPayloads.length)
+    .toBe(1);
+  expect(api.createdLoopPayloads[0]).toMatchObject({
+    provider_id: 'codex',
+    metadata: {
+      workspace_prd_path: '.agents/tasks/prd.json',
+      workspace_prompt: '',
+    },
+  });
+  expect(String(api.createdLoopPayloads[0].metadata.workspace_prd_json || '')).toContain('"stories"');
+});
+
+test('starts generate PRD loop from method selector', async ({ page }) => {
+  const api = await mockConsoleApi(page);
+  await page.goto('/');
+
+  await page.evaluate(async () => {
+    await fetch('/v1/auth/codex/connect/api-key', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        actor: 'operator',
+        api_key: 'sk-test-123',
+        account_id: 'acct-api',
+      }),
+    });
+  });
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-providers').click();
+  await page.locator('#provider-list button[data-provider-config="codex"]').click();
+  await expect(page.locator('#provider-config-panel')).toBeVisible();
+  await expect(page.locator('#provider-list .provider-card.connected')).toHaveCount(1);
+  await page.locator('#provider-back').click();
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-projects').click();
+  await page.locator('#project-add').click();
+  await page.locator('#project-name').fill('alpha');
+  await page.locator('#project-repo-url').fill('https://github.com/callmeradical/smith.git');
+  await page.locator('#project-github-user').fill('smith-bot');
+  await page.locator('#project-github-credential').fill('ghp_test_123');
+  await page.locator('#project-save').click();
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-pods').click();
+  await page.keyboard.press('n');
+  await page.locator('[data-pod-create-method="generate_prd"]').click();
+
+  await page.locator('#pod-create-next').click();
+  await page.locator('#pod-create-project').selectOption({ label: 'alpha' });
+  await page.locator('#pod-create-next').click();
+  await page.locator('#pod-create-prompt').fill('Build a PRD for better pod runtime diagnostics.');
+  await page.locator('#pod-create-submit').click();
+
+  await expect
+    .poll(() => api.createdLoopPayloads.length)
+    .toBe(1);
+  expect(api.createdLoopPayloads[0]).toMatchObject({
+    provider_id: 'codex',
+    source_type: 'interactive_prompt',
+    metadata: {
+      invocation_method: 'generate_prd',
+      workspace_prompt: 'Build a PRD for better pod runtime diagnostics.',
+    },
+  });
+});
+
+test('starts load PRD loop from method selector', async ({ page }) => {
+  const api = await mockConsoleApi(page);
+  await page.goto('/');
+
+  await page.evaluate(async () => {
+    await fetch('/v1/auth/codex/connect/api-key', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        actor: 'operator',
+        api_key: 'sk-test-123',
+        account_id: 'acct-api',
+      }),
+    });
+  });
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-providers').click();
+  await page.locator('#provider-list button[data-provider-config="codex"]').click();
+  await expect(page.locator('#provider-config-panel')).toBeVisible();
+  await expect(page.locator('#provider-list .provider-card.connected')).toHaveCount(1);
+  await page.locator('#provider-back').click();
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-projects').click();
+  await page.locator('#project-add').click();
+  await page.locator('#project-name').fill('alpha');
+  await page.locator('#project-repo-url').fill('https://github.com/callmeradical/smith.git');
+  await page.locator('#project-github-user').fill('smith-bot');
+  await page.locator('#project-github-credential').fill('ghp_test_123');
+  await page.locator('#project-save').click();
+
+  await page.locator('.page.active .sidebar-toggle').click();
+  await page.locator('#nav-pods').click();
+  await page.keyboard.press('n');
+  await page.locator('[data-pod-create-method="load_prd"]').click();
+
+  await page.locator('#pod-create-next').click();
+  await page.locator('#pod-create-project').selectOption({ label: 'alpha' });
+  await page.locator('#pod-create-next').click();
+  await page
+    .locator('#pod-create-prompt')
+    .fill('{"stories":[{"id":"US-001","title":"Story","status":"open"}]}');
+  await page.locator('#pod-create-submit').click();
+
+  await expect
+    .poll(() => api.createdLoopPayloads.length)
+    .toBe(1);
+  expect(api.createdLoopPayloads[0]).toMatchObject({
+    provider_id: 'codex',
+    source_type: 'prompt',
+    metadata: {
+      invocation_method: 'load_prd',
+      workspace_prd_path: '.agents/tasks/prd.json',
+      workspace_prompt: '',
+    },
+  });
+  expect(String(api.createdLoopPayloads[0].metadata.workspace_prd_json || '')).toContain('"stories"');
 });

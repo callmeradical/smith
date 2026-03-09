@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -47,6 +48,9 @@ type config struct {
 	holderID            string
 	replicaImage        string
 	replicaPullPolicy   string
+	workspaceSeedImage  string
+	workspaceSeedPolicy string
+	runtimeCredentials  string
 	dockerfileRepo      string
 	dockerfileBuild     bool
 	gitPolicy           gitpolicy.Policy
@@ -335,13 +339,20 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 	}
 	request := replica.JobRequest{
 		Namespace:                 o.cfg.namespace,
+		EtcdEndpoints:             append([]string(nil), o.cfg.etcdEndpoints...),
 		LoopID:                    loopID,
 		CorrelationID:             correlationID,
+		ProviderID:                loopProviderFor(anomaly),
+		InvocationMethod:          loopInvocationMethodFor(anomaly),
+		SourceType:                anomaly.SourceType,
+		SourceRef:                 anomaly.SourceRef,
 		JobName:                   jobName,
 		Labels:                    labels,
 		ServiceAccountName:        o.cfg.replicaSA,
 		Image:                     executionImage.Ref,
 		ImagePullPolicy:           executionImage.PullPolicy,
+		WorkspaceSeedImage:        workspaceSeedImageFor(anomaly, o.cfg),
+		WorkspaceSeedPullPolicy:   workspaceSeedPullPolicyFor(anomaly, o.cfg),
 		Git:                       gitContextFor(anomaly),
 		SkillMounts:               skillMounts,
 		GitPolicy:                 gitPolicyPtr(o.cfg.gitPolicy, o.cfg.gitPolicyConfig),
@@ -349,6 +360,7 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		JournalPolicy:             journalPolicyPtr(o.cfg.journalPolicy, o.cfg.journalPolicyConfig),
 		EnableJournalPolicyConfig: o.cfg.journalPolicyConfig,
 		HandoffConfigMapName:      handoffConfigMapName(loopID),
+		RuntimeCredentialsValue:   strings.TrimSpace(o.cfg.runtimeCredentials),
 		BackoffLimit:              o.jobBackoff,
 		ActiveDeadlineSeconds:     int64(o.cfg.defaultPolicy.Timeout.Seconds()),
 		TTLSecondsAfterFinished:   o.jobTTL,
@@ -357,8 +369,84 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		kube:      o.kube,
 		namespace: o.cfg.namespace,
 	})
+	if err := o.ensureHandoffConfigMap(ctx, loopID, request.HandoffConfigMapName); err != nil {
+		return err
+	}
 	_, err := generator.Submit(ctx, request)
 	return err
+}
+
+func (o *orchestrator) ensureHandoffConfigMap(ctx context.Context, loopID, configMapName string) error {
+	name := strings.TrimSpace(configMapName)
+	if name == "" {
+		return errors.New("handoff configmap name is required")
+	}
+	payload, err := o.handoffConfigMapPayload(ctx, loopID)
+	if err != nil {
+		return err
+	}
+	client := o.kube.CoreV1().ConfigMaps(o.cfg.namespace)
+	existing, err := client.Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, createErr := client.Create(ctx, &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: o.cfg.namespace,
+				Labels: map[string]string{
+					"app.kubernetes.io/name":      "smith",
+					"app.kubernetes.io/component": "handoff",
+				},
+				Annotations: map[string]string{
+					"smith.io/loop-id": loopID,
+				},
+			},
+			Data: map[string]string{
+				"latest.json": payload,
+			},
+		}, metav1.CreateOptions{})
+		if createErr != nil {
+			return fmt.Errorf("create handoff configmap %q: %w", name, createErr)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get handoff configmap %q: %w", name, err)
+	}
+	if existing.Data != nil && existing.Data["latest.json"] == payload {
+		return nil
+	}
+	next := existing.DeepCopy()
+	if next.Data == nil {
+		next.Data = map[string]string{}
+	}
+	next.Data["latest.json"] = payload
+	if next.Annotations == nil {
+		next.Annotations = map[string]string{}
+	}
+	next.Annotations["smith.io/loop-id"] = loopID
+	if _, err := client.Update(ctx, next, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update handoff configmap %q: %w", name, err)
+	}
+	return nil
+}
+
+func (o *orchestrator) handoffConfigMapPayload(ctx context.Context, loopID string) (string, error) {
+	handoff, found, err := o.store.GetLatestHandoff(ctx, loopID)
+	if err != nil {
+		return "", fmt.Errorf("load latest handoff for %q: %w", loopID, err)
+	}
+	if found {
+		out, err := json.Marshal(handoff)
+		if err != nil {
+			return "", fmt.Errorf("marshal latest handoff for %q: %w", loopID, err)
+		}
+		return string(out), nil
+	}
+	out, err := json.Marshal(map[string]string{"loop_id": loopID})
+	if err != nil {
+		return "", fmt.Errorf("marshal bootstrap handoff payload for %q: %w", loopID, err)
+	}
+	return string(out), nil
 }
 
 func (o *orchestrator) ensureSkillSourcesExist(ctx context.Context, mounts []replica.SkillMount) error {
@@ -403,6 +491,20 @@ func resolveExecutionImageSelection(ctx context.Context, anomaly *model.Anomaly,
 		Source:     source,
 		Digest:     parseImageDigest(ref),
 	}, nil
+}
+
+func workspaceSeedImageFor(anomaly model.Anomaly, cfg config) string {
+	if image := strings.TrimSpace(anomaly.Metadata["workspace_seed_image"]); image != "" {
+		return image
+	}
+	return strings.TrimSpace(cfg.workspaceSeedImage)
+}
+
+func workspaceSeedPullPolicyFor(anomaly model.Anomaly, cfg config) string {
+	if policy := strings.TrimSpace(anomaly.Metadata["workspace_seed_pull_policy"]); policy != "" {
+		return policy
+	}
+	return strings.TrimSpace(cfg.workspaceSeedPolicy)
 }
 
 func resolveDockerfileExecutionImage(ctx context.Context, cfg config, profile model.DockerfileProfile, loopID string) (executionImageSelection, error) {
@@ -587,6 +689,32 @@ func projectLabelValue(anomaly model.Anomaly) string {
 	return ""
 }
 
+func loopInvocationMethodFor(anomaly model.Anomaly) string {
+	if method := strings.TrimSpace(anomaly.Metadata["invocation_method"]); method != "" {
+		return method
+	}
+	if ingress := strings.TrimSpace(anomaly.Metadata["ingress_mode"]); ingress != "" {
+		return ingress
+	}
+	if sourceType := strings.TrimSpace(anomaly.SourceType); sourceType != "" {
+		return sourceType
+	}
+	return "unknown"
+}
+
+func loopProviderFor(anomaly model.Anomaly) string {
+	if provider := strings.ToLower(strings.TrimSpace(anomaly.ProviderID)); provider != "" {
+		return provider
+	}
+	if provider := strings.ToLower(strings.TrimSpace(anomaly.Metadata["workspace_provider"])); provider != "" {
+		return provider
+	}
+	if provider := strings.ToLower(strings.TrimSpace(anomaly.Metadata["workspace_agent"])); provider != "" {
+		return provider
+	}
+	return model.DefaultProviderID
+}
+
 func handoffConfigMapName(loopID string) string {
 	base := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-").Replace(strings.ToLower(loopID))
 	base = strings.Trim(base, "-")
@@ -667,6 +795,7 @@ func (k kubeJobsAPI) CreateJob(ctx context.Context, job replica.JobManifest) err
 					ServiceAccountName: job.Spec.Template.Spec.ServiceAccountName,
 					RestartPolicy:      corev1.RestartPolicy(job.Spec.Template.Spec.RestartPolicy),
 					Volumes:            toK8sVolumes(job.Spec.Template.Spec.Volumes),
+					InitContainers:     toK8sContainers(job.Spec.Template.Spec.InitContainers),
 					Containers:         toK8sContainers(job.Spec.Template.Spec.Containers),
 				},
 			},
@@ -687,16 +816,22 @@ func (k kubeJobsAPI) DeleteJob(ctx context.Context, namespace string, name strin
 func toK8sVolumes(volumes []replica.Volume) []corev1.Volume {
 	out := make([]corev1.Volume, 0, len(volumes))
 	for _, v := range volumes {
+		volume := corev1.Volume{Name: v.Name}
+		if v.EmptyDir {
+			volume.VolumeSource = corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			}
+			out = append(out, volume)
+			continue
+		}
 		optional := v.Optional
-		out = append(out, corev1.Volume{
-			Name: v.Name,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: v.ConfigMapName},
-					Optional:             &optional,
-				},
+		volume.VolumeSource = corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: v.ConfigMapName},
+				Optional:             &optional,
 			},
-		})
+		}
+		out = append(out, volume)
 	}
 	return out
 }
@@ -783,6 +918,9 @@ func loadConfig() (config, error) {
 		holderID:            holderID,
 		replicaImage:        envString("SMITH_REPLICA_IMAGE", "ghcr.io/smith/replica:v0.1.0"),
 		replicaPullPolicy:   envString("SMITH_REPLICA_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
+		workspaceSeedImage:  strings.TrimSpace(os.Getenv("SMITH_WORKSPACE_SEED_IMAGE")),
+		workspaceSeedPolicy: envString("SMITH_WORKSPACE_SEED_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
+		runtimeCredentials:  strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")),
 		dockerfileRepo:      strings.TrimSpace(os.Getenv("SMITH_DOCKERFILE_IMAGE_REPOSITORY")),
 		dockerfileBuild:     envBool("SMITH_DOCKERFILE_BUILD_ENABLED", false),
 		gitPolicy:           gitpolicy.DefaultPolicy(),

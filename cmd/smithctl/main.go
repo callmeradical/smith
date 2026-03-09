@@ -412,23 +412,28 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	fs := flag.NewFlagSet("loop create", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
-		filePath        string
-		title           string
-		description     string
-		sourceType      string
-		sourceRef       string
-		idempotencyKey  string
-		batchFile       string
-		fromGitHub      string
-		fromPRD         string
-		format          string
-		envPreset       string
-		envMiseFile     string
-		envImageRef     string
-		envImagePull    string
-		envDockerCtx    string
-		envDockerFile   string
-		envDockerTarget string
+		filePath         string
+		title            string
+		description      string
+		providerID       string
+		sourceType       string
+		sourceRef        string
+		idempotencyKey   string
+		batchFile        string
+		fromGitHub       string
+		fromPRD          string
+		format           string
+		workspacePrompt  string
+		workspacePRD     string
+		workspacePRDFile string
+		workspacePRDPath string
+		envPreset        string
+		envMiseFile      string
+		envImageRef      string
+		envImagePull     string
+		envDockerCtx     string
+		envDockerFile    string
+		envDockerTarget  string
 	)
 	var envTools stringMapFlag
 	var envBuildArgs stringMapFlag
@@ -437,6 +442,7 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	fs.StringVar(&filePath, "f", "", "JSON payload file for /v1/loops")
 	fs.StringVar(&title, "title", "", "Loop title")
 	fs.StringVar(&description, "description", "", "Loop description")
+	fs.StringVar(&providerID, "provider-id", "", "Loop provider id (defaults to server default)")
 	fs.StringVar(&sourceType, "source-type", "", "Loop source type")
 	fs.StringVar(&sourceRef, "source-ref", "", "Loop source reference")
 	fs.StringVar(&idempotencyKey, "idempotency-key", "", "Idempotency key")
@@ -445,6 +451,10 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	fs.StringVar(&fromGitHub, "from-github", "", "JSON file for /v1/ingress/github/issues")
 	fs.StringVar(&fromPRD, "from-prd", "", "PRD file path (markdown or json)")
 	fs.StringVar(&format, "format", "", "PRD format override: markdown|json")
+	fs.StringVar(&workspacePrompt, "workspace-prompt", "", "Prompt text for PRD generation/build workflows")
+	fs.StringVar(&workspacePRD, "workspace-prd-json", "", "Inline PRD JSON payload to materialize in replica workspace")
+	fs.StringVar(&workspacePRDFile, "workspace-prd-file", "", "PRD JSON file to materialize in replica workspace")
+	fs.StringVar(&workspacePRDPath, "workspace-prd-path", ".agents/tasks/prd.json", "Workspace PRD path for supplied PRD JSON")
 	fs.StringVar(&envPreset, "env-preset", "", "Environment preset name (standard|secure|performance|minimal)")
 	fs.StringVar(&envMiseFile, "env-mise-file", "", "mise tool versions file path")
 	fs.Var(&envTools, "env-tool", "mise tool pin in key=value format (repeatable)")
@@ -478,8 +488,13 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 		strings.TrimSpace(envDockerFile) != "" ||
 		strings.TrimSpace(envDockerTarget) != "" ||
 		len(envBuildArgs) > 0
-	if selectedModes > 0 && (hasEnvironmentFlags || len(skills) > 0) {
-		fmt.Fprintln(stderr, "environment/skill flags are only supported with direct loop create (not --file/--batch/--from-github/--from-prd)")
+	hasWorkspaceFlags := strings.TrimSpace(workspacePrompt) != "" ||
+		strings.TrimSpace(workspacePRD) != "" ||
+		strings.TrimSpace(workspacePRDFile) != "" ||
+		strings.TrimSpace(workspacePRDPath) != ".agents/tasks/prd.json"
+	hasProviderFlags := strings.TrimSpace(providerID) != ""
+	if selectedModes > 0 && (hasEnvironmentFlags || len(skills) > 0 || hasWorkspaceFlags || hasProviderFlags) {
+		fmt.Fprintln(stderr, "environment/skill/workspace/provider flags are only supported with direct loop create (not --file/--batch/--from-github/--from-prd)")
 		return 2
 	}
 
@@ -578,6 +593,55 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 		}
 		payload = rawPayload
 	} else {
+		workspacePrompt = strings.TrimSpace(workspacePrompt)
+		workspacePRD = strings.TrimSpace(workspacePRD)
+		workspacePRDFile = strings.TrimSpace(workspacePRDFile)
+		workspacePRDPath = strings.TrimSpace(workspacePRDPath)
+		if workspacePRDFile != "" {
+			content, err := os.ReadFile(workspacePRDFile)
+			if err != nil {
+				fmt.Fprintf(stderr, "loop create failed: read --workspace-prd-file: %v\n", err)
+				return 1
+			}
+			workspacePRD = strings.TrimSpace(string(content))
+		}
+		metadata := map[string]string{}
+		if workspacePrompt != "" {
+			metadata["workspace_prompt"] = workspacePrompt
+		}
+		if workspacePRD != "" {
+			if !json.Valid([]byte(workspacePRD)) {
+				fmt.Fprintln(stderr, "loop create failed: --workspace-prd-json must be valid json")
+				return 2
+			}
+			if workspacePRDPath == "" {
+				workspacePRDPath = ".agents/tasks/prd.json"
+			}
+			metadata["workspace_prd_json"] = workspacePRD
+			metadata["workspace_prd_path"] = workspacePRDPath
+		}
+		if sourceType == "" && (workspacePrompt != "" || workspacePRD != "") {
+			sourceType = "prompt"
+		}
+		if sourceRef == "" && sourceType == "prompt" {
+			sourceRef = "prompt:smithctl"
+		}
+		if title == "" {
+			switch {
+			case workspacePRD != "":
+				title = "Loop from supplied PRD"
+			case workspacePrompt != "":
+				title = "Loop from prompt"
+			}
+		}
+		if description == "" {
+			switch {
+			case workspacePRD != "":
+				description = "Loop request from supplied PRD JSON"
+			case workspacePrompt != "":
+				description = workspacePrompt
+			}
+		}
 		payload = map[string]any{
 			"title":           title,
 			"description":     description,
@@ -585,11 +649,17 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 			"source_ref":      sourceRef,
 			"idempotency_key": idempotencyKey,
 		}
+		if strings.TrimSpace(providerID) != "" {
+			payload.(map[string]any)["provider_id"] = strings.ToLower(strings.TrimSpace(providerID))
+		}
 		if environment != nil {
 			payload.(map[string]any)["environment"] = environment
 		}
 		if len(skills) > 0 {
 			payload.(map[string]any)["skills"] = []map[string]any(skills)
+		}
+		if len(metadata) > 0 {
+			payload.(map[string]any)["metadata"] = metadata
 		}
 	}
 	var out any
