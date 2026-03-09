@@ -60,3 +60,40 @@ func TestMaskCredentialValue(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitLoopRouteSupportsSlashLoopIDs(t *testing.T) {
+	tests := []struct {
+		path       string
+		wantLoopID string
+		wantRoute  string
+	}{
+		{
+			path:       "/v1/loops/alpha/feat-132",
+			wantLoopID: "alpha/feat-132",
+			wantRoute:  "",
+		},
+		{
+			path:       "/v1/loops/alpha/feat-132/journal",
+			wantLoopID: "alpha/feat-132",
+			wantRoute:  "journal",
+		},
+		{
+			path:       "/v1/loops/team/alpha/feat-132/control/attach",
+			wantLoopID: "team/alpha/feat-132",
+			wantRoute:  "control/attach",
+		},
+		{
+			path:       "/v1/loops/team/alpha/feat-132/journal/stream",
+			wantLoopID: "team/alpha/feat-132",
+			wantRoute:  "journal/stream",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			loopID, route := splitLoopRoute(tc.path)
+			if loopID != tc.wantLoopID || route != tc.wantRoute {
+				t.Fatalf("splitLoopRoute(%q) = (%q, %q), want (%q, %q)", tc.path, loopID, route, tc.wantLoopID, tc.wantRoute)
+			}
+		})
+	}
+}
