@@ -158,3 +158,46 @@ Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043
   - Useful context
   - The frontend Playwright suite already uses an extensible API mock helper, so adding control endpoint behaviors there keeps scenario tests stable.
 ---
+## [2026-03-09 05:43:52 EDT] - US-005: Harden security and operational limits for web terminal control
+Thread: codex_43878
+Run: 20260309-043236-60668 (iteration 5)
+Run log: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-5.log
+Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043236-60668-iter-5.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: e348d88 security(api): harden terminal control limits
+- Post-commit status: `.ralph/runs/run-20260309-043236-60668-iter-5.log` modified by post-commit hooks
+- Verification:
+  - Command: make build -> PASS
+  - Command: go test ./cmd/smith-api/... -> PASS
+  - Command: go test ./internal/source/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: npm run test:frontend -> PASS
+  - Command: make test-matrix -> PASS
+- Files changed:
+  - cmd/smith-api/main.go
+  - cmd/smith-api/main_test.go
+  - .agents/tasks/prd-console-terminal-attach.json
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/errors.log
+  - .ralph/runs/run-20260309-043236-60668-iter-4.log
+  - .ralph/runs/run-20260309-043236-60668-iter-4.md
+  - .ralph/runs/run-20260309-043236-60668-iter-5.log
+  - .ralph/.tmp/prompt-20260309-043236-60668-5.md
+  - .ralph/.tmp/story-20260309-043236-60668-5.json
+  - .ralph/.tmp/story-20260309-043236-60668-5.md
+- What was implemented
+  - Enforced early auth rejection in attach/command/detach handlers with explicit API error codes and rejected audit records before runtime/state resolution continues.
+  - Added per-session command rate limiting (`5` commands per `10s` window) with HTTP 429 throttling, `Retry-After` header, and throttle metadata in terminal command audit records.
+  - Standardized terminal control audit metadata to include `request_status=accepted|rejected` and `rejection_reason`/`error_code` for blocked paths.
+  - Kept max command length enforcement and upgraded oversized-command responses to include explicit API code metadata.
+  - Added smith-api tests for unauthorized attach/detach/command behavior, no-runtime/no-exec guard behavior on unauthorized requests, accepted/rejected audit tagging, explicit error codes, and per-session throttling behavior.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Centralizing accepted/rejected metadata helpers keeps audit semantics consistent across attach/detach/command handlers.
+  - Gotchas encountered
+  - Rejected-path audit writes can trigger nil-store panics in focused handler tests unless `appendAudit`/`appendJournal` safely no-op when store backing is absent.
+  - Useful context
+  - Pre-commit hooks run `go test ./cmd/...` and can append to iteration run logs after commit, requiring a follow-up commit to restore clean status.
+---
