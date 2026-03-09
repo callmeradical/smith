@@ -128,6 +128,52 @@ echo "example-skill" > tmp-skills/example.txt
 docker run --rm -v "$(pwd)/tmp-skills:/home/dev/.codex/skills" loop-base:local sh -lc 'ls -la /home/dev/.codex/skills'
 ```
 
+### Reproducible Quality Gates
+
+Use the fail-fast quality-gate runner to enforce the top-level gates in a
+single deterministic sequence:
+
+```bash
+./scripts/run-base-quality-gates.sh loop-base:local
+```
+
+The script runs these commands in order and exits non-zero on first failure:
+
+1. `docker build -t loop-base:local .`
+2. `docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version'`
+3. `docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills'`
+4. `hadolint Dockerfile`
+5. `shellcheck scripts/*.sh`
+6. `trivy image --severity CRITICAL --exit-code 1 loop-base:local`
+7. `syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json`
+
+The SBOM artifact is written to
+`artifacts/sbom-loop-base.spdx.json` to preserve scan evidence.
+
+Required local tooling setup for lint and security gates:
+
+```bash
+brew install hadolint shellcheck trivy syft
+```
+
+Verify tool installation:
+
+```bash
+hadolint --version
+shellcheck --version
+trivy --version
+syft version
+```
+
+Negative-case security check (expected trivy gate failure):
+
+```bash
+./scripts/check-trivy-critical-negative.sh knqyf263/vuln-image:1.2.3
+```
+
+This check confirms that `trivy image --severity CRITICAL --exit-code 1 ...`
+returns a non-zero exit code when the image contains known critical findings.
+
 ## Key API Endpoints
 
 Implemented today:

@@ -159,7 +159,7 @@
     {
       "id": "US-005",
       "title": "Support skills volume mount contract",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-001"
       ],
@@ -172,13 +172,13 @@
         "Add a mount-path smoke test script that validates both mounted and unmounted scenarios."
       ],
       "startedAt": "2026-03-09T09:22:27.414552+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T09:22:27.415009+00:00"
+      "completedAt": "2026-03-09T09:31:26.086508+00:00",
+      "updatedAt": "2026-03-09T09:31:26.085660+00:00"
     },
     {
       "id": "US-006",
       "title": "Add reproducible verification and security gates",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-002",
         "US-003",
@@ -193,7 +193,10 @@
         "Example: running the full gate sequence after a valid build completes successfully and writes the SBOM artifact file.",
         "Negative case: introducing a known critical-vulnerability image tag causes trivy gate to fail with non-zero exit code.",
         "No CI/CD workflow files are modified in this story; only local/reusable command definitions are added."
-      ]
+      ],
+      "startedAt": "2026-03-09T09:31:28.169594+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T09:31:28.169848+00:00"
     },
     {
       "id": "US-007",
