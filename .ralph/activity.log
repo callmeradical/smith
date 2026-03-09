@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-09 04:43:33 | run=20260309-043236-60668 | iter=1 | mode=build | story=US-001 | duration=656s | status=success
 
 ## Events
 
@@ -10,3 +11,8 @@
 [2026-03-09 04:38:55] US-001: verification complete (build, go tests, frontend tests, test-matrix all passing)
 [2026-03-09 04:39:55] US-001: final verification rerun passed after runtime namespace fix
 [2026-03-09 04:41:40] US-001: appended progress entry with commit and verification details
+[2026-03-09 04:43:32] ITERATION 1 end (duration=656s)
+[2026-03-09 04:43:35] ITERATION 2 start (mode=build story=US-002)
+[2026-03-09 04:44:09] US-002 iteration 2 start: auditing attach/detach runtime-target session behavior
+[2026-03-09 04:50:54] US-002: implemented attach runtime gating, session metadata persistence, and attach/detach audit metadata tests
+[2026-03-09 04:51:51] US-002: completed verification gates (build, go tests, frontend tests, test-matrix)

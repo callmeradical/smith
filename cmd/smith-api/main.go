@@ -53,14 +53,17 @@ type config struct {
 }
 
 type server struct {
-	cfg         config
-	store       *store.Store
-	auth        *provider.AuthManager
-	projectCred provider.ProjectCredentialStore
-	presets     *presetCatalog
-	skillPolicy model.SkillPolicy
-	term        *terminalSessionStore
-	runtimePods runtimePodReader
+	cfg             config
+	store           *store.Store
+	auth            *provider.AuthManager
+	projectCred     provider.ProjectCredentialStore
+	presets         *presetCatalog
+	skillPolicy     model.SkillPolicy
+	term            *terminalSessionStore
+	runtimePods     runtimePodReader
+	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
+	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
+	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
 }
 
 type overrideRequest struct {
@@ -208,8 +211,23 @@ type presetCreateRequest struct {
 }
 
 type terminalSessionStore struct {
-	mu       sync.Mutex
-	attached map[string]map[string]struct{}
+	mu           sync.Mutex
+	sessions     map[string]map[string]terminalSession
+	attachCounts map[string]map[string]int
+}
+
+type terminalSession struct {
+	Actor                string
+	Terminal             string
+	Status               string
+	AttachedAt           time.Time
+	LastActivityAt       time.Time
+	AttachCount          int
+	RuntimeTargetRef     string
+	RuntimeNamespace     string
+	RuntimePodName       string
+	RuntimeContainerName string
+	RuntimePodPhase      string
 }
 
 type runtimePodReader interface {
@@ -226,47 +244,123 @@ func (k kubeRuntimePodReader) List(ctx context.Context, namespace string, opts m
 
 func newTerminalSessionStore() *terminalSessionStore {
 	return &terminalSessionStore{
-		attached: map[string]map[string]struct{}{},
+		sessions:     map[string]map[string]terminalSession{},
+		attachCounts: map[string]map[string]int{},
 	}
 }
 
-func (t *terminalSessionStore) Attach(loopID, actor string) int {
+func (t *terminalSessionStore) Attach(loopID, actor, terminal string, runtime loopRuntimeResponse) (terminalSession, int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.attached[loopID] == nil {
-		t.attached[loopID] = map[string]struct{}{}
+	if t.sessions[loopID] == nil {
+		t.sessions[loopID] = map[string]terminalSession{}
 	}
-	t.attached[loopID][actor] = struct{}{}
-	return len(t.attached[loopID])
+	if t.attachCounts[loopID] == nil {
+		t.attachCounts[loopID] = map[string]int{}
+	}
+	now := time.Now().UTC()
+	t.attachCounts[loopID][actor]++
+	attachCount := t.attachCounts[loopID][actor]
+	session := terminalSession{
+		Actor:                actor,
+		Terminal:             terminal,
+		Status:               "attached",
+		AttachedAt:           now,
+		LastActivityAt:       now,
+		AttachCount:          attachCount,
+		RuntimeTargetRef:     runtimeTargetReference(runtime.Namespace, runtime.PodName, runtime.ContainerName),
+		RuntimeNamespace:     runtime.Namespace,
+		RuntimePodName:       runtime.PodName,
+		RuntimeContainerName: runtime.ContainerName,
+		RuntimePodPhase:      runtime.PodPhase,
+	}
+	t.sessions[loopID][actor] = session
+	return session, len(t.sessions[loopID])
 }
 
-func (t *terminalSessionStore) Detach(loopID, actor string) (bool, int) {
+func (t *terminalSessionStore) Detach(loopID, actor string) (terminalSession, bool, int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	actors, ok := t.attached[loopID]
+	actors, ok := t.sessions[loopID]
 	if !ok {
-		return false, 0
+		return terminalSession{}, false, 0
 	}
-	if _, found := actors[actor]; !found {
-		return false, len(actors)
+	session, found := actors[actor]
+	if !found {
+		return terminalSession{}, false, len(actors)
 	}
+	session.Status = "detached"
+	session.LastActivityAt = time.Now().UTC()
 	delete(actors, actor)
 	if len(actors) == 0 {
-		delete(t.attached, loopID)
-		return true, 0
+		delete(t.sessions, loopID)
+		return session, true, 0
 	}
-	return true, len(actors)
+	return session, true, len(actors)
 }
 
 func (t *terminalSessionStore) IsAttached(loopID, actor string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	actors, ok := t.attached[loopID]
+	actors, ok := t.sessions[loopID]
 	if !ok {
 		return false
 	}
 	_, found := actors[actor]
 	return found
+}
+
+func runtimeTargetReference(namespace, podName, containerName string) string {
+	namespace = strings.TrimSpace(namespace)
+	podName = strings.TrimSpace(podName)
+	containerName = strings.TrimSpace(containerName)
+	if podName == "" {
+		return ""
+	}
+	ref := podName
+	if namespace != "" {
+		ref = namespace + "/" + ref
+	}
+	if containerName != "" {
+		ref += ":" + containerName
+	}
+	return ref
+}
+
+func terminalSessionMetadata(actor string, session terminalSession, activeAttachCount int) map[string]string {
+	return map[string]string{
+		"actor":               actor,
+		"terminal":            session.Terminal,
+		"attach_count":        strconv.Itoa(session.AttachCount),
+		"active_attach_count": strconv.Itoa(activeAttachCount),
+		"session_status":      session.Status,
+		"runtime_target_ref":  session.RuntimeTargetRef,
+		"runtime_namespace":   session.RuntimeNamespace,
+		"runtime_pod":         session.RuntimePodName,
+		"runtime_container":   session.RuntimeContainerName,
+		"runtime_phase":       session.RuntimePodPhase,
+	}
+}
+
+func (s *server) getState(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error) {
+	if s.getStateFn != nil {
+		return s.getStateFn(ctx, loopID)
+	}
+	return s.store.GetState(ctx, loopID)
+}
+
+func (s *server) appendAudit(ctx context.Context, rec store.AuditRecord) error {
+	if s.appendAuditFn != nil {
+		return s.appendAuditFn(ctx, rec)
+	}
+	return s.store.AppendAudit(ctx, rec)
+}
+
+func (s *server) appendJournal(ctx context.Context, entry model.JournalEntry) error {
+	if s.appendJournalFn != nil {
+		return s.appendJournalFn(ctx, entry)
+	}
+	return s.store.AppendJournal(ctx, entry)
 }
 
 func main() {
@@ -879,7 +973,7 @@ func (s *server) handleLoopRuntime(w http.ResponseWriter, r *http.Request, loopI
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	state, found, err := s.store.GetState(r.Context(), loopID)
+	state, found, err := s.getState(r.Context(), loopID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -997,7 +1091,7 @@ func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	state, found, err := s.store.GetState(r.Context(), loopID)
+	state, found, err := s.getState(r.Context(), loopID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1008,6 +1102,15 @@ func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID
 	}
 	if !isActiveLoopState(state.Record.State) {
 		writeErr(w, http.StatusConflict, "loop is not active")
+		return
+	}
+	runtime := s.resolveLoopRuntime(r.Context(), loopID, state.Record)
+	if !runtime.Attachable {
+		reason := strings.TrimSpace(runtime.Reason)
+		if reason == "" {
+			reason = "runtime target not attachable"
+		}
+		writeErr(w, http.StatusConflict, reason)
 		return
 	}
 
@@ -1021,19 +1124,17 @@ func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID
 	if terminal == "" {
 		terminal = "unknown"
 	}
-	attachCount := s.term.Attach(loopID, actor)
+	session, activeAttachCount := s.term.Attach(loopID, actor, terminal, runtime)
+	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
 
-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
 		Actor:         actor,
 		Action:        "attach-terminal",
 		TargetLoopID:  loopID,
 		CorrelationID: state.Record.CorrelationID,
-		Metadata: map[string]string{
-			"terminal":     terminal,
-			"attach_count": strconv.Itoa(attachCount),
-		},
+		Metadata:      metadata,
 	})
-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
+	_ = s.appendJournal(r.Context(), model.JournalEntry{
 		LoopID:        loopID,
 		Phase:         "operator",
 		Level:         "info",
@@ -1041,16 +1142,15 @@ func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID
 		ActorID:       actor,
 		Message:       "terminal attached",
 		CorrelationID: state.Record.CorrelationID,
-		Metadata: map[string]string{
-			"terminal":     terminal,
-			"attach_count": strconv.Itoa(attachCount),
-		},
+		Metadata:      metadata,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"loop_id":      loopID,
-		"status":       "attached",
-		"actor":        actor,
-		"attach_count": attachCount,
+		"loop_id":             loopID,
+		"status":              "attached",
+		"actor":               actor,
+		"attach_count":        session.AttachCount,
+		"active_attach_count": activeAttachCount,
+		"runtime_target_ref":  session.RuntimeTargetRef,
 	})
 }
 
@@ -1063,7 +1163,7 @@ func (s *server) handleLoopDetach(w http.ResponseWriter, r *http.Request, loopID
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	state, found, err := s.store.GetState(r.Context(), loopID)
+	state, found, err := s.getState(r.Context(), loopID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1080,22 +1180,21 @@ func (s *server) handleLoopDetach(w http.ResponseWriter, r *http.Request, loopID
 		actor = "operator"
 	}
 
-	detached, attachCount := s.term.Detach(loopID, actor)
+	session, detached, activeAttachCount := s.term.Detach(loopID, actor)
 	if !detached {
 		writeErr(w, http.StatusConflict, "actor is not attached")
 		return
 	}
+	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
 
-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
 		Actor:         actor,
 		Action:        "detach-terminal",
 		TargetLoopID:  loopID,
 		CorrelationID: state.Record.CorrelationID,
-		Metadata: map[string]string{
-			"attach_count": strconv.Itoa(attachCount),
-		},
+		Metadata:      metadata,
 	})
-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
+	_ = s.appendJournal(r.Context(), model.JournalEntry{
 		LoopID:        loopID,
 		Phase:         "operator",
 		Level:         "info",
@@ -1103,15 +1202,15 @@ func (s *server) handleLoopDetach(w http.ResponseWriter, r *http.Request, loopID
 		ActorID:       actor,
 		Message:       "terminal detached",
 		CorrelationID: state.Record.CorrelationID,
-		Metadata: map[string]string{
-			"attach_count": strconv.Itoa(attachCount),
-		},
+		Metadata:      metadata,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"loop_id":      loopID,
-		"status":       "detached",
-		"actor":        actor,
-		"attach_count": attachCount,
+		"loop_id":             loopID,
+		"status":              "detached",
+		"actor":               actor,
+		"attach_count":        session.AttachCount,
+		"active_attach_count": activeAttachCount,
+		"runtime_target_ref":  session.RuntimeTargetRef,
 	})
 }
 
