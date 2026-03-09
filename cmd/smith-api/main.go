@@ -23,13 +23,17 @@ import (
 	"smith/internal/source/store"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
 	defaultPort            = 8080
 	defaultShutdownTimeout = 10 * time.Second
+	defaultRuntimeReason   = "runtime pod not found"
 )
 
 type config struct {
@@ -44,6 +48,8 @@ type config struct {
 	authStoreK8sKey       string
 	defaultPreset         string
 	skillPolicy           model.SkillPolicy
+	runtimeNamespace      string
+	runtimeContainerName  string
 }
 
 type server struct {
@@ -54,6 +60,7 @@ type server struct {
 	presets     *presetCatalog
 	skillPolicy model.SkillPolicy
 	term        *terminalSessionStore
+	runtimePods runtimePodReader
 }
 
 type overrideRequest struct {
@@ -112,6 +119,16 @@ type terminalDetachRequest struct {
 type terminalCommandRequest struct {
 	Actor   string `json:"actor"`
 	Command string `json:"command"`
+}
+
+type loopRuntimeResponse struct {
+	LoopID        string `json:"loop_id"`
+	Namespace     string `json:"namespace,omitempty"`
+	PodName       string `json:"pod_name,omitempty"`
+	ContainerName string `json:"container_name,omitempty"`
+	PodPhase      string `json:"pod_phase,omitempty"`
+	Attachable    bool   `json:"attachable"`
+	Reason        string `json:"reason,omitempty"`
 }
 
 type loopDeleteRequest struct {
@@ -195,6 +212,18 @@ type terminalSessionStore struct {
 	attached map[string]map[string]struct{}
 }
 
+type runtimePodReader interface {
+	List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error)
+}
+
+type kubeRuntimePodReader struct {
+	kube kubernetes.Interface
+}
+
+func (k kubeRuntimePodReader) List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error) {
+	return k.kube.CoreV1().Pods(namespace).List(ctx, opts)
+}
+
 func newTerminalSessionStore() *terminalSessionStore {
 	return &terminalSessionStore{
 		attached: map[string]map[string]struct{}{},
@@ -270,6 +299,10 @@ func main() {
 		provider.NewMockDeviceAuthClient(),
 		&auditBridge{store: es},
 	)
+	runtimePods, err := newRuntimePodReader()
+	if err != nil {
+		log.Printf("smith-api runtime pod lookup unavailable: %v", err)
+	}
 
 	s := &server{
 		cfg:         cfg,
@@ -279,6 +312,7 @@ func main() {
 		presets:     newPresetCatalog(cfg.defaultPreset),
 		skillPolicy: cfg.skillPolicy,
 		term:        newTerminalSessionStore(),
+		runtimePods: runtimePods,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -762,6 +796,10 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 		s.handleLoopControlCommand(w, r, loopID)
 		return
 	}
+	if route == "runtime" {
+		s.handleLoopRuntime(w, r, loopID)
+		return
+	}
 	if route == "handoffs" {
 		if r.Method != http.MethodGet {
 			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -821,6 +859,7 @@ func splitLoopRoute(path string) (loopID string, route string) {
 		"/control/attach",
 		"/control/detach",
 		"/control/command",
+		"/runtime",
 		"/handoffs",
 		"/overrides",
 		"/journal",
@@ -833,6 +872,120 @@ func splitLoopRoute(path string) (loopID string, route string) {
 		}
 	}
 	return remainder, ""
+}
+
+func (s *server) handleLoopRuntime(w http.ResponseWriter, r *http.Request, loopID string) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	state, found, err := s.store.GetState(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "loop not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.resolveLoopRuntime(r.Context(), loopID, state.Record))
+}
+
+func (s *server) resolveLoopRuntime(ctx context.Context, loopID string, state model.StateRecord) loopRuntimeResponse {
+	out := loopRuntimeResponse{
+		LoopID:        loopID,
+		Namespace:     runtimeNamespaceForConfig(s.cfg),
+		ContainerName: runtimeContainerForConfig(s.cfg),
+		Attachable:    false,
+	}
+	if !isActiveLoopState(state.State) {
+		out.Reason = "loop not active"
+		return out
+	}
+	if strings.TrimSpace(state.WorkerJobName) == "" || s.runtimePods == nil {
+		out.Reason = defaultRuntimeReason
+		return out
+	}
+	pod, found, err := s.findRuntimePod(ctx, out.Namespace, state.WorkerJobName)
+	if err != nil || !found {
+		out.Reason = defaultRuntimeReason
+		return out
+	}
+	out.PodName = pod.Name
+	out.PodPhase = string(pod.Status.Phase)
+
+	containerName, ok := resolveRuntimeContainerName(pod, out.ContainerName)
+	out.ContainerName = containerName
+	if !ok {
+		out.Reason = "runtime container not found"
+		return out
+	}
+	if pod.Status.Phase != corev1.PodRunning {
+		out.Reason = "runtime pod not running"
+		return out
+	}
+	out.Attachable = true
+	out.Reason = ""
+	return out
+}
+
+func (s *server) findRuntimePod(ctx context.Context, namespace, workerJobName string) (corev1.Pod, bool, error) {
+	if s.runtimePods == nil {
+		return corev1.Pod{}, false, nil
+	}
+	list, err := s.runtimePods.List(ctx, namespace, metav1.ListOptions{
+		LabelSelector: "job-name=" + strings.TrimSpace(workerJobName),
+	})
+	if err != nil {
+		return corev1.Pod{}, false, err
+	}
+	if list == nil || len(list.Items) == 0 {
+		return corev1.Pod{}, false, nil
+	}
+	best := list.Items[0]
+	for i := 1; i < len(list.Items); i++ {
+		if betterRuntimePod(list.Items[i], best) {
+			best = list.Items[i]
+		}
+	}
+	return best, true, nil
+}
+
+func betterRuntimePod(a, b corev1.Pod) bool {
+	aScore := runtimePodScore(a.Status.Phase)
+	bScore := runtimePodScore(b.Status.Phase)
+	if aScore != bScore {
+		return aScore > bScore
+	}
+	return a.CreationTimestamp.After(b.CreationTimestamp.Time)
+}
+
+func runtimePodScore(phase corev1.PodPhase) int {
+	switch phase {
+	case corev1.PodRunning:
+		return 3
+	case corev1.PodPending:
+		return 2
+	case corev1.PodUnknown:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func resolveRuntimeContainerName(pod corev1.Pod, preferred string) (string, bool) {
+	preferred = strings.TrimSpace(preferred)
+	if preferred != "" {
+		for _, container := range pod.Spec.Containers {
+			if container.Name == preferred {
+				return preferred, true
+			}
+		}
+	}
+	if len(pod.Spec.Containers) == 0 {
+		return "", false
+	}
+	return pod.Spec.Containers[0].Name, true
 }
 
 func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID string) {
@@ -1652,6 +1805,32 @@ func newTokenStore(_ context.Context, cfg config) (provider.TokenStore, error) {
 	}
 }
 
+func newRuntimePodReader() (runtimePodReader, error) {
+	client, err := kubeClient()
+	if err != nil {
+		return nil, err
+	}
+	return kubeRuntimePodReader{kube: client}, nil
+}
+
+func kubeClient() (*kubernetes.Clientset, error) {
+	if cfg, err := rest.InClusterConfig(); err == nil {
+		return kubernetes.NewForConfig(cfg)
+	}
+	kubeconfig := strings.TrimSpace(os.Getenv("KUBECONFIG"))
+	if kubeconfig == "" {
+		home, _ := os.UserHomeDir()
+		if home != "" {
+			kubeconfig = home + "/.kube/config"
+		}
+	}
+	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	return kubernetes.NewForConfig(cfg)
+}
+
 func loadConfig() (config, error) {
 	endpoints := splitCSV(os.Getenv("SMITH_ETCD_ENDPOINTS"))
 	if len(endpoints) == 0 {
@@ -1678,6 +1857,8 @@ func loadConfig() (config, error) {
 		authStoreK8sKey:       authStoreK8sKey,
 		defaultPreset:         strings.TrimSpace(os.Getenv("SMITH_DEFAULT_ENV_PRESET")),
 		skillPolicy:           skillPolicy,
+		runtimeNamespace:      strings.TrimSpace(envString("SMITH_RUNTIME_NAMESPACE", envString("SMITH_NAMESPACE", authStoreK8sNamespace))),
+		runtimeContainerName:  strings.TrimSpace(envString("SMITH_RUNTIME_CONTAINER_NAME", "replica")),
 	}, nil
 }
 
@@ -1809,6 +1990,22 @@ func copyStringMap(in map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+func runtimeNamespaceForConfig(cfg config) string {
+	namespace := strings.TrimSpace(cfg.runtimeNamespace)
+	if namespace == "" {
+		return "default"
+	}
+	return namespace
+}
+
+func runtimeContainerForConfig(cfg config) string {
+	container := strings.TrimSpace(cfg.runtimeContainerName)
+	if container == "" {
+		return "replica"
+	}
+	return container
 }
 
 func envString(name, fallback string) string {

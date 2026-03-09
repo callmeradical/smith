@@ -38,6 +38,9 @@ rules:
     resources: ["secrets"]
     resourceNames: ["{{ include "smith.fullname" . }}-auth-store"]
     verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

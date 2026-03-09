@@ -1,6 +1,16 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"smith/internal/source/model"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 func TestIngressSummary(t *testing.T) {
 	summary := ingressSummary([]ingressResult{
@@ -83,6 +93,11 @@ func TestSplitLoopRouteSupportsSlashLoopIDs(t *testing.T) {
 			wantRoute:  "control/attach",
 		},
 		{
+			path:       "/v1/loops/team/alpha/feat-132/runtime",
+			wantLoopID: "team/alpha/feat-132",
+			wantRoute:  "runtime",
+		},
+		{
 			path:       "/v1/loops/team/alpha/feat-132/journal/stream",
 			wantLoopID: "team/alpha/feat-132",
 			wantRoute:  "journal/stream",
@@ -96,4 +111,164 @@ func TestSplitLoopRouteSupportsSlashLoopIDs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveLoopRuntimeRunningPod(t *testing.T) {
+	now := time.Now().UTC()
+	reader := &fakeRuntimePodReader{
+		podsByJob: map[string][]corev1.Pod{
+			"smith-replica-loop-a-12345": {
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "smith-replica-loop-a-12345-abc",
+						CreationTimestamp: metav1.NewTime(now),
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{Name: "replica"}},
+					},
+					Status: corev1.PodStatus{Phase: corev1.PodRunning},
+				},
+			},
+		},
+	}
+	s := &server{
+		cfg: config{
+			runtimeNamespace:     "smith-system",
+			runtimeContainerName: "replica",
+		},
+		runtimePods: reader,
+	}
+
+	got := s.resolveLoopRuntime(context.Background(), "loop-a", model.StateRecord{
+		LoopID:        "loop-a",
+		State:         model.LoopStateOverwriting,
+		WorkerJobName: "smith-replica-loop-a-12345",
+	})
+
+	if !got.Attachable {
+		t.Fatalf("expected attachable true, got false with reason %q", got.Reason)
+	}
+	if got.Namespace != "smith-system" || got.PodName != "smith-replica-loop-a-12345-abc" || got.ContainerName != "replica" {
+		t.Fatalf("unexpected runtime target: %+v", got)
+	}
+	if got.Reason != "" {
+		t.Fatalf("expected empty reason for attachable runtime, got %q", got.Reason)
+	}
+}
+
+func TestResolveLoopRuntimePendingPod(t *testing.T) {
+	reader := &fakeRuntimePodReader{
+		podsByJob: map[string][]corev1.Pod{
+			"smith-replica-loop-b-12345": {
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-b-12345-def"},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{Name: "replica"}},
+					},
+					Status: corev1.PodStatus{Phase: corev1.PodPending},
+				},
+			},
+		},
+	}
+	s := &server{
+		cfg: config{
+			runtimeNamespace:     "smith-system",
+			runtimeContainerName: "replica",
+		},
+		runtimePods: reader,
+	}
+
+	got := s.resolveLoopRuntime(context.Background(), "loop-b", model.StateRecord{
+		LoopID:        "loop-b",
+		State:         model.LoopStateUnresolved,
+		WorkerJobName: "smith-replica-loop-b-12345",
+	})
+
+	if got.Attachable {
+		t.Fatalf("expected attachable false for pending pod, got true")
+	}
+	if got.Reason != "runtime pod not running" {
+		t.Fatalf("expected reason runtime pod not running, got %q", got.Reason)
+	}
+	if got.PodPhase != string(corev1.PodPending) {
+		t.Fatalf("expected pod phase Pending, got %q", got.PodPhase)
+	}
+}
+
+func TestResolveLoopRuntimeTerminalLoop(t *testing.T) {
+	reader := &fakeRuntimePodReader{}
+	s := &server{
+		cfg: config{
+			runtimeNamespace:     "smith-system",
+			runtimeContainerName: "replica",
+		},
+		runtimePods: reader,
+	}
+
+	got := s.resolveLoopRuntime(context.Background(), "loop-c", model.StateRecord{
+		LoopID: "loop-c",
+		State:  model.LoopStateSynced,
+	})
+
+	if got.Attachable {
+		t.Fatalf("expected attachable false for terminal loop, got true")
+	}
+	if got.Reason != "loop not active" {
+		t.Fatalf("expected reason loop not active, got %q", got.Reason)
+	}
+	if reader.calls != 0 {
+		t.Fatalf("expected no runtime pod lookup for terminal loop, got %d calls", reader.calls)
+	}
+}
+
+func TestResolveLoopRuntimeMissingPod(t *testing.T) {
+	s := &server{
+		cfg: config{
+			runtimeNamespace:     "smith-system",
+			runtimeContainerName: "replica",
+		},
+		runtimePods: &fakeRuntimePodReader{podsByJob: map[string][]corev1.Pod{}},
+	}
+
+	got := s.resolveLoopRuntime(context.Background(), "loop-d", model.StateRecord{
+		LoopID:        "loop-d",
+		State:         model.LoopStateOverwriting,
+		WorkerJobName: "smith-replica-loop-d-12345",
+	})
+
+	if got.Attachable {
+		t.Fatalf("expected attachable false when pod is missing, got true")
+	}
+	if got.Reason != "runtime pod not found" {
+		t.Fatalf("expected reason runtime pod not found, got %q", got.Reason)
+	}
+}
+
+type fakeRuntimePodReader struct {
+	podsByJob map[string][]corev1.Pod
+	err       error
+	calls     int
+}
+
+func (f *fakeRuntimePodReader) List(_ context.Context, _ string, opts metav1.ListOptions) (*corev1.PodList, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	jobName := selectorValue(opts.LabelSelector, "job-name")
+	return &corev1.PodList{Items: f.podsByJob[jobName]}, nil
+}
+
+func selectorValue(selector, key string) string {
+	key = strings.TrimSpace(key)
+	for _, segment := range strings.Split(selector, ",") {
+		left, right, ok := strings.Cut(segment, "=")
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(left) == key {
+			return strings.TrimSpace(right)
+		}
+	}
+	return ""
 }
