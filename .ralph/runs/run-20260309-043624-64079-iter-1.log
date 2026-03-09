@@ -1901,3 +1901,122 @@ index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22
  
  Implemented today:
 
+exec
+/bin/zsh -lc 'git add -A && git commit -m "chore(progress): record us-001 run outcomes
+
+Append the required Ralph progress entry, capture verification
+results, and persist activity/run log updates from this iteration.
+
+Reference: US-001"' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+ succeeded in 31.21s:
+[pre-commit] running quick checks...
+go test ./cmd/...
+go: downloading k8s.io/api v0.35.2
+go: downloading k8s.io/apimachinery v0.35.2
+go: downloading k8s.io/client-go v0.35.2
+go: downloading go.etcd.io/etcd/client/v3 v3.6.8
+go: downloading go.etcd.io/etcd/api/v3 v3.6.8
+go: downloading github.com/coreos/go-semver v0.3.1
+go: downloading go.etcd.io/etcd/client/pkg/v3 v3.6.8
+go: downloading go.uber.org/zap v1.27.0
+go: downloading google.golang.org/grpc v1.71.1
+go: downloading k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+go: downloading github.com/coreos/go-systemd/v22 v22.5.0
+go: downloading golang.org/x/sys v0.38.0
+go: downloading go.uber.org/multierr v1.11.0
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+ M .ralph/runs/run-20260309-043624-64079-iter-1.log
+file update:
+diff --git a/README.md b/README.md
+index 75c762ee5e135942a17807f143d0a925463be2bd..63ee14d5dec527c2615f1fcc1b428e22ec2b09f5
+--- a/README.md
++++ b/README.md
+@@ -45,10 +45,22 @@
+ 
+ - Helm chart: `helm/smith`
+ - Dockerfiles: `docker/`
++- Loop base container: repo-root `Dockerfile` (`alpine:3.21`)
+ - Core implementation: `internal/source/`
+ - Supporting docs: `docs/`
+ - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
+ 
++## Loop Base Container Baseline
++
++The canonical loop base container skeleton is defined in the repository root
++`Dockerfile` and currently uses `alpine:3.21`.
++
++Why Alpine for the baseline:
++
++- small runtime footprint for faster image distribution,
++- simple package/runtime surface for reproducible loop environments,
++- clear security patch cadence with explicit minor tag pinning.
++
+ ## Key API Endpoints
+ 
+ Implemented today:
+
+codex
+I’m doing one final synchronization commit for the continuously updated run log and, in the same command, checking `git status --porcelain` immediately after commit so we can confirm a clean state at commit time.
