@@ -52,3 +52,47 @@ Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309
   - Useful context
   - Homebrew installs for local gate tooling (`hadolint`, `shellcheck`, `trivy`, `syft`) were required to run all non-containerized checks.
 ---
+## [2026-03-09 04:53:37 EDT] - US-002: Install Codex CLI in runtime image
+Thread: 
+Run: 20260309-043624-64079 (iteration 2)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: ce2d1f3 feat(container): install codex cli in runtime image
+- Post-commit status: clean
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: docker run --rm loop-base:local codex --version -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'command -v codex >/dev/null' -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> FAIL (git missing; expected until US-003)
+  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
+  - Command: hadolint Dockerfile -> PASS
+  - Command: shellcheck scripts/*.sh -> PASS
+  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
+  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+- Files changed:
+  - Dockerfile
+  - .agents/tasks/prd-base-container.json
+  - .ralph/.tmp/prompt-20260309-043624-64079-2.md
+  - .ralph/.tmp/story-20260309-043624-64079-2.json
+  - .ralph/.tmp/story-20260309-043624-64079-2.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/runs/run-20260309-043624-64079-iter-1.md
+  - .ralph/runs/run-20260309-043624-64079-iter-2.log
+  - artifacts/sbom-loop-base.spdx.json
+  - .ralph/progress.md
+- What was implemented
+  - Installed Node.js/npm in the base image and installed Codex CLI from npm `@latest` channel during build.
+  - Added a Dockerfile maintainability comment with the exact Codex install command.
+  - Added a build-time check (`command -v codex`) to fail image build if the binary is not on PATH.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - For story-scoped container changes, adding build-time `command -v` checks catches PATH regressions early.
+  - Gotchas encountered
+  - The combined global smoke command will still fail until US-003 adds remaining toolchain binaries (currently fails at `git`).
+  - Useful context
+  - `codex --version` currently outputs `codex-cli <semver>` in this environment.
+---

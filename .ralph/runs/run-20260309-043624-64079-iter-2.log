@@ -949,3 +949,241 @@ index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a
 
 codex
 I’m at the commit stage using the `commit` skill format. I’ll first commit the implementation and generated run artifacts, then append/update the US-002 progress entry and commit that log update so the tree ends clean.
+exec
+/bin/zsh -lc 'git add -A' in /Users/lars/Dev/smith.base-container-buildexec
+/bin/zsh -lc 'git status --short' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+
+ succeeded in 51ms:
+M  .agents/tasks/prd-base-container.json
+A  .ralph/.tmp/prompt-20260309-043624-64079-2.md
+A  .ralph/.tmp/story-20260309-043624-64079-2.json
+A  .ralph/.tmp/story-20260309-043624-64079-2.md
+M  .ralph/activity.log
+M  .ralph/errors.log
+A  .ralph/runs/run-20260309-043624-64079-iter-1.md
+A  .ralph/runs/run-20260309-043624-64079-iter-2.log
+M  Dockerfile
+M  artifacts/sbom-loop-base.spdx.json
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+exec
+/bin/zsh -lc "git commit -m \"feat(container): install codex cli in runtime image
+
+Install Codex CLI from npm's latest channel in the base image build.
+Add a build-time PATH check to fail fast if codex is missing.
+Document the exact installation command inline in Dockerfile comments.
+
+Reference: US-002\"" in /Users/lars/Dev/smith.base-container-build succeeded in 29.92s:
+[pre-commit] running quick checks...
+go test ./cmd/...
+go: downloading k8s.io/api v0.35.2
+go: downloading k8s.io/apimachinery v0.35.2
+go: downloading k8s.io/client-go v0.35.2
+go: downloading go.etcd.io/etcd/client/v3 v3.6.8
+go: downloading go.etcd.io/etcd/api/v3 v3.6.8
+go: downloading github.com/coreos/go-semver v0.3.1
+go: downloading go.etcd.io/etcd/client/pkg/v3 v3.6.8
+go: downloading go.uber.org/zap v1.27.0
+go: downloading google.golang.org/grpc v1.71.1
+go: downloading k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+go: downloading k8s.io/klog/v2 v2.130.1
+go: downloading github.com/coreos/go-systemd/v22 v22.5.0
+go: downloading go.uber.org/multierr v1.11.0
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+exec
+/bin/zsh -lc "date '+%Y-%m-%d %H:%M:%S %Z'" in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+2026-03-09 04:53:37 EDT
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+codex
+I’m appending the required US-002 entry to `.ralph/progress.md` now with exact verification command outcomes and the implementation commit details.
+exec
+/bin/zsh -lc "cat <<'EOF' >> .ralph/progress.md
+## [2026-03-09 04:53:37 EDT] - US-002: Install Codex CLI in runtime image
+Thread: 
+Run: 20260309-043624-64079 (iteration 2)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-2.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: ce2d1f3 feat(container): install codex cli in runtime image
+- Post-commit status: clean
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: docker run --rm loop-base:local codex --version -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'command -v codex >/dev/null' -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> FAIL (git missing; expected until US-003)
+  - Command: docker run --rm -v "'$(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc '"'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
+  - Command: hadolint Dockerfile -> PASS
+  - Command: shellcheck scripts/*.sh -> PASS
+  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
+  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+- Files changed:
+  - Dockerfile
+  - .agents/tasks/prd-base-container.json
+  - .ralph/.tmp/prompt-20260309-043624-64079-2.md
+  - .ralph/.tmp/story-20260309-043624-64079-2.json
+  - .ralph/.tmp/story-20260309-043624-64079-2.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/runs/run-20260309-043624-64079-iter-1.md
+  - .ralph/runs/run-20260309-043624-64079-iter-2.log
+  - artifacts/sbom-loop-base.spdx.json
+  - .ralph/progress.md
+- What was implemented
+  - Installed Node.js/npm in the base image and installed Codex CLI from npm "'`@latest` channel during build.
+  - Added a Dockerfile maintainability comment with the exact Codex install command.
+  - Added a build-time check (`command -v codex`) to fail image build if the binary is not on PATH.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - For story-scoped container changes, adding build-time `command -v` checks catches PATH regressions early.
+  - Gotchas encountered
+  - The combined global smoke command will still fail until US-003 adds remaining toolchain binaries (currently fails at `git`).
+  - Useful context
+  - `codex --version` currently outputs `codex-cli <semver>` in this environment.
+---
+EOF' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+exec
+/bin/zsh -lc 'ralph log "Updated .ralph/progress.md for US-002 with commit, verification outcomes, and implementation notes"' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+Using bundled templates: /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+exec
+/bin/zsh -lc 'git status --short' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+ M .ralph/activity.log
+ M .ralph/progress.md
+ M .ralph/runs/run-20260309-043624-64079-iter-2.log
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+codex
+I’ve logged the required progress/activity updates; three run-log files changed afterward, so I’m creating the final housekeeping commit now to leave a clean tree.

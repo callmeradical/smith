@@ -16,3 +16,4 @@
 [2026-03-09 04:49:46] US-002: context loaded; scanning existing codex checks and docker verification scripts
 [2026-03-09 04:51:04] US-002 major change: Dockerfile now installs Codex CLI from npm latest channel and verifies codex is on PATH during build
 [2026-03-09 04:52:15] US-002 verification complete: docker build passed; codex smoke passed; global mixed smoke now fails at missing git (US-003 scope); hadolint/shellcheck/trivy/syft passed
+[2026-03-09 04:53:58] Updated .ralph/progress.md for US-002 with commit, verification outcomes, and implementation notes
