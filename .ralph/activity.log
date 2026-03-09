@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-09 04:56:11 | run=20260309-043624-64079 | iter=2 | mode=build | story=US-002 | duration=445s | status=success
 - 2026-03-09 04:48:43 | run=20260309-043624-64079 | iter=1 | mode=build | story=US-001 | duration=739s | status=success
 
 ## Events
@@ -17,3 +18,8 @@
 [2026-03-09 04:51:04] US-002 major change: Dockerfile now installs Codex CLI from npm latest channel and verifies codex is on PATH during build
 [2026-03-09 04:52:15] US-002 verification complete: docker build passed; codex smoke passed; global mixed smoke now fails at missing git (US-003 scope); hadolint/shellcheck/trivy/syft passed
 [2026-03-09 04:53:58] Updated .ralph/progress.md for US-002 with commit, verification outcomes, and implementation notes
+[2026-03-09 04:56:11] ITERATION 2 end (duration=445s)
+[2026-03-09 04:56:13] ITERATION 3 start (mode=build story=US-003)
+[2026-03-09 04:56:31] Start US-003 iteration 3: auditing guardrails, errors, PRD, and repo state before implementation
+[2026-03-09 04:59:11] US-003 implementation complete: installed required dev tooling in Dockerfile, added pnpm install + smoke-check script, updated docs
+[2026-03-09 05:01:11] US-003 verification complete: docker build/run gates, smoke positive+negative, hadolint, shellcheck, trivy, syft all executed

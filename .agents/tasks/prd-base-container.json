@@ -102,7 +102,7 @@
     {
       "id": "US-002",
       "title": "Install Codex CLI in runtime image",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-001"
       ],
@@ -115,13 +115,13 @@
         "Record the installation command in Dockerfile comments or docs for maintainability."
       ],
       "startedAt": "2026-03-09T08:48:45.459202+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T08:48:45.459445+00:00"
+      "completedAt": "2026-03-09T08:56:11.167330+00:00",
+      "updatedAt": "2026-03-09T08:56:11.166818+00:00"
     },
     {
       "id": "US-003",
       "title": "Add common developer tooling to image",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-001"
       ],
@@ -132,7 +132,10 @@
         "Example: running tool checks in container returns success for git, curl, jq, make, node, npm/pnpm, python3, pip, and rg.",
         "Negative case: if any required tool command is missing, smoke test reports the exact missing binary and fails.",
         "Keep final image layer changes minimal by cleaning package caches where applicable."
-      ]
+      ],
+      "startedAt": "2026-03-09T08:56:13.236309+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T08:56:13.236559+00:00"
     },
     {
       "id": "US-004",

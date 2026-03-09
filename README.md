@@ -61,6 +61,25 @@ Why Alpine for the baseline:
 - simple package/runtime surface for reproducible loop environments,
 - clear security patch cadence with explicit minor tag pinning.
 
+Bundled developer tooling in the base image includes:
+`bash`, `git`, `curl`, `jq`, `ca-certificates`, `make`, `python3`, `pip`,
+`ripgrep`, `node`, `npm`, `pnpm`, and `codex`.
+
+pnpm support is installed via explicit global npm install
+(`npm install --global pnpm@latest`) in the Dockerfile.
+
+Tooling smoke test:
+
+```bash
+./scripts/check-base-tooling-smoke.sh loop-base:local
+```
+
+Negative-case check (example):
+
+```bash
+REQUIRED_TOOLS="git definitely-missing" ./scripts/check-base-tooling-smoke.sh loop-base:local
+```
+
 ## Key API Endpoints
 
 Implemented today:

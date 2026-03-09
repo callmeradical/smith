@@ -1187,3 +1187,178 @@ index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a
 
 codex
 I’ve logged the required progress/activity updates; three run-log files changed afterward, so I’m creating the final housekeeping commit now to leave a clean tree.
+exec
+/bin/zsh -lc 'git add -A' in /Users/lars/Dev/smith.base-container-build succeeded in 52ms:
+
+exec
+/bin/zsh -lc 'git status --short' in /Users/lars/Dev/smith.base-container-build succeeded in 53ms:
+M  .ralph/activity.log
+M  .ralph/progress.md
+MM .ralph/runs/run-20260309-043624-64079-iter-2.log
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+exec
+/bin/zsh -lc 'git commit -m "chore(progress): record us-002 run outputs" && git show -s --format="%h %s" HEAD && git status --porcelain' in /Users/lars/Dev/smith.base-container-buildfile update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+ succeeded in 31.02s:
+[pre-commit] running quick checks...
+go test ./cmd/...
+go: downloading k8s.io/api v0.35.2
+go: downloading k8s.io/apimachinery v0.35.2
+go: downloading k8s.io/client-go v0.35.2
+go: downloading go.etcd.io/etcd/client/v3 v3.6.8
+go: downloading go.etcd.io/etcd/api/v3 v3.6.8
+go: downloading github.com/coreos/go-semver v0.3.1
+go: downloading go.etcd.io/etcd/client/pkg/v3 v3.6.8
+go: downloading go.uber.org/zap v1.27.0
+go: downloading google.golang.org/grpc v1.71.1
+go: downloading k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+go: downloading github.com/coreos/go-systemd/v22 v22.5.0
+go: downloading golang.org/x/sys v0.38.0
+go: downloading go.uber.org/multierr v1.11.0
+codex
+The final commit command is still running through hook checks; I’m polling it now to capture the commit hash and post-commit status in one shot.
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+codex
+Implemented US-002 by adding Codex CLI installation to the runtime image in [Dockerfile](/Users/lars/Dev/smith.base-container-build/Dockerfile), using the latest npm channel (`@openai/codex@latest`) with an inline maintainability comment and a build-time PATH check (`command -v codex`).
+
+Commits:
+1. `ce2d1f3 feat(container): install codex cli in runtime image`
+2. `fa961f4 chore(progress): record us-002 run outputs`
+
+Verification run:
+- `docker build -t loop-base:local .` -> PASS
+- `docker run --rm loop-base:local codex --version` -> PASS (`codex-cli 0.112.0`)
+- `docker run --rm loop-base:local sh -lc 'command -v codex >/dev/null'` -> PASS
+- `docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version'` -> FAIL (`git` missing; US-003 scope)
+- `docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills'` -> PASS
+- `hadolint Dockerfile` -> PASS
+- `shellcheck scripts/*.sh` -> PASS
+- `trivy image --severity CRITICAL --exit-code 1 loop-base:local` -> PASS
+- `syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json` -> PASS
+- Regression check: `docker run --rm loop-base:local sh -lc 'id && pwd'` -> PASS
+
+Required logs updated:
+- [progress.md](/Users/lars/Dev/smith.base-container-build/.ralph/progress.md)
+- [activity.log](/Users/lars/Dev/smith.base-container-build/.ralph/activity.log)
+
+Post-commit status at end of run had one live-updating logger file still modified:
+- `.ralph/runs/run-20260309-043624-64079-iter-2.log`
+
+<promise>COMPLETE</promise>
+file update:
+diff --git a/Dockerfile b/Dockerfile
+index 2ee02539f8a95a27bedf9cccf1d42ff8196b3c2d..2b2c6556fb09a92107be52d69109770a57bd6e8c
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,15 @@
+       exit 1; \
+     fi
+ 
++# hadolint ignore=DL3018
++RUN apk add --no-cache nodejs npm
++
++# Install Codex CLI from npm latest channel for v1 (no version pin).
++# Command: npm install --global @openai/codex@latest
++# hadolint ignore=DL3016
++RUN npm install --global @openai/codex@latest \
++    && command -v codex >/dev/null
++
+ RUN addgroup -S -g 1000 dev \
+     && adduser -S -D -u 1000 -G dev -h "${HOME}" dev \
+     && mkdir -p /workspace "${HOME}/.codex" \
+
+tokens used
+60,047
+Implemented US-002 by adding Codex CLI installation to the runtime image in [Dockerfile](/Users/lars/Dev/smith.base-container-build/Dockerfile), using the latest npm channel (`@openai/codex@latest`) with an inline maintainability comment and a build-time PATH check (`command -v codex`).
+
+Commits:
+1. `ce2d1f3 feat(container): install codex cli in runtime image`
+2. `fa961f4 chore(progress): record us-002 run outputs`
+
+Verification run:
+- `docker build -t loop-base:local .` -> PASS
+- `docker run --rm loop-base:local codex --version` -> PASS (`codex-cli 0.112.0`)
+- `docker run --rm loop-base:local sh -lc 'command -v codex >/dev/null'` -> PASS
+- `docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version'` -> FAIL (`git` missing; US-003 scope)
+- `docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills'` -> PASS
+- `hadolint Dockerfile` -> PASS
+- `shellcheck scripts/*.sh` -> PASS
+- `trivy image --severity CRITICAL --exit-code 1 loop-base:local` -> PASS
+- `syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json` -> PASS
+- Regression check: `docker run --rm loop-base:local sh -lc 'id && pwd'` -> PASS
+
+Required logs updated:
+- [progress.md](/Users/lars/Dev/smith.base-container-build/.ralph/progress.md)
+- [activity.log](/Users/lars/Dev/smith.base-container-build/.ralph/activity.log)
+
+Post-commit status at end of run had one live-updating logger file still modified:
+- `.ralph/runs/run-20260309-043624-64079-iter-2.log`
+
+<promise>COMPLETE</promise>
