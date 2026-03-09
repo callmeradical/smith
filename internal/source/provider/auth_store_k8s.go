@@ -78,11 +78,43 @@ func (s *SecretTokenStore) Delete(ctx context.Context, providerID string) error 
 	})
 }
 
+func (s *SecretTokenStore) GetProjectCredential(ctx context.Context, projectID string) (ProjectCredential, bool, error) {
+	f, err := s.read(ctx)
+	if err != nil {
+		return ProjectCredential{}, false, err
+	}
+	cred, ok := f.ProjectCredentials[normalizeProjectCredentialID(projectID)]
+	return cred, ok, nil
+}
+
+func (s *SecretTokenStore) PutProjectCredential(ctx context.Context, projectID string, credential ProjectCredential) error {
+	id := normalizeProjectCredentialID(projectID)
+	return s.update(ctx, func(f tokenFile) tokenFile {
+		if f.ProjectCredentials == nil {
+			f.ProjectCredentials = map[string]ProjectCredential{}
+		}
+		f.ProjectCredentials[id] = credential
+		return f
+	})
+}
+
+func (s *SecretTokenStore) DeleteProjectCredential(ctx context.Context, projectID string) error {
+	id := normalizeProjectCredentialID(projectID)
+	return s.update(ctx, func(f tokenFile) tokenFile {
+		if f.ProjectCredentials == nil {
+			f.ProjectCredentials = map[string]ProjectCredential{}
+			return f
+		}
+		delete(f.ProjectCredentials, id)
+		return f
+	})
+}
+
 func (s *SecretTokenStore) read(ctx context.Context) (tokenFile, error) {
 	secret, err := s.client.CoreV1().Secrets(s.namespace).Get(ctx, s.secretName, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return tokenFile{Tokens: map[string]Token{}}, nil
+			return tokenFile{Tokens: map[string]Token{}, ProjectCredentials: map[string]ProjectCredential{}}, nil
 		}
 		return tokenFile{}, err
 	}
@@ -122,7 +154,7 @@ func (s *SecretTokenStore) update(ctx context.Context, mutator func(tokenFile) t
 
 func decodeTokenFile(data []byte) (tokenFile, error) {
 	if len(data) == 0 {
-		return tokenFile{Tokens: map[string]Token{}}, nil
+		return tokenFile{Tokens: map[string]Token{}, ProjectCredentials: map[string]ProjectCredential{}}, nil
 	}
 	var f tokenFile
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -130,6 +162,9 @@ func decodeTokenFile(data []byte) (tokenFile, error) {
 	}
 	if f.Tokens == nil {
 		f.Tokens = map[string]Token{}
+	}
+	if f.ProjectCredentials == nil {
+		f.ProjectCredentials = map[string]ProjectCredential{}
 	}
 	return f, nil
 }

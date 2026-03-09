@@ -15,7 +15,8 @@ type FileTokenStore struct {
 }
 
 type tokenFile struct {
-	Tokens map[string]Token `json:"tokens"`
+	Tokens             map[string]Token             `json:"tokens"`
+	ProjectCredentials map[string]ProjectCredential `json:"project_credentials,omitempty"`
 }
 
 func NewFileTokenStore(path string) *FileTokenStore {
@@ -58,6 +59,42 @@ func (s *FileTokenStore) Delete(_ context.Context, providerID string) error {
 	return s.write(f)
 }
 
+func (s *FileTokenStore) GetProjectCredential(_ context.Context, projectID string) (ProjectCredential, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.read()
+	if err != nil {
+		return ProjectCredential{}, false, err
+	}
+	cred, ok := f.ProjectCredentials[normalizeProjectCredentialID(projectID)]
+	return cred, ok, nil
+}
+
+func (s *FileTokenStore) PutProjectCredential(_ context.Context, projectID string, credential ProjectCredential) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.read()
+	if err != nil {
+		return err
+	}
+	if f.ProjectCredentials == nil {
+		f.ProjectCredentials = map[string]ProjectCredential{}
+	}
+	f.ProjectCredentials[normalizeProjectCredentialID(projectID)] = credential
+	return s.write(f)
+}
+
+func (s *FileTokenStore) DeleteProjectCredential(_ context.Context, projectID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.read()
+	if err != nil {
+		return err
+	}
+	delete(f.ProjectCredentials, normalizeProjectCredentialID(projectID))
+	return s.write(f)
+}
+
 func (s *FileTokenStore) read() (tokenFile, error) {
 	if s.path == "" {
 		return tokenFile{}, errors.New("token store path is required")
@@ -65,12 +102,18 @@ func (s *FileTokenStore) read() (tokenFile, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return tokenFile{Tokens: map[string]Token{}}, nil
+			return tokenFile{
+				Tokens:             map[string]Token{},
+				ProjectCredentials: map[string]ProjectCredential{},
+			}, nil
 		}
 		return tokenFile{}, err
 	}
 	if len(data) == 0 {
-		return tokenFile{Tokens: map[string]Token{}}, nil
+		return tokenFile{
+			Tokens:             map[string]Token{},
+			ProjectCredentials: map[string]ProjectCredential{},
+		}, nil
 	}
 	var f tokenFile
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -78,6 +121,9 @@ func (s *FileTokenStore) read() (tokenFile, error) {
 	}
 	if f.Tokens == nil {
 		f.Tokens = map[string]Token{}
+	}
+	if f.ProjectCredentials == nil {
+		f.ProjectCredentials = map[string]ProjectCredential{}
 	}
 	return f, nil
 }

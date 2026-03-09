@@ -109,3 +109,54 @@ func TestSecretTokenStorePutRequiresExistingSecret(t *testing.T) {
 		t.Fatal("expected put to fail when backing secret is missing")
 	}
 }
+
+func TestSecretTokenStoreProjectCredentialCRUD(t *testing.T) {
+	ctx := context.Background()
+	client := fake.NewSimpleClientset()
+	store, err := NewSecretTokenStore(client, "smith-system", "smith-auth-store", "")
+	if err != nil {
+		t.Fatalf("new secret token store: %v", err)
+	}
+	_, err = client.CoreV1().Secrets("smith-system").Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "smith-auth-store"},
+		Type:       corev1.SecretTypeOpaque,
+		Data:       map[string][]byte{defaultSecretTokenStoreKey: []byte(`{"tokens":{}}`)},
+	}, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("create backing secret: %v", err)
+	}
+
+	projectID := "proj-alpha"
+	cred := ProjectCredential{
+		GitHubUser: "smith-bot",
+		PAT:        "ghp_test_123",
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if err := store.PutProjectCredential(ctx, projectID, cred); err != nil {
+		t.Fatalf("put project credential: %v", err)
+	}
+	got, found, err := store.GetProjectCredential(ctx, projectID)
+	if err != nil {
+		t.Fatalf("get project credential: %v", err)
+	}
+	if !found {
+		t.Fatal("expected project credential to exist")
+	}
+	if got.PAT != cred.PAT {
+		t.Fatalf("expected pat %q, got %q", cred.PAT, got.PAT)
+	}
+	if got.GitHubUser != cred.GitHubUser {
+		t.Fatalf("expected github user %q, got %q", cred.GitHubUser, got.GitHubUser)
+	}
+
+	if err := store.DeleteProjectCredential(ctx, projectID); err != nil {
+		t.Fatalf("delete project credential: %v", err)
+	}
+	_, found, err = store.GetProjectCredential(ctx, projectID)
+	if err != nil {
+		t.Fatalf("get project credential after delete: %v", err)
+	}
+	if found {
+		t.Fatal("expected project credential to be deleted")
+	}
+}

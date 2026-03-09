@@ -2,6 +2,8 @@ package replica
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -58,6 +60,8 @@ type JobRequest struct {
 	Namespace                 string
 	LoopID                    string
 	CorrelationID             string
+	JobName                   string
+	Labels                    map[string]string
 	ServiceAccountName        string
 	Image                     string
 	ImagePullPolicy           string
@@ -169,12 +173,22 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 		req.ImagePullPolicy = "IfNotPresent"
 	}
 
-	jobName := fmt.Sprintf("smith-replica-%s", sanitizeName(req.LoopID))
+	jobName := strings.TrimSpace(req.JobName)
+	if jobName == "" {
+		jobName = fmt.Sprintf("smith-replica-%s", sanitizeName(req.LoopID))
+	}
 	labels := map[string]string{
 		"app.kubernetes.io/name":      "smith-replica",
 		"app.kubernetes.io/component": "replica",
-		"smith.io/loop-id":            req.LoopID,
-		"smith.io/correlation-id":     req.CorrelationID,
+		"smith.io/loop-id":            sanitizeKubernetesLabelValue(req.LoopID),
+		"smith.io/correlation-id":     sanitizeKubernetesLabelValue(req.CorrelationID),
+	}
+	for key, raw := range req.Labels {
+		k := strings.TrimSpace(key)
+		if k == "" {
+			continue
+		}
+		labels[k] = sanitizeKubernetesLabelValue(raw)
 	}
 
 	env := []EnvVar{
@@ -473,4 +487,48 @@ func sanitizeName(loopID string) string {
 		s = s[:40]
 	}
 	return s
+}
+
+func sanitizeKubernetesLabelValue(raw string) string {
+	const maxLen = 63
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "unknown"
+	}
+
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_' || r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+
+	out := strings.Trim(b.String(), "-_.")
+	if out == "" {
+		out = "unknown"
+	}
+	if len(out) <= maxLen {
+		return out
+	}
+	sum := sha1.Sum([]byte(out))
+	suffix := hex.EncodeToString(sum[:])[:8]
+	keep := maxLen - 1 - len(suffix)
+	if keep < 1 {
+		keep = 1
+	}
+	out = strings.Trim(out[:keep], "-_.")
+	if out == "" {
+		out = "x"
+	}
+	return out + "-" + suffix
 }

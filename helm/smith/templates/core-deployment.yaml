@@ -33,9 +33,9 @@ spec:
             - name: SMITH_NAMESPACE
               value: {{ .Release.Namespace | quote }}
             - name: SMITH_REPLICA_IMAGE
-              value: "{{ .Values.core.image.repository }}:{{ .Values.core.image.tag }}"
+              value: "{{ .Values.core.replicaImage.repository }}:{{ .Values.core.replicaImage.tag }}"
             - name: SMITH_REPLICA_IMAGE_PULL_POLICY
-              value: {{ .Values.core.image.pullPolicy | quote }}
+              value: {{ .Values.core.replicaImage.pullPolicy | quote }}
             - name: SMITH_LOOP_POLICY_MAX_ATTEMPTS
               value: {{ .Values.core.loopPolicy.maxAttempts | quote }}
             - name: SMITH_LOOP_POLICY_BACKOFF_INITIAL
@@ -47,7 +47,7 @@ spec:
             - name: SMITH_LOOP_POLICY_TERMINATE_ON_ERROR
               value: {{ .Values.core.loopPolicy.terminateOnError | quote }}
             - name: SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT
-              value: {{ default (printf "%s-replica" (include "smith.fullname" .)) .Values.core.replicaTemplate.serviceAccountName | quote }}
+              value: {{ default (include "smith.serviceAccountName" (dict "component" "core" "root" .)) .Values.core.replicaTemplate.serviceAccountName | quote }}
             - name: SMITH_REPLICA_TEMPLATE_RESOURCES
               value: {{ .Values.core.replicaTemplate.resources | toJson | quote }}
             - name: SMITH_REPLICA_TEMPLATE_NODE_SELECTOR
