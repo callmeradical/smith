@@ -96,3 +96,53 @@ Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309
   - Useful context
   - `codex --version` currently outputs `codex-cli <semver>` in this environment.
 ---
+## [2026-03-09 05:02:59 EDT] - US-003: Add common developer tooling to image
+Thread: 
+Run: 20260309-043624-64079 (iteration 3)
+Run log: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-3.log
+Run summary: /Users/lars/Dev/smith.base-container-build/.ralph/runs/run-20260309-043624-64079-iter-3.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: a314aa9 feat(container): add common dev tooling to base image
+- Post-commit status: clean
+- Verification:
+  - Command: docker build -t loop-base:local . -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'codex --version && git --version && node --version && python3 --version && rg --version' -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'git --version && curl --version >/dev/null && jq --version && make --version >/dev/null && node --version && npm --version && pnpm --version && python3 --version && pip --version && rg --version' -> PASS
+  - Command: docker run --rm -v $(pwd)/tmp-skills:/home/dev/.codex/skills loop-base:local sh -lc 'test -d /home/dev/.codex/skills && ls -la /home/dev/.codex/skills' -> PASS
+  - Command: ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS
+  - Command: REQUIRED_TOOLS='git definitely-missing-binary' ./scripts/check-base-tooling-smoke.sh loop-base:local -> PASS (expected failure with exact missing binary output)
+  - Command: hadolint Dockerfile -> PASS
+  - Command: shellcheck scripts/*.sh -> PASS
+  - Command: trivy image --severity CRITICAL --exit-code 1 loop-base:local -> PASS
+  - Command: syft packages loop-base:local -o spdx-json > artifacts/sbom-loop-base.spdx.json -> PASS
+  - Command: docker run --rm loop-base:local sh -lc 'id && pwd' -> PASS
+- Files changed:
+  - Dockerfile
+  - scripts/check-base-tooling-smoke.sh
+  - README.md
+  - AGENTS.md
+  - artifacts/sbom-loop-base.spdx.json
+  - .agents/tasks/prd-base-container.json
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/progress.md
+  - .ralph/.tmp/prompt-20260309-043624-64079-3.md
+  - .ralph/.tmp/story-20260309-043624-64079-3.json
+  - .ralph/.tmp/story-20260309-043624-64079-3.md
+  - .ralph/runs/run-20260309-043624-64079-iter-2.log
+  - .ralph/runs/run-20260309-043624-64079-iter-2.md
+  - .ralph/runs/run-20260309-043624-64079-iter-3.log
+- What was implemented
+  - Expanded the base image package install step to include the full US-003 toolchain via explicit `apk add --no-cache` command.
+  - Added pnpm support via explicit npm global install (`pnpm@latest`) alongside Codex CLI, and cleaned npm cache to keep layer size down.
+  - Added `scripts/check-base-tooling-smoke.sh` to verify required binaries and emit exact `missing binary: <name>` failures for absent commands.
+  - Documented bundled tooling, pnpm installation method, and positive/negative smoke-check usage in README and AGENTS operational notes.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - A containerized smoke script with overridable tool lists provides both positive validation and deterministic negative-case checks without editing the image.
+  - Gotchas encountered
+  - `py3-pip` may not always expose `pip`; adding a guarded symlink keeps `pip` availability consistent with acceptance checks.
+  - Useful context
+  - `trivy` now scans many additional node packages after pnpm installation; CRITICAL gate still passes but output is substantially larger.
+---
