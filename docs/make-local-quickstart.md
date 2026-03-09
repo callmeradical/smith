@@ -20,6 +20,8 @@ make build-local
 make deploy-local
 ```
 
+`make deploy-local` now builds the Smith container images locally and imports them into the `k3d` cluster before running `helm upgrade`, so the control-plane pods do not need to pull `ghcr.io/smith/*` during local development.
+
 ## 3. Expose API Locally
 
 In a separate terminal:
