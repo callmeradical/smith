@@ -157,7 +157,7 @@
     {
       "id": "US-002",
       "title": "Attach and detach terminal sessions against runtime target",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-001"
       ],
@@ -170,13 +170,13 @@
         "Attach/detach tests assert audit metadata includes actor, terminal source, and runtime target identity."
       ],
       "startedAt": "2026-03-09T08:43:35.311508+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-09T08:43:35.311805+00:00"
+      "completedAt": "2026-03-09T08:55:23.100815+00:00",
+      "updatedAt": "2026-03-09T08:55:23.100315+00:00"
     },
     {
       "id": "US-003",
       "title": "Execute line commands inside active loop container",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-002"
       ],
@@ -188,7 +188,10 @@
         "Example: command `echo hello` appends journal output containing `hello` and returns successful exit code.",
         "Negative case: actor submits command without attach and receives HTTP 409 with no pod exec call performed.",
         "Negative case: command over max size returns HTTP 400 with validation error and audit entry tagged as rejected."
-      ]
+      ],
+      "startedAt": "2026-03-09T08:55:25.178381+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-09T08:55:25.178611+00:00"
     },
     {
       "id": "US-004",

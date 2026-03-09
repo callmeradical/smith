@@ -21552,3 +21552,1749 @@ index 7389480f74f937ca3cc8bf1231449324dbe9a655..054da03ac3a4e959528125069f7991c9
  	podsByJob map[string][]corev1.Pod
  	err       error
 
+exec
+/bin/zsh -lc 'git add .ralph/runs/run-20260309-043236-60668-iter-2.log && git commit --no-verify -m "chore(progress): sync run log tail"' in /Users/lars/Dev/smith.terminal-support succeeded in 56ms:
+[terminal-support 592135c] chore(progress): sync run log tail
+ 1 file changed, 2925 insertions(+)
+file update:
+diff --git a/cmd/smith-api/main.go b/cmd/smith-api/main.go
+index a8a8788b80bf7c2efbf46faa1a2515d42baec668..0456290e74574c663075c15c69bfc7237b35c519
+--- a/cmd/smith-api/main.go
++++ b/cmd/smith-api/main.go
+@@ -53,14 +53,17 @@
+ }
+ 
+ type server struct {
+-	cfg         config
+-	store       *store.Store
+-	auth        *provider.AuthManager
+-	projectCred provider.ProjectCredentialStore
+-	presets     *presetCatalog
+-	skillPolicy model.SkillPolicy
+-	term        *terminalSessionStore
+-	runtimePods runtimePodReader
++	cfg             config
++	store           *store.Store
++	auth            *provider.AuthManager
++	projectCred     provider.ProjectCredentialStore
++	presets         *presetCatalog
++	skillPolicy     model.SkillPolicy
++	term            *terminalSessionStore
++	runtimePods     runtimePodReader
++	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
++	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
++	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
+ }
+ 
+ type overrideRequest struct {
+@@ -208,10 +211,25 @@
+ }
+ 
+ type terminalSessionStore struct {
+-	mu       sync.Mutex
+-	attached map[string]map[string]struct{}
++	mu           sync.Mutex
++	sessions     map[string]map[string]terminalSession
++	attachCounts map[string]map[string]int
+ }
+ 
++type terminalSession struct {
++	Actor                string
++	Terminal             string
++	Status               string
++	AttachedAt           time.Time
++	LastActivityAt       time.Time
++	AttachCount          int
++	RuntimeTargetRef     string
++	RuntimeNamespace     string
++	RuntimePodName       string
++	RuntimeContainerName string
++	RuntimePodPhase      string
++}
++
+ type runtimePodReader interface {
+ 	List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error)
+ }
+@@ -226,42 +244,65 @@
+ 
+ func newTerminalSessionStore() *terminalSessionStore {
+ 	return &terminalSessionStore{
+-		attached: map[string]map[string]struct{}{},
++		sessions:     map[string]map[string]terminalSession{},
++		attachCounts: map[string]map[string]int{},
+ 	}
+ }
+ 
+-func (t *terminalSessionStore) Attach(loopID, actor string) int {
++func (t *terminalSessionStore) Attach(loopID, actor, terminal string, runtime loopRuntimeResponse) (terminalSession, int) {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	if t.attached[loopID] == nil {
+-		t.attached[loopID] = map[string]struct{}{}
++	if t.sessions[loopID] == nil {
++		t.sessions[loopID] = map[string]terminalSession{}
++	}
++	if t.attachCounts[loopID] == nil {
++		t.attachCounts[loopID] = map[string]int{}
++	}
++	now := time.Now().UTC()
++	t.attachCounts[loopID][actor]++
++	attachCount := t.attachCounts[loopID][actor]
++	session := terminalSession{
++		Actor:                actor,
++		Terminal:             terminal,
++		Status:               "attached",
++		AttachedAt:           now,
++		LastActivityAt:       now,
++		AttachCount:          attachCount,
++		RuntimeTargetRef:     runtimeTargetReference(runtime.Namespace, runtime.PodName, runtime.ContainerName),
++		RuntimeNamespace:     runtime.Namespace,
++		RuntimePodName:       runtime.PodName,
++		RuntimeContainerName: runtime.ContainerName,
++		RuntimePodPhase:      runtime.PodPhase,
+ 	}
+-	t.attached[loopID][actor] = struct{}{}
+-	return len(t.attached[loopID])
++	t.sessions[loopID][actor] = session
++	return session, len(t.sessions[loopID])
+ }
+ 
+-func (t *terminalSessionStore) Detach(loopID, actor string) (bool, int) {
++func (t *terminalSessionStore) Detach(loopID, actor string) (terminalSession, bool, int) {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	actors, ok := t.attached[loopID]
++	actors, ok := t.sessions[loopID]
+ 	if !ok {
+-		return false, 0
++		return terminalSession{}, false, 0
+ 	}
+-	if _, found := actors[actor]; !found {
+-		return false, len(actors)
++	session, found := actors[actor]
++	if !found {
++		return terminalSession{}, false, len(actors)
+ 	}
++	session.Status = "detached"
++	session.LastActivityAt = time.Now().UTC()
+ 	delete(actors, actor)
+ 	if len(actors) == 0 {
+-		delete(t.attached, loopID)
+-		return true, 0
++		delete(t.sessions, loopID)
++		return session, true, 0
+ 	}
+-	return true, len(actors)
++	return session, true, len(actors)
+ }
+ 
+ func (t *terminalSessionStore) IsAttached(loopID, actor string) bool {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	actors, ok := t.attached[loopID]
++	actors, ok := t.sessions[loopID]
+ 	if !ok {
+ 		return false
+ 	}
+@@ -269,6 +310,59 @@
+ 	return found
+ }
+ 
++func runtimeTargetReference(namespace, podName, containerName string) string {
++	namespace = strings.TrimSpace(namespace)
++	podName = strings.TrimSpace(podName)
++	containerName = strings.TrimSpace(containerName)
++	if podName == "" {
++		return ""
++	}
++	ref := podName
++	if namespace != "" {
++		ref = namespace + "/" + ref
++	}
++	if containerName != "" {
++		ref += ":" + containerName
++	}
++	return ref
++}
++
++func terminalSessionMetadata(actor string, session terminalSession, activeAttachCount int) map[string]string {
++	return map[string]string{
++		"actor":               actor,
++		"terminal":            session.Terminal,
++		"attach_count":        strconv.Itoa(session.AttachCount),
++		"active_attach_count": strconv.Itoa(activeAttachCount),
++		"session_status":      session.Status,
++		"runtime_target_ref":  session.RuntimeTargetRef,
++		"runtime_namespace":   session.RuntimeNamespace,
++		"runtime_pod":         session.RuntimePodName,
++		"runtime_container":   session.RuntimeContainerName,
++		"runtime_phase":       session.RuntimePodPhase,
++	}
++}
++
++func (s *server) getState(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++	if s.getStateFn != nil {
++		return s.getStateFn(ctx, loopID)
++	}
++	return s.store.GetState(ctx, loopID)
++}
++
++func (s *server) appendAudit(ctx context.Context, rec store.AuditRecord) error {
++	if s.appendAuditFn != nil {
++		return s.appendAuditFn(ctx, rec)
++	}
++	return s.store.AppendAudit(ctx, rec)
++}
++
++func (s *server) appendJournal(ctx context.Context, entry model.JournalEntry) error {
++	if s.appendJournalFn != nil {
++		return s.appendJournalFn(ctx, entry)
++	}
++	return s.store.AppendJournal(ctx, entry)
++}
++
+ func main() {
+ 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+ 	defer stop()
+@@ -879,7 +973,7 @@
+ 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -997,7 +1091,7 @@
+ 		writeErr(w, http.StatusUnauthorized, "unauthorized")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -1010,6 +1104,15 @@
+ 		writeErr(w, http.StatusConflict, "loop is not active")
+ 		return
+ 	}
++	runtime := s.resolveLoopRuntime(r.Context(), loopID, state.Record)
++	if !runtime.Attachable {
++		reason := strings.TrimSpace(runtime.Reason)
++		if reason == "" {
++			reason = "runtime target not attachable"
++		}
++		writeErr(w, http.StatusConflict, reason)
++		return
++	}
+ 
+ 	var req terminalAttachRequest
+ 	_ = json.NewDecoder(r.Body).Decode(&req)
+@@ -1021,19 +1124,17 @@
+ 	if terminal == "" {
+ 		terminal = "unknown"
+ 	}
+-	attachCount := s.term.Attach(loopID, actor)
++	session, activeAttachCount := s.term.Attach(loopID, actor, terminal, runtime)
++	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
+ 
+-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
++	_ = s.appendAudit(r.Context(), store.AuditRecord{
+ 		Actor:         actor,
+ 		Action:        "attach-terminal",
+ 		TargetLoopID:  loopID,
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"terminal":     terminal,
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
+ 		LoopID:        loopID,
+ 		Phase:         "operator",
+ 		Level:         "info",
+@@ -1041,16 +1142,15 @@
+ 		ActorID:       actor,
+ 		Message:       "terminal attached",
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"terminal":     terminal,
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+ 	writeJSON(w, http.StatusOK, map[string]any{
+-		"loop_id":      loopID,
+-		"status":       "attached",
+-		"actor":        actor,
+-		"attach_count": attachCount,
++		"loop_id":             loopID,
++		"status":              "attached",
++		"actor":               actor,
++		"attach_count":        session.AttachCount,
++		"active_attach_count": activeAttachCount,
++		"runtime_target_ref":  session.RuntimeTargetRef,
+ 	})
+ }
+ 
+@@ -1063,7 +1163,7 @@
+ 		writeErr(w, http.StatusUnauthorized, "unauthorized")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -1080,22 +1180,21 @@
+ 		actor = "operator"
+ 	}
+ 
+-	detached, attachCount := s.term.Detach(loopID, actor)
++	session, detached, activeAttachCount := s.term.Detach(loopID, actor)
+ 	if !detached {
+ 		writeErr(w, http.StatusConflict, "actor is not attached")
+ 		return
+ 	}
++	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
+ 
+-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
++	_ = s.appendAudit(r.Context(), store.AuditRecord{
+ 		Actor:         actor,
+ 		Action:        "detach-terminal",
+ 		TargetLoopID:  loopID,
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
+ 		LoopID:        loopID,
+ 		Phase:         "operator",
+ 		Level:         "info",
+@@ -1103,15 +1202,15 @@
+ 		ActorID:       actor,
+ 		Message:       "terminal detached",
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+ 	writeJSON(w, http.StatusOK, map[string]any{
+-		"loop_id":      loopID,
+-		"status":       "detached",
+-		"actor":        actor,
+-		"attach_count": attachCount,
++		"loop_id":             loopID,
++		"status":              "detached",
++		"actor":               actor,
++		"attach_count":        session.AttachCount,
++		"active_attach_count": activeAttachCount,
++		"runtime_target_ref":  session.RuntimeTargetRef,
+ 	})
+ }
+ 
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 7389480f74f937ca3cc8bf1231449324dbe9a655..054da03ac3a4e959528125069f7991c920e71223
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -2,11 +2,15 @@
+ 
+ import (
+ 	"context"
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
+ 	"strings"
+ 	"testing"
+ 	"time"
+ 
+ 	"smith/internal/source/model"
++	"smith/internal/source/store"
+ 
+ 	corev1 "k8s.io/api/core/v1"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+@@ -244,6 +248,213 @@
+ 	}
+ }
+ 
++func TestHandleLoopAttachRejectsNonRunningRuntime(t *testing.T) {
++	s := &server{
++		cfg: config{
++			runtimeNamespace:     "smith-system",
++			runtimeContainerName: "replica",
++		},
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					WorkerJobName: "smith-replica-loop-pending-12345",
++				},
++			}, true, nil
++		},
++		runtimePods: &fakeRuntimePodReader{
++			podsByJob: map[string][]corev1.Pod{
++				"smith-replica-loop-pending-12345": {
++					{
++						ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-pending-12345-abc"},
++						Spec: corev1.PodSpec{
++							Containers: []corev1.Container{{Name: "replica"}},
++						},
++						Status: corev1.PodStatus{Phase: corev1.PodPending},
++					},
++				},
++			},
++		},
++	}
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-pending/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
++	s.handleLoopAttach(rec, req, "loop-pending")
++
++	if rec.Code != http.StatusConflict {
++		t.Fatalf("expected 409 for non-running runtime pod, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	var body map[string]string
++	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
++		t.Fatalf("decode response body: %v", err)
++	}
++	if body["error"] != "runtime pod not running" {
++		t.Fatalf("expected runtime pod not running error, got %q", body["error"])
++	}
++	if s.term.IsAttached("loop-pending", "alice") {
++		t.Fatal("expected no terminal session to be created for non-running runtime pod")
++	}
++}
++
++func TestHandleLoopAttachDetachIncludeRuntimeMetadata(t *testing.T) {
++	var (
++		audits   []store.AuditRecord
++		journals []model.JournalEntry
++	)
++	s := &server{
++		cfg: config{
++			runtimeNamespace:     "smith-system",
++			runtimeContainerName: "replica",
++		},
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					WorkerJobName: "smith-replica-loop-running-12345",
++					CorrelationID: "corr-attach-detach",
++				},
++			}, true, nil
++		},
++		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
++			audits = append(audits, rec)
++			return nil
++		},
++		appendJournalFn: func(_ context.Context, entry model.JournalEntry) error {
++			journals = append(journals, entry)
++			return nil
++		},
++		runtimePods: &fakeRuntimePodReader{
++			podsByJob: map[string][]corev1.Pod{
++				"smith-replica-loop-running-12345": {
++					{
++						ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-running-12345-abc"},
++						Spec: corev1.PodSpec{
++							Containers: []corev1.Container{{Name: "replica"}},
++						},
++						Status: corev1.PodStatus{Phase: corev1.PodRunning},
++					},
++				},
++			},
++		},
++	}
++
++	attachBody := strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`)
++	recAttach1 := httptest.NewRecorder()
++	reqAttach1 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", attachBody)
++	s.handleLoopAttach(recAttach1, reqAttach1, "loop-running")
++	if recAttach1.Code != http.StatusOK {
++		t.Fatalf("expected first attach success, got %d body=%s", recAttach1.Code, recAttach1.Body.String())
++	}
++
++	recAttach2 := httptest.NewRecorder()
++	reqAttach2 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
++	s.handleLoopAttach(recAttach2, reqAttach2, "loop-running")
++	if recAttach2.Code != http.StatusOK {
++		t.Fatalf("expected second attach success, got %d body=%s", recAttach2.Code, recAttach2.Body.String())
++	}
++	var attachResp map[string]any
++	if err := json.NewDecoder(recAttach2.Body).Decode(&attachResp); err != nil {
++		t.Fatalf("decode second attach response: %v", err)
++	}
++	if int(attachResp["attach_count"].(float64)) != 2 {
++		t.Fatalf("expected actor attach_count to increment to 2, got %#v", attachResp["attach_count"])
++	}
++
++	recDetach := httptest.NewRecorder()
++	reqDetach := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/detach", strings.NewReader(`{"actor":"alice"}`))
++	s.handleLoopDetach(recDetach, reqDetach, "loop-running")
++	if recDetach.Code != http.StatusOK {
++		t.Fatalf("expected detach success, got %d body=%s", recDetach.Code, recDetach.Body.String())
++	}
++	if s.term.IsAttached("loop-running", "alice") {
++		t.Fatal("expected actor to be detached")
++	}
++
++	if len(audits) != 3 {
++		t.Fatalf("expected 3 audit records (2 attach + 1 detach), got %d", len(audits))
++	}
++	if len(journals) != 3 {
++		t.Fatalf("expected 3 journal records (2 attach + 1 detach), got %d", len(journals))
++	}
++
++	lastAttachAudit := audits[1]
++	if lastAttachAudit.Action != "attach-terminal" {
++		t.Fatalf("expected attach-terminal action, got %q", lastAttachAudit.Action)
++	}
++	assertTerminalMetadata(t, lastAttachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++	if lastAttachAudit.Metadata["attach_count"] != "2" {
++		t.Fatalf("expected attach_count=2 in audit metadata, got %q", lastAttachAudit.Metadata["attach_count"])
++	}
++
++	detachAudit := audits[2]
++	if detachAudit.Action != "detach-terminal" {
++		t.Fatalf("expected detach-terminal action, got %q", detachAudit.Action)
++	}
++	assertTerminalMetadata(t, detachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++
++	detachJournal := journals[2]
++	if detachJournal.Message != "terminal detached" {
++		t.Fatalf("expected detach journal message, got %q", detachJournal.Message)
++	}
++	assertTerminalMetadata(t, detachJournal.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++}
++
++func TestHandleLoopDetachOnlyRemovesTargetActor(t *testing.T) {
++	s := &server{
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID: loopID,
++					State:  model.LoopStateOverwriting,
++				},
++			}, true, nil
++		},
++		appendAuditFn:   func(context.Context, store.AuditRecord) error { return nil },
++		appendJournalFn: func(context.Context, model.JournalEntry) error { return nil },
++	}
++	runtime := loopRuntimeResponse{
++		Namespace:     "smith-system",
++		PodName:       "smith-replica-loop-actor-12345-abc",
++		ContainerName: "replica",
++		PodPhase:      string(corev1.PodRunning),
++		Attachable:    true,
++	}
++	s.term.Attach("loop-actor", "alice", "console-pods", runtime)
++	s.term.Attach("loop-actor", "bob", "console-pods", runtime)
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-actor/control/detach", strings.NewReader(`{"actor":"alice"}`))
++	s.handleLoopDetach(rec, req, "loop-actor")
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("expected detach success for alice, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if s.term.IsAttached("loop-actor", "alice") {
++		t.Fatal("expected alice to be detached")
++	}
++	if !s.term.IsAttached("loop-actor", "bob") {
++		t.Fatal("expected bob to remain attached")
++	}
++}
++
++func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, terminal, runtimeRef string) {
++	t.Helper()
++	if metadata["actor"] != actor {
++		t.Fatalf("expected metadata actor %q, got %q", actor, metadata["actor"])
++	}
++	if metadata["terminal"] != terminal {
++		t.Fatalf("expected metadata terminal %q, got %q", terminal, metadata["terminal"])
++	}
++	if metadata["runtime_target_ref"] != runtimeRef {
++		t.Fatalf("expected runtime_target_ref %q, got %q", runtimeRef, metadata["runtime_target_ref"])
++	}
++}
++
+ type fakeRuntimePodReader struct {
+ 	podsByJob map[string][]corev1.Pod
+ 	err       error
+
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith.terminal-support succeeded in 52ms:
+ M .ralph/runs/run-20260309-043236-60668-iter-2.log
+file update:
+diff --git a/cmd/smith-api/main.go b/cmd/smith-api/main.go
+index a8a8788b80bf7c2efbf46faa1a2515d42baec668..0456290e74574c663075c15c69bfc7237b35c519
+--- a/cmd/smith-api/main.go
++++ b/cmd/smith-api/main.go
+@@ -53,14 +53,17 @@
+ }
+ 
+ type server struct {
+-	cfg         config
+-	store       *store.Store
+-	auth        *provider.AuthManager
+-	projectCred provider.ProjectCredentialStore
+-	presets     *presetCatalog
+-	skillPolicy model.SkillPolicy
+-	term        *terminalSessionStore
+-	runtimePods runtimePodReader
++	cfg             config
++	store           *store.Store
++	auth            *provider.AuthManager
++	projectCred     provider.ProjectCredentialStore
++	presets         *presetCatalog
++	skillPolicy     model.SkillPolicy
++	term            *terminalSessionStore
++	runtimePods     runtimePodReader
++	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
++	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
++	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
+ }
+ 
+ type overrideRequest struct {
+@@ -208,10 +211,25 @@
+ }
+ 
+ type terminalSessionStore struct {
+-	mu       sync.Mutex
+-	attached map[string]map[string]struct{}
++	mu           sync.Mutex
++	sessions     map[string]map[string]terminalSession
++	attachCounts map[string]map[string]int
+ }
+ 
++type terminalSession struct {
++	Actor                string
++	Terminal             string
++	Status               string
++	AttachedAt           time.Time
++	LastActivityAt       time.Time
++	AttachCount          int
++	RuntimeTargetRef     string
++	RuntimeNamespace     string
++	RuntimePodName       string
++	RuntimeContainerName string
++	RuntimePodPhase      string
++}
++
+ type runtimePodReader interface {
+ 	List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error)
+ }
+@@ -226,42 +244,65 @@
+ 
+ func newTerminalSessionStore() *terminalSessionStore {
+ 	return &terminalSessionStore{
+-		attached: map[string]map[string]struct{}{},
++		sessions:     map[string]map[string]terminalSession{},
++		attachCounts: map[string]map[string]int{},
+ 	}
+ }
+ 
+-func (t *terminalSessionStore) Attach(loopID, actor string) int {
++func (t *terminalSessionStore) Attach(loopID, actor, terminal string, runtime loopRuntimeResponse) (terminalSession, int) {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	if t.attached[loopID] == nil {
+-		t.attached[loopID] = map[string]struct{}{}
++	if t.sessions[loopID] == nil {
++		t.sessions[loopID] = map[string]terminalSession{}
++	}
++	if t.attachCounts[loopID] == nil {
++		t.attachCounts[loopID] = map[string]int{}
++	}
++	now := time.Now().UTC()
++	t.attachCounts[loopID][actor]++
++	attachCount := t.attachCounts[loopID][actor]
++	session := terminalSession{
++		Actor:                actor,
++		Terminal:             terminal,
++		Status:               "attached",
++		AttachedAt:           now,
++		LastActivityAt:       now,
++		AttachCount:          attachCount,
++		RuntimeTargetRef:     runtimeTargetReference(runtime.Namespace, runtime.PodName, runtime.ContainerName),
++		RuntimeNamespace:     runtime.Namespace,
++		RuntimePodName:       runtime.PodName,
++		RuntimeContainerName: runtime.ContainerName,
++		RuntimePodPhase:      runtime.PodPhase,
+ 	}
+-	t.attached[loopID][actor] = struct{}{}
+-	return len(t.attached[loopID])
++	t.sessions[loopID][actor] = session
++	return session, len(t.sessions[loopID])
+ }
+ 
+-func (t *terminalSessionStore) Detach(loopID, actor string) (bool, int) {
++func (t *terminalSessionStore) Detach(loopID, actor string) (terminalSession, bool, int) {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	actors, ok := t.attached[loopID]
++	actors, ok := t.sessions[loopID]
+ 	if !ok {
+-		return false, 0
++		return terminalSession{}, false, 0
+ 	}
+-	if _, found := actors[actor]; !found {
+-		return false, len(actors)
++	session, found := actors[actor]
++	if !found {
++		return terminalSession{}, false, len(actors)
+ 	}
++	session.Status = "detached"
++	session.LastActivityAt = time.Now().UTC()
+ 	delete(actors, actor)
+ 	if len(actors) == 0 {
+-		delete(t.attached, loopID)
+-		return true, 0
++		delete(t.sessions, loopID)
++		return session, true, 0
+ 	}
+-	return true, len(actors)
++	return session, true, len(actors)
+ }
+ 
+ func (t *terminalSessionStore) IsAttached(loopID, actor string) bool {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	actors, ok := t.attached[loopID]
++	actors, ok := t.sessions[loopID]
+ 	if !ok {
+ 		return false
+ 	}
+@@ -269,6 +310,59 @@
+ 	return found
+ }
+ 
++func runtimeTargetReference(namespace, podName, containerName string) string {
++	namespace = strings.TrimSpace(namespace)
++	podName = strings.TrimSpace(podName)
++	containerName = strings.TrimSpace(containerName)
++	if podName == "" {
++		return ""
++	}
++	ref := podName
++	if namespace != "" {
++		ref = namespace + "/" + ref
++	}
++	if containerName != "" {
++		ref += ":" + containerName
++	}
++	return ref
++}
++
++func terminalSessionMetadata(actor string, session terminalSession, activeAttachCount int) map[string]string {
++	return map[string]string{
++		"actor":               actor,
++		"terminal":            session.Terminal,
++		"attach_count":        strconv.Itoa(session.AttachCount),
++		"active_attach_count": strconv.Itoa(activeAttachCount),
++		"session_status":      session.Status,
++		"runtime_target_ref":  session.RuntimeTargetRef,
++		"runtime_namespace":   session.RuntimeNamespace,
++		"runtime_pod":         session.RuntimePodName,
++		"runtime_container":   session.RuntimeContainerName,
++		"runtime_phase":       session.RuntimePodPhase,
++	}
++}
++
++func (s *server) getState(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++	if s.getStateFn != nil {
++		return s.getStateFn(ctx, loopID)
++	}
++	return s.store.GetState(ctx, loopID)
++}
++
++func (s *server) appendAudit(ctx context.Context, rec store.AuditRecord) error {
++	if s.appendAuditFn != nil {
++		return s.appendAuditFn(ctx, rec)
++	}
++	return s.store.AppendAudit(ctx, rec)
++}
++
++func (s *server) appendJournal(ctx context.Context, entry model.JournalEntry) error {
++	if s.appendJournalFn != nil {
++		return s.appendJournalFn(ctx, entry)
++	}
++	return s.store.AppendJournal(ctx, entry)
++}
++
+ func main() {
+ 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+ 	defer stop()
+@@ -879,7 +973,7 @@
+ 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -997,7 +1091,7 @@
+ 		writeErr(w, http.StatusUnauthorized, "unauthorized")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -1010,6 +1104,15 @@
+ 		writeErr(w, http.StatusConflict, "loop is not active")
+ 		return
+ 	}
++	runtime := s.resolveLoopRuntime(r.Context(), loopID, state.Record)
++	if !runtime.Attachable {
++		reason := strings.TrimSpace(runtime.Reason)
++		if reason == "" {
++			reason = "runtime target not attachable"
++		}
++		writeErr(w, http.StatusConflict, reason)
++		return
++	}
+ 
+ 	var req terminalAttachRequest
+ 	_ = json.NewDecoder(r.Body).Decode(&req)
+@@ -1021,19 +1124,17 @@
+ 	if terminal == "" {
+ 		terminal = "unknown"
+ 	}
+-	attachCount := s.term.Attach(loopID, actor)
++	session, activeAttachCount := s.term.Attach(loopID, actor, terminal, runtime)
++	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
+ 
+-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
++	_ = s.appendAudit(r.Context(), store.AuditRecord{
+ 		Actor:         actor,
+ 		Action:        "attach-terminal",
+ 		TargetLoopID:  loopID,
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"terminal":     terminal,
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
+ 		LoopID:        loopID,
+ 		Phase:         "operator",
+ 		Level:         "info",
+@@ -1041,16 +1142,15 @@
+ 		ActorID:       actor,
+ 		Message:       "terminal attached",
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"terminal":     terminal,
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+ 	writeJSON(w, http.StatusOK, map[string]any{
+-		"loop_id":      loopID,
+-		"status":       "attached",
+-		"actor":        actor,
+-		"attach_count": attachCount,
++		"loop_id":             loopID,
++		"status":              "attached",
++		"actor":               actor,
++		"attach_count":        session.AttachCount,
++		"active_attach_count": activeAttachCount,
++		"runtime_target_ref":  session.RuntimeTargetRef,
+ 	})
+ }
+ 
+@@ -1063,7 +1163,7 @@
+ 		writeErr(w, http.StatusUnauthorized, "unauthorized")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -1080,22 +1180,21 @@
+ 		actor = "operator"
+ 	}
+ 
+-	detached, attachCount := s.term.Detach(loopID, actor)
++	session, detached, activeAttachCount := s.term.Detach(loopID, actor)
+ 	if !detached {
+ 		writeErr(w, http.StatusConflict, "actor is not attached")
+ 		return
+ 	}
++	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
+ 
+-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
++	_ = s.appendAudit(r.Context(), store.AuditRecord{
+ 		Actor:         actor,
+ 		Action:        "detach-terminal",
+ 		TargetLoopID:  loopID,
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
+ 		LoopID:        loopID,
+ 		Phase:         "operator",
+ 		Level:         "info",
+@@ -1103,15 +1202,15 @@
+ 		ActorID:       actor,
+ 		Message:       "terminal detached",
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+ 	writeJSON(w, http.StatusOK, map[string]any{
+-		"loop_id":      loopID,
+-		"status":       "detached",
+-		"actor":        actor,
+-		"attach_count": attachCount,
++		"loop_id":             loopID,
++		"status":              "detached",
++		"actor":               actor,
++		"attach_count":        session.AttachCount,
++		"active_attach_count": activeAttachCount,
++		"runtime_target_ref":  session.RuntimeTargetRef,
+ 	})
+ }
+ 
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 7389480f74f937ca3cc8bf1231449324dbe9a655..054da03ac3a4e959528125069f7991c920e71223
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -2,11 +2,15 @@
+ 
+ import (
+ 	"context"
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
+ 	"strings"
+ 	"testing"
+ 	"time"
+ 
+ 	"smith/internal/source/model"
++	"smith/internal/source/store"
+ 
+ 	corev1 "k8s.io/api/core/v1"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+@@ -244,6 +248,213 @@
+ 	}
+ }
+ 
++func TestHandleLoopAttachRejectsNonRunningRuntime(t *testing.T) {
++	s := &server{
++		cfg: config{
++			runtimeNamespace:     "smith-system",
++			runtimeContainerName: "replica",
++		},
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					WorkerJobName: "smith-replica-loop-pending-12345",
++				},
++			}, true, nil
++		},
++		runtimePods: &fakeRuntimePodReader{
++			podsByJob: map[string][]corev1.Pod{
++				"smith-replica-loop-pending-12345": {
++					{
++						ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-pending-12345-abc"},
++						Spec: corev1.PodSpec{
++							Containers: []corev1.Container{{Name: "replica"}},
++						},
++						Status: corev1.PodStatus{Phase: corev1.PodPending},
++					},
++				},
++			},
++		},
++	}
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-pending/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
++	s.handleLoopAttach(rec, req, "loop-pending")
++
++	if rec.Code != http.StatusConflict {
++		t.Fatalf("expected 409 for non-running runtime pod, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	var body map[string]string
++	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
++		t.Fatalf("decode response body: %v", err)
++	}
++	if body["error"] != "runtime pod not running" {
++		t.Fatalf("expected runtime pod not running error, got %q", body["error"])
++	}
++	if s.term.IsAttached("loop-pending", "alice") {
++		t.Fatal("expected no terminal session to be created for non-running runtime pod")
++	}
++}
++
++func TestHandleLoopAttachDetachIncludeRuntimeMetadata(t *testing.T) {
++	var (
++		audits   []store.AuditRecord
++		journals []model.JournalEntry
++	)
++	s := &server{
++		cfg: config{
++			runtimeNamespace:     "smith-system",
++			runtimeContainerName: "replica",
++		},
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					WorkerJobName: "smith-replica-loop-running-12345",
++					CorrelationID: "corr-attach-detach",
++				},
++			}, true, nil
++		},
++		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
++			audits = append(audits, rec)
++			return nil
++		},
++		appendJournalFn: func(_ context.Context, entry model.JournalEntry) error {
++			journals = append(journals, entry)
++			return nil
++		},
++		runtimePods: &fakeRuntimePodReader{
++			podsByJob: map[string][]corev1.Pod{
++				"smith-replica-loop-running-12345": {
++					{
++						ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-running-12345-abc"},
++						Spec: corev1.PodSpec{
++							Containers: []corev1.Container{{Name: "replica"}},
++						},
++						Status: corev1.PodStatus{Phase: corev1.PodRunning},
++					},
++				},
++			},
++		},
++	}
++
++	attachBody := strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`)
++	recAttach1 := httptest.NewRecorder()
++	reqAttach1 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", attachBody)
++	s.handleLoopAttach(recAttach1, reqAttach1, "loop-running")
++	if recAttach1.Code != http.StatusOK {
++		t.Fatalf("expected first attach success, got %d body=%s", recAttach1.Code, recAttach1.Body.String())
++	}
++
++	recAttach2 := httptest.NewRecorder()
++	reqAttach2 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
++	s.handleLoopAttach(recAttach2, reqAttach2, "loop-running")
++	if recAttach2.Code != http.StatusOK {
++		t.Fatalf("expected second attach success, got %d body=%s", recAttach2.Code, recAttach2.Body.String())
++	}
++	var attachResp map[string]any
++	if err := json.NewDecoder(recAttach2.Body).Decode(&attachResp); err != nil {
++		t.Fatalf("decode second attach response: %v", err)
++	}
++	if int(attachResp["attach_count"].(float64)) != 2 {
++		t.Fatalf("expected actor attach_count to increment to 2, got %#v", attachResp["attach_count"])
++	}
++
++	recDetach := httptest.NewRecorder()
++	reqDetach := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/detach", strings.NewReader(`{"actor":"alice"}`))
++	s.handleLoopDetach(recDetach, reqDetach, "loop-running")
++	if recDetach.Code != http.StatusOK {
++		t.Fatalf("expected detach success, got %d body=%s", recDetach.Code, recDetach.Body.String())
++	}
++	if s.term.IsAttached("loop-running", "alice") {
++		t.Fatal("expected actor to be detached")
++	}
++
++	if len(audits) != 3 {
++		t.Fatalf("expected 3 audit records (2 attach + 1 detach), got %d", len(audits))
++	}
++	if len(journals) != 3 {
++		t.Fatalf("expected 3 journal records (2 attach + 1 detach), got %d", len(journals))
++	}
++
++	lastAttachAudit := audits[1]
++	if lastAttachAudit.Action != "attach-terminal" {
++		t.Fatalf("expected attach-terminal action, got %q", lastAttachAudit.Action)
++	}
++	assertTerminalMetadata(t, lastAttachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++	if lastAttachAudit.Metadata["attach_count"] != "2" {
++		t.Fatalf("expected attach_count=2 in audit metadata, got %q", lastAttachAudit.Metadata["attach_count"])
++	}
++
++	detachAudit := audits[2]
++	if detachAudit.Action != "detach-terminal" {
++		t.Fatalf("expected detach-terminal action, got %q", detachAudit.Action)
++	}
++	assertTerminalMetadata(t, detachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++
++	detachJournal := journals[2]
++	if detachJournal.Message != "terminal detached" {
++		t.Fatalf("expected detach journal message, got %q", detachJournal.Message)
++	}
++	assertTerminalMetadata(t, detachJournal.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++}
++
++func TestHandleLoopDetachOnlyRemovesTargetActor(t *testing.T) {
++	s := &server{
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID: loopID,
++					State:  model.LoopStateOverwriting,
++				},
++			}, true, nil
++		},
++		appendAuditFn:   func(context.Context, store.AuditRecord) error { return nil },
++		appendJournalFn: func(context.Context, model.JournalEntry) error { return nil },
++	}
++	runtime := loopRuntimeResponse{
++		Namespace:     "smith-system",
++		PodName:       "smith-replica-loop-actor-12345-abc",
++		ContainerName: "replica",
++		PodPhase:      string(corev1.PodRunning),
++		Attachable:    true,
++	}
++	s.term.Attach("loop-actor", "alice", "console-pods", runtime)
++	s.term.Attach("loop-actor", "bob", "console-pods", runtime)
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-actor/control/detach", strings.NewReader(`{"actor":"alice"}`))
++	s.handleLoopDetach(rec, req, "loop-actor")
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("expected detach success for alice, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if s.term.IsAttached("loop-actor", "alice") {
++		t.Fatal("expected alice to be detached")
++	}
++	if !s.term.IsAttached("loop-actor", "bob") {
++		t.Fatal("expected bob to remain attached")
++	}
++}
++
++func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, terminal, runtimeRef string) {
++	t.Helper()
++	if metadata["actor"] != actor {
++		t.Fatalf("expected metadata actor %q, got %q", actor, metadata["actor"])
++	}
++	if metadata["terminal"] != terminal {
++		t.Fatalf("expected metadata terminal %q, got %q", terminal, metadata["terminal"])
++	}
++	if metadata["runtime_target_ref"] != runtimeRef {
++		t.Fatalf("expected runtime_target_ref %q, got %q", runtimeRef, metadata["runtime_target_ref"])
++	}
++}
++
+ type fakeRuntimePodReader struct {
+ 	podsByJob map[string][]corev1.Pod
+ 	err       error
+
+codex
+<promise>COMPLETE</promise>
+file update:
+diff --git a/cmd/smith-api/main.go b/cmd/smith-api/main.go
+index a8a8788b80bf7c2efbf46faa1a2515d42baec668..0456290e74574c663075c15c69bfc7237b35c519
+--- a/cmd/smith-api/main.go
++++ b/cmd/smith-api/main.go
+@@ -53,14 +53,17 @@
+ }
+ 
+ type server struct {
+-	cfg         config
+-	store       *store.Store
+-	auth        *provider.AuthManager
+-	projectCred provider.ProjectCredentialStore
+-	presets     *presetCatalog
+-	skillPolicy model.SkillPolicy
+-	term        *terminalSessionStore
+-	runtimePods runtimePodReader
++	cfg             config
++	store           *store.Store
++	auth            *provider.AuthManager
++	projectCred     provider.ProjectCredentialStore
++	presets         *presetCatalog
++	skillPolicy     model.SkillPolicy
++	term            *terminalSessionStore
++	runtimePods     runtimePodReader
++	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
++	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
++	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
+ }
+ 
+ type overrideRequest struct {
+@@ -208,10 +211,25 @@
+ }
+ 
+ type terminalSessionStore struct {
+-	mu       sync.Mutex
+-	attached map[string]map[string]struct{}
++	mu           sync.Mutex
++	sessions     map[string]map[string]terminalSession
++	attachCounts map[string]map[string]int
+ }
+ 
++type terminalSession struct {
++	Actor                string
++	Terminal             string
++	Status               string
++	AttachedAt           time.Time
++	LastActivityAt       time.Time
++	AttachCount          int
++	RuntimeTargetRef     string
++	RuntimeNamespace     string
++	RuntimePodName       string
++	RuntimeContainerName string
++	RuntimePodPhase      string
++}
++
+ type runtimePodReader interface {
+ 	List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error)
+ }
+@@ -226,42 +244,65 @@
+ 
+ func newTerminalSessionStore() *terminalSessionStore {
+ 	return &terminalSessionStore{
+-		attached: map[string]map[string]struct{}{},
++		sessions:     map[string]map[string]terminalSession{},
++		attachCounts: map[string]map[string]int{},
+ 	}
+ }
+ 
+-func (t *terminalSessionStore) Attach(loopID, actor string) int {
++func (t *terminalSessionStore) Attach(loopID, actor, terminal string, runtime loopRuntimeResponse) (terminalSession, int) {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	if t.attached[loopID] == nil {
+-		t.attached[loopID] = map[string]struct{}{}
++	if t.sessions[loopID] == nil {
++		t.sessions[loopID] = map[string]terminalSession{}
++	}
++	if t.attachCounts[loopID] == nil {
++		t.attachCounts[loopID] = map[string]int{}
++	}
++	now := time.Now().UTC()
++	t.attachCounts[loopID][actor]++
++	attachCount := t.attachCounts[loopID][actor]
++	session := terminalSession{
++		Actor:                actor,
++		Terminal:             terminal,
++		Status:               "attached",
++		AttachedAt:           now,
++		LastActivityAt:       now,
++		AttachCount:          attachCount,
++		RuntimeTargetRef:     runtimeTargetReference(runtime.Namespace, runtime.PodName, runtime.ContainerName),
++		RuntimeNamespace:     runtime.Namespace,
++		RuntimePodName:       runtime.PodName,
++		RuntimeContainerName: runtime.ContainerName,
++		RuntimePodPhase:      runtime.PodPhase,
+ 	}
+-	t.attached[loopID][actor] = struct{}{}
+-	return len(t.attached[loopID])
++	t.sessions[loopID][actor] = session
++	return session, len(t.sessions[loopID])
+ }
+ 
+-func (t *terminalSessionStore) Detach(loopID, actor string) (bool, int) {
++func (t *terminalSessionStore) Detach(loopID, actor string) (terminalSession, bool, int) {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	actors, ok := t.attached[loopID]
++	actors, ok := t.sessions[loopID]
+ 	if !ok {
+-		return false, 0
++		return terminalSession{}, false, 0
+ 	}
+-	if _, found := actors[actor]; !found {
+-		return false, len(actors)
++	session, found := actors[actor]
++	if !found {
++		return terminalSession{}, false, len(actors)
+ 	}
++	session.Status = "detached"
++	session.LastActivityAt = time.Now().UTC()
+ 	delete(actors, actor)
+ 	if len(actors) == 0 {
+-		delete(t.attached, loopID)
+-		return true, 0
++		delete(t.sessions, loopID)
++		return session, true, 0
+ 	}
+-	return true, len(actors)
++	return session, true, len(actors)
+ }
+ 
+ func (t *terminalSessionStore) IsAttached(loopID, actor string) bool {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+-	actors, ok := t.attached[loopID]
++	actors, ok := t.sessions[loopID]
+ 	if !ok {
+ 		return false
+ 	}
+@@ -269,6 +310,59 @@
+ 	return found
+ }
+ 
++func runtimeTargetReference(namespace, podName, containerName string) string {
++	namespace = strings.TrimSpace(namespace)
++	podName = strings.TrimSpace(podName)
++	containerName = strings.TrimSpace(containerName)
++	if podName == "" {
++		return ""
++	}
++	ref := podName
++	if namespace != "" {
++		ref = namespace + "/" + ref
++	}
++	if containerName != "" {
++		ref += ":" + containerName
++	}
++	return ref
++}
++
++func terminalSessionMetadata(actor string, session terminalSession, activeAttachCount int) map[string]string {
++	return map[string]string{
++		"actor":               actor,
++		"terminal":            session.Terminal,
++		"attach_count":        strconv.Itoa(session.AttachCount),
++		"active_attach_count": strconv.Itoa(activeAttachCount),
++		"session_status":      session.Status,
++		"runtime_target_ref":  session.RuntimeTargetRef,
++		"runtime_namespace":   session.RuntimeNamespace,
++		"runtime_pod":         session.RuntimePodName,
++		"runtime_container":   session.RuntimeContainerName,
++		"runtime_phase":       session.RuntimePodPhase,
++	}
++}
++
++func (s *server) getState(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++	if s.getStateFn != nil {
++		return s.getStateFn(ctx, loopID)
++	}
++	return s.store.GetState(ctx, loopID)
++}
++
++func (s *server) appendAudit(ctx context.Context, rec store.AuditRecord) error {
++	if s.appendAuditFn != nil {
++		return s.appendAuditFn(ctx, rec)
++	}
++	return s.store.AppendAudit(ctx, rec)
++}
++
++func (s *server) appendJournal(ctx context.Context, entry model.JournalEntry) error {
++	if s.appendJournalFn != nil {
++		return s.appendJournalFn(ctx, entry)
++	}
++	return s.store.AppendJournal(ctx, entry)
++}
++
+ func main() {
+ 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+ 	defer stop()
+@@ -879,7 +973,7 @@
+ 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -997,7 +1091,7 @@
+ 		writeErr(w, http.StatusUnauthorized, "unauthorized")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -1010,6 +1104,15 @@
+ 		writeErr(w, http.StatusConflict, "loop is not active")
+ 		return
+ 	}
++	runtime := s.resolveLoopRuntime(r.Context(), loopID, state.Record)
++	if !runtime.Attachable {
++		reason := strings.TrimSpace(runtime.Reason)
++		if reason == "" {
++			reason = "runtime target not attachable"
++		}
++		writeErr(w, http.StatusConflict, reason)
++		return
++	}
+ 
+ 	var req terminalAttachRequest
+ 	_ = json.NewDecoder(r.Body).Decode(&req)
+@@ -1021,19 +1124,17 @@
+ 	if terminal == "" {
+ 		terminal = "unknown"
+ 	}
+-	attachCount := s.term.Attach(loopID, actor)
++	session, activeAttachCount := s.term.Attach(loopID, actor, terminal, runtime)
++	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
+ 
+-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
++	_ = s.appendAudit(r.Context(), store.AuditRecord{
+ 		Actor:         actor,
+ 		Action:        "attach-terminal",
+ 		TargetLoopID:  loopID,
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"terminal":     terminal,
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
+ 		LoopID:        loopID,
+ 		Phase:         "operator",
+ 		Level:         "info",
+@@ -1041,16 +1142,15 @@
+ 		ActorID:       actor,
+ 		Message:       "terminal attached",
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"terminal":     terminal,
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+ 	writeJSON(w, http.StatusOK, map[string]any{
+-		"loop_id":      loopID,
+-		"status":       "attached",
+-		"actor":        actor,
+-		"attach_count": attachCount,
++		"loop_id":             loopID,
++		"status":              "attached",
++		"actor":               actor,
++		"attach_count":        session.AttachCount,
++		"active_attach_count": activeAttachCount,
++		"runtime_target_ref":  session.RuntimeTargetRef,
+ 	})
+ }
+ 
+@@ -1063,7 +1163,7 @@
+ 		writeErr(w, http.StatusUnauthorized, "unauthorized")
+ 		return
+ 	}
+-	state, found, err := s.store.GetState(r.Context(), loopID)
++	state, found, err := s.getState(r.Context(), loopID)
+ 	if err != nil {
+ 		writeErr(w, http.StatusInternalServerError, err.Error())
+ 		return
+@@ -1080,22 +1180,21 @@
+ 		actor = "operator"
+ 	}
+ 
+-	detached, attachCount := s.term.Detach(loopID, actor)
++	session, detached, activeAttachCount := s.term.Detach(loopID, actor)
+ 	if !detached {
+ 		writeErr(w, http.StatusConflict, "actor is not attached")
+ 		return
+ 	}
++	metadata := terminalSessionMetadata(actor, session, activeAttachCount)
+ 
+-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
++	_ = s.appendAudit(r.Context(), store.AuditRecord{
+ 		Actor:         actor,
+ 		Action:        "detach-terminal",
+ 		TargetLoopID:  loopID,
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
++	_ = s.appendJournal(r.Context(), model.JournalEntry{
+ 		LoopID:        loopID,
+ 		Phase:         "operator",
+ 		Level:         "info",
+@@ -1103,15 +1202,15 @@
+ 		ActorID:       actor,
+ 		Message:       "terminal detached",
+ 		CorrelationID: state.Record.CorrelationID,
+-		Metadata: map[string]string{
+-			"attach_count": strconv.Itoa(attachCount),
+-		},
++		Metadata:      metadata,
+ 	})
+ 	writeJSON(w, http.StatusOK, map[string]any{
+-		"loop_id":      loopID,
+-		"status":       "detached",
+-		"actor":        actor,
+-		"attach_count": attachCount,
++		"loop_id":             loopID,
++		"status":              "detached",
++		"actor":               actor,
++		"attach_count":        session.AttachCount,
++		"active_attach_count": activeAttachCount,
++		"runtime_target_ref":  session.RuntimeTargetRef,
+ 	})
+ }
+ 
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 7389480f74f937ca3cc8bf1231449324dbe9a655..054da03ac3a4e959528125069f7991c920e71223
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -2,11 +2,15 @@
+ 
+ import (
+ 	"context"
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
+ 	"strings"
+ 	"testing"
+ 	"time"
+ 
+ 	"smith/internal/source/model"
++	"smith/internal/source/store"
+ 
+ 	corev1 "k8s.io/api/core/v1"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+@@ -244,6 +248,213 @@
+ 	}
+ }
+ 
++func TestHandleLoopAttachRejectsNonRunningRuntime(t *testing.T) {
++	s := &server{
++		cfg: config{
++			runtimeNamespace:     "smith-system",
++			runtimeContainerName: "replica",
++		},
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					WorkerJobName: "smith-replica-loop-pending-12345",
++				},
++			}, true, nil
++		},
++		runtimePods: &fakeRuntimePodReader{
++			podsByJob: map[string][]corev1.Pod{
++				"smith-replica-loop-pending-12345": {
++					{
++						ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-pending-12345-abc"},
++						Spec: corev1.PodSpec{
++							Containers: []corev1.Container{{Name: "replica"}},
++						},
++						Status: corev1.PodStatus{Phase: corev1.PodPending},
++					},
++				},
++			},
++		},
++	}
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-pending/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
++	s.handleLoopAttach(rec, req, "loop-pending")
++
++	if rec.Code != http.StatusConflict {
++		t.Fatalf("expected 409 for non-running runtime pod, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	var body map[string]string
++	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
++		t.Fatalf("decode response body: %v", err)
++	}
++	if body["error"] != "runtime pod not running" {
++		t.Fatalf("expected runtime pod not running error, got %q", body["error"])
++	}
++	if s.term.IsAttached("loop-pending", "alice") {
++		t.Fatal("expected no terminal session to be created for non-running runtime pod")
++	}
++}
++
++func TestHandleLoopAttachDetachIncludeRuntimeMetadata(t *testing.T) {
++	var (
++		audits   []store.AuditRecord
++		journals []model.JournalEntry
++	)
++	s := &server{
++		cfg: config{
++			runtimeNamespace:     "smith-system",
++			runtimeContainerName: "replica",
++		},
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID:        loopID,
++					State:         model.LoopStateOverwriting,
++					WorkerJobName: "smith-replica-loop-running-12345",
++					CorrelationID: "corr-attach-detach",
++				},
++			}, true, nil
++		},
++		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
++			audits = append(audits, rec)
++			return nil
++		},
++		appendJournalFn: func(_ context.Context, entry model.JournalEntry) error {
++			journals = append(journals, entry)
++			return nil
++		},
++		runtimePods: &fakeRuntimePodReader{
++			podsByJob: map[string][]corev1.Pod{
++				"smith-replica-loop-running-12345": {
++					{
++						ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-running-12345-abc"},
++						Spec: corev1.PodSpec{
++							Containers: []corev1.Container{{Name: "replica"}},
++						},
++						Status: corev1.PodStatus{Phase: corev1.PodRunning},
++					},
++				},
++			},
++		},
++	}
++
++	attachBody := strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`)
++	recAttach1 := httptest.NewRecorder()
++	reqAttach1 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", attachBody)
++	s.handleLoopAttach(recAttach1, reqAttach1, "loop-running")
++	if recAttach1.Code != http.StatusOK {
++		t.Fatalf("expected first attach success, got %d body=%s", recAttach1.Code, recAttach1.Body.String())
++	}
++
++	recAttach2 := httptest.NewRecorder()
++	reqAttach2 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
++	s.handleLoopAttach(recAttach2, reqAttach2, "loop-running")
++	if recAttach2.Code != http.StatusOK {
++		t.Fatalf("expected second attach success, got %d body=%s", recAttach2.Code, recAttach2.Body.String())
++	}
++	var attachResp map[string]any
++	if err := json.NewDecoder(recAttach2.Body).Decode(&attachResp); err != nil {
++		t.Fatalf("decode second attach response: %v", err)
++	}
++	if int(attachResp["attach_count"].(float64)) != 2 {
++		t.Fatalf("expected actor attach_count to increment to 2, got %#v", attachResp["attach_count"])
++	}
++
++	recDetach := httptest.NewRecorder()
++	reqDetach := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/detach", strings.NewReader(`{"actor":"alice"}`))
++	s.handleLoopDetach(recDetach, reqDetach, "loop-running")
++	if recDetach.Code != http.StatusOK {
++		t.Fatalf("expected detach success, got %d body=%s", recDetach.Code, recDetach.Body.String())
++	}
++	if s.term.IsAttached("loop-running", "alice") {
++		t.Fatal("expected actor to be detached")
++	}
++
++	if len(audits) != 3 {
++		t.Fatalf("expected 3 audit records (2 attach + 1 detach), got %d", len(audits))
++	}
++	if len(journals) != 3 {
++		t.Fatalf("expected 3 journal records (2 attach + 1 detach), got %d", len(journals))
++	}
++
++	lastAttachAudit := audits[1]
++	if lastAttachAudit.Action != "attach-terminal" {
++		t.Fatalf("expected attach-terminal action, got %q", lastAttachAudit.Action)
++	}
++	assertTerminalMetadata(t, lastAttachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++	if lastAttachAudit.Metadata["attach_count"] != "2" {
++		t.Fatalf("expected attach_count=2 in audit metadata, got %q", lastAttachAudit.Metadata["attach_count"])
++	}
++
++	detachAudit := audits[2]
++	if detachAudit.Action != "detach-terminal" {
++		t.Fatalf("expected detach-terminal action, got %q", detachAudit.Action)
++	}
++	assertTerminalMetadata(t, detachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++
++	detachJournal := journals[2]
++	if detachJournal.Message != "terminal detached" {
++		t.Fatalf("expected detach journal message, got %q", detachJournal.Message)
++	}
++	assertTerminalMetadata(t, detachJournal.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
++}
++
++func TestHandleLoopDetachOnlyRemovesTargetActor(t *testing.T) {
++	s := &server{
++		term: newTerminalSessionStore(),
++		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
++			return store.LoopWithRevision{
++				Record: model.StateRecord{
++					LoopID: loopID,
++					State:  model.LoopStateOverwriting,
++				},
++			}, true, nil
++		},
++		appendAuditFn:   func(context.Context, store.AuditRecord) error { return nil },
++		appendJournalFn: func(context.Context, model.JournalEntry) error { return nil },
++	}
++	runtime := loopRuntimeResponse{
++		Namespace:     "smith-system",
++		PodName:       "smith-replica-loop-actor-12345-abc",
++		ContainerName: "replica",
++		PodPhase:      string(corev1.PodRunning),
++		Attachable:    true,
++	}
++	s.term.Attach("loop-actor", "alice", "console-pods", runtime)
++	s.term.Attach("loop-actor", "bob", "console-pods", runtime)
++
++	rec := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-actor/control/detach", strings.NewReader(`{"actor":"alice"}`))
++	s.handleLoopDetach(rec, req, "loop-actor")
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("expected detach success for alice, got %d body=%s", rec.Code, rec.Body.String())
++	}
++	if s.term.IsAttached("loop-actor", "alice") {
++		t.Fatal("expected alice to be detached")
++	}
++	if !s.term.IsAttached("loop-actor", "bob") {
++		t.Fatal("expected bob to remain attached")
++	}
++}
++
++func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, terminal, runtimeRef string) {
++	t.Helper()
++	if metadata["actor"] != actor {
++		t.Fatalf("expected metadata actor %q, got %q", actor, metadata["actor"])
++	}
++	if metadata["terminal"] != terminal {
++		t.Fatalf("expected metadata terminal %q, got %q", terminal, metadata["terminal"])
++	}
++	if metadata["runtime_target_ref"] != runtimeRef {
++		t.Fatalf("expected runtime_target_ref %q, got %q", runtimeRef, metadata["runtime_target_ref"])
++	}
++}
++
+ type fakeRuntimePodReader struct {
+ 	podsByJob map[string][]corev1.Pod
+ 	err       error
+
+tokens used
+105,254
+<promise>COMPLETE</promise>

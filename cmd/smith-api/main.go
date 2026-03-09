@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sort"
@@ -26,14 +28,18 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
+	kexec "k8s.io/client-go/util/exec"
 )
 
 const (
 	defaultPort            = 8080
 	defaultShutdownTimeout = 10 * time.Second
 	defaultRuntimeReason   = "runtime pod not found"
+	terminalCommandMaxSize = 2048
 )
 
 type config struct {
@@ -61,6 +67,7 @@ type server struct {
 	skillPolicy     model.SkillPolicy
 	term            *terminalSessionStore
 	runtimePods     runtimePodReader
+	podExec         podExecRunner
 	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
 	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
 	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
@@ -234,12 +241,93 @@ type runtimePodReader interface {
 	List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error)
 }
 
+type podExecRequest struct {
+	Namespace     string
+	PodName       string
+	ContainerName string
+	Command       string
+}
+
+type podExecResult struct {
+	Stdout   string
+	Stderr   string
+	ExitCode int
+}
+
+type podExecRunner interface {
+	Execute(ctx context.Context, req podExecRequest) (podExecResult, error)
+}
+
 type kubeRuntimePodReader struct {
 	kube kubernetes.Interface
 }
 
+type kubePodExecRunner struct {
+	kube        kubernetes.Interface
+	restConfig  *rest.Config
+	newExecutor func(*rest.Config, string, *url.URL) (remotecommand.Executor, error)
+}
+
 func (k kubeRuntimePodReader) List(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error) {
 	return k.kube.CoreV1().Pods(namespace).List(ctx, opts)
+}
+
+func (k kubePodExecRunner) Execute(ctx context.Context, req podExecRequest) (podExecResult, error) {
+	out := podExecResult{}
+	if k.kube == nil || k.restConfig == nil {
+		return out, errors.New("kubernetes pod exec is unavailable")
+	}
+
+	namespace := strings.TrimSpace(req.Namespace)
+	podName := strings.TrimSpace(req.PodName)
+	containerName := strings.TrimSpace(req.ContainerName)
+	command := strings.TrimSpace(req.Command)
+	if namespace == "" || podName == "" || command == "" {
+		return out, errors.New("runtime target and command are required")
+	}
+
+	execRequest := k.kube.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Namespace(namespace).
+		Name(podName).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: containerName,
+			Command:   []string{"/bin/sh", "-lc", command},
+			Stdin:     false,
+			Stdout:    true,
+			Stderr:    true,
+			TTY:       false,
+		}, kubescheme.ParameterCodec)
+
+	newExecutor := k.newExecutor
+	if newExecutor == nil {
+		newExecutor = remotecommand.NewSPDYExecutor
+	}
+	executor, err := newExecutor(k.restConfig, http.MethodPost, execRequest.URL())
+	if err != nil {
+		return out, err
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	streamErr := executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
+	out.Stdout = stdout.String()
+	out.Stderr = stderr.String()
+
+	if streamErr == nil {
+		out.ExitCode = 0
+		return out, nil
+	}
+	var exitErr kexec.ExitError
+	if errors.As(streamErr, &exitErr) {
+		out.ExitCode = exitErr.ExitStatus()
+		return out, nil
+	}
+	return out, streamErr
 }
 
 func newTerminalSessionStore() *terminalSessionStore {
@@ -308,6 +396,22 @@ func (t *terminalSessionStore) IsAttached(loopID, actor string) bool {
 	}
 	_, found := actors[actor]
 	return found
+}
+
+func (t *terminalSessionStore) Session(loopID, actor string) (terminalSession, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	actors, ok := t.sessions[loopID]
+	if !ok {
+		return terminalSession{}, false
+	}
+	session, found := actors[actor]
+	if !found {
+		return terminalSession{}, false
+	}
+	session.LastActivityAt = time.Now().UTC()
+	actors[actor] = session
+	return session, true
 }
 
 func runtimeTargetReference(namespace, podName, containerName string) string {
@@ -397,6 +501,10 @@ func main() {
 	if err != nil {
 		log.Printf("smith-api runtime pod lookup unavailable: %v", err)
 	}
+	podExec, err := newPodExecRunner()
+	if err != nil {
+		log.Printf("smith-api pod exec unavailable: %v", err)
+	}
 
 	s := &server{
 		cfg:         cfg,
@@ -407,6 +515,7 @@ func main() {
 		skillPolicy: cfg.skillPolicy,
 		term:        newTerminalSessionStore(),
 		runtimePods: runtimePods,
+		podExec:     podExec,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -1223,7 +1332,7 @@ func (s *server) handleLoopControlCommand(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	state, found, err := s.store.GetState(r.Context(), loopID)
+	state, found, err := s.getState(r.Context(), loopID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1250,38 +1359,157 @@ func (s *server) handleLoopControlCommand(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusBadRequest, "command is required")
 		return
 	}
-	if !s.term.IsAttached(loopID, actor) {
+	if s.term == nil {
 		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
 		return
 	}
-	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
+	session, attached := s.term.Session(loopID, actor)
+	if !attached {
+		writeErr(w, http.StatusConflict, "actor must attach before issuing commands")
+		return
+	}
+	baseMetadata := map[string]string{
+		"command":            command,
+		"runtime_target_ref": session.RuntimeTargetRef,
+		"runtime_namespace":  session.RuntimeNamespace,
+		"runtime_pod":        session.RuntimePodName,
+		"runtime_container":  session.RuntimeContainerName,
+	}
+
+	if len(command) > terminalCommandMaxSize {
+		rejectedMetadata := copyStringMap(baseMetadata)
+		rejectedMetadata["result"] = "rejected"
+		rejectedMetadata["rejection_reason"] = "command too long"
+		rejectedMetadata["command_length"] = strconv.Itoa(len(command))
+		rejectedMetadata["max_command_length"] = strconv.Itoa(terminalCommandMaxSize)
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "terminal-command-rejected",
+			TargetLoopID:  loopID,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata:      rejectedMetadata,
+		})
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("command exceeds max length of %d characters", terminalCommandMaxSize))
+		return
+	}
+	if s.podExec == nil {
+		writeErr(w, http.StatusServiceUnavailable, "runtime command execution unavailable")
+		return
+	}
+
+	_ = s.appendJournal(r.Context(), model.JournalEntry{
+		LoopID:        loopID,
+		Phase:         "operator",
+		Level:         "info",
+		ActorType:     "operator",
+		ActorID:       actor,
+		Message:       "terminal command started",
+		CorrelationID: state.Record.CorrelationID,
+		Metadata:      baseMetadata,
+	})
+
+	execResult, execErr := s.podExec.Execute(r.Context(), podExecRequest{
+		Namespace:     session.RuntimeNamespace,
+		PodName:       session.RuntimePodName,
+		ContainerName: session.RuntimeContainerName,
+		Command:       command,
+	})
+	delivered := true
+	result := "success"
+	if execErr != nil {
+		result = "error"
+		execResult.ExitCode = -1
+	} else if execResult.ExitCode != 0 {
+		result = "failed"
+	}
+	for _, line := range journalCommandOutputLines(execResult.Stdout) {
+		metadata := copyStringMap(baseMetadata)
+		metadata["stream"] = "stdout"
+		_ = s.appendJournal(r.Context(), model.JournalEntry{
+			LoopID:        loopID,
+			Phase:         "operator",
+			Level:         "info",
+			ActorType:     "operator",
+			ActorID:       actor,
+			Message:       line,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata:      metadata,
+		})
+	}
+	for _, line := range journalCommandOutputLines(execResult.Stderr) {
+		metadata := copyStringMap(baseMetadata)
+		metadata["stream"] = "stderr"
+		_ = s.appendJournal(r.Context(), model.JournalEntry{
+			LoopID:        loopID,
+			Phase:         "operator",
+			Level:         "warn",
+			ActorType:     "operator",
+			ActorID:       actor,
+			Message:       line,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata:      metadata,
+		})
+	}
+
+	resultMetadata := copyStringMap(baseMetadata)
+	resultMetadata["delivered"] = strconv.FormatBool(delivered)
+	resultMetadata["result"] = result
+	resultMetadata["exit_code"] = strconv.Itoa(execResult.ExitCode)
+	resultMetadata["stdout_bytes"] = strconv.Itoa(len(execResult.Stdout))
+	resultMetadata["stderr_bytes"] = strconv.Itoa(len(execResult.Stderr))
+	if execErr != nil {
+		resultMetadata["exec_error"] = execErr.Error()
+	}
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
 		Actor:         actor,
 		Action:        "terminal-command",
 		TargetLoopID:  loopID,
 		CorrelationID: state.Record.CorrelationID,
-		Metadata: map[string]string{
-			"command": command,
-		},
+		Metadata:      resultMetadata,
 	})
-	_ = s.store.AppendJournal(r.Context(), model.JournalEntry{
+	_ = s.appendJournal(r.Context(), model.JournalEntry{
 		LoopID:        loopID,
 		Phase:         "operator",
-		Level:         "warn",
+		Level:         "info",
 		ActorType:     "operator",
 		ActorID:       actor,
-		Message:       "terminal command issued",
+		Message:       "terminal command completed",
 		CorrelationID: state.Record.CorrelationID,
-		Metadata: map[string]string{
-			"command": command,
-		},
+		Metadata:      resultMetadata,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{
-		"loop_id":   loopID,
-		"status":    "accepted",
-		"actor":     actor,
-		"command":   command,
-		"delivered": false,
-	})
+	response := map[string]any{
+		"loop_id":            loopID,
+		"status":             "completed",
+		"actor":              actor,
+		"command":            command,
+		"delivered":          delivered,
+		"result":             result,
+		"exit_code":          execResult.ExitCode,
+		"stdout":             execResult.Stdout,
+		"stderr":             execResult.Stderr,
+		"runtime_target_ref": session.RuntimeTargetRef,
+	}
+	if execErr != nil {
+		response["error"] = execErr.Error()
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func journalCommandOutputLines(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	parts := strings.Split(raw, "\n")
+	lines := make([]string, 0, len(parts))
+	for _, part := range parts {
+		line := strings.TrimRight(part, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func isActiveLoopState(state model.LoopState) bool {
@@ -1912,9 +2140,26 @@ func newRuntimePodReader() (runtimePodReader, error) {
 	return kubeRuntimePodReader{kube: client}, nil
 }
 
+func newPodExecRunner() (podExecRunner, error) {
+	client, restConfig, err := kubeClientWithConfig()
+	if err != nil {
+		return nil, err
+	}
+	return kubePodExecRunner{
+		kube:       client,
+		restConfig: restConfig,
+	}, nil
+}
+
 func kubeClient() (*kubernetes.Clientset, error) {
+	client, _, err := kubeClientWithConfig()
+	return client, err
+}
+
+func kubeClientWithConfig() (*kubernetes.Clientset, *rest.Config, error) {
 	if cfg, err := rest.InClusterConfig(); err == nil {
-		return kubernetes.NewForConfig(cfg)
+		client, clientErr := kubernetes.NewForConfig(cfg)
+		return client, cfg, clientErr
 	}
 	kubeconfig := strings.TrimSpace(os.Getenv("KUBECONFIG"))
 	if kubeconfig == "" {
@@ -1925,9 +2170,13 @@ func kubeClient() (*kubernetes.Clientset, error) {
 	}
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return kubernetes.NewForConfig(cfg)
+	client, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, cfg, nil
 }
 
 func loadConfig() (config, error) {

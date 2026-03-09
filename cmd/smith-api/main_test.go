@@ -442,6 +442,184 @@ func TestHandleLoopDetachOnlyRemovesTargetActor(t *testing.T) {
 	}
 }
 
+func TestHandleLoopControlCommandExecutesAttachedRuntime(t *testing.T) {
+	var (
+		audits   []store.AuditRecord
+		journals []model.JournalEntry
+	)
+	execRunner := &fakePodExecRunner{
+		result: podExecResult{
+			Stdout:   "hello\n",
+			ExitCode: 0,
+		},
+	}
+	s := &server{
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
+			return store.LoopWithRevision{
+				Record: model.StateRecord{
+					LoopID:        loopID,
+					State:         model.LoopStateOverwriting,
+					CorrelationID: "corr-command-success",
+				},
+			}, true, nil
+		},
+		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
+			audits = append(audits, rec)
+			return nil
+		},
+		appendJournalFn: func(_ context.Context, entry model.JournalEntry) error {
+			journals = append(journals, entry)
+			return nil
+		},
+	}
+	runtime := loopRuntimeResponse{
+		Namespace:     "smith-system",
+		PodName:       "smith-replica-loop-command-12345-abc",
+		ContainerName: "replica",
+		PodPhase:      string(corev1.PodRunning),
+		Attachable:    true,
+	}
+	s.term.Attach("loop-command", "alice", "console-pods", runtime)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected command success, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != 1 {
+		t.Fatalf("expected exactly one pod exec call, got %d", execRunner.calls)
+	}
+	if execRunner.lastRequest.Command != "echo hello" {
+		t.Fatalf("expected command payload echo hello, got %q", execRunner.lastRequest.Command)
+	}
+	if execRunner.lastRequest.Namespace != runtime.Namespace || execRunner.lastRequest.PodName != runtime.PodName || execRunner.lastRequest.ContainerName != runtime.ContainerName {
+		t.Fatalf("unexpected runtime target: %+v", execRunner.lastRequest)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if delivered, ok := body["delivered"].(bool); !ok || !delivered {
+		t.Fatalf("expected delivered=true, got %#v", body["delivered"])
+	}
+	if result, _ := body["result"].(string); result != "success" {
+		t.Fatalf("expected result=success, got %#v", body["result"])
+	}
+	if int(body["exit_code"].(float64)) != 0 {
+		t.Fatalf("expected exit_code=0, got %#v", body["exit_code"])
+	}
+	if stdout, _ := body["stdout"].(string); stdout != "hello\n" {
+		t.Fatalf("expected stdout hello\\n, got %#v", body["stdout"])
+	}
+
+	foundHello := false
+	for _, entry := range journals {
+		if entry.Message == "hello" {
+			foundHello = true
+			break
+		}
+	}
+	if !foundHello {
+		t.Fatalf("expected journal output containing hello, got %+v", journals)
+	}
+	if len(audits) == 0 {
+		t.Fatal("expected terminal command audit entry")
+	}
+	lastAudit := audits[len(audits)-1]
+	if lastAudit.Action != "terminal-command" {
+		t.Fatalf("expected terminal-command action, got %q", lastAudit.Action)
+	}
+	if lastAudit.Metadata["delivered"] != "true" {
+		t.Fatalf("expected delivered audit metadata true, got %q", lastAudit.Metadata["delivered"])
+	}
+	if lastAudit.Metadata["exit_code"] != "0" {
+		t.Fatalf("expected exit_code audit metadata 0, got %q", lastAudit.Metadata["exit_code"])
+	}
+}
+
+func TestHandleLoopControlCommandRequiresAttach(t *testing.T) {
+	execRunner := &fakePodExecRunner{}
+	s := &server{
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
+			return store.LoopWithRevision{
+				Record: model.StateRecord{
+					LoopID: loopID,
+					State:  model.LoopStateUnresolved,
+				},
+			}, true, nil
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 when actor is not attached, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != 0 {
+		t.Fatalf("expected no pod exec call without attachment, got %d", execRunner.calls)
+	}
+}
+
+func TestHandleLoopControlCommandRejectsOversizedCommand(t *testing.T) {
+	var audits []store.AuditRecord
+	execRunner := &fakePodExecRunner{}
+	s := &server{
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		getStateFn: func(_ context.Context, loopID string) (store.LoopWithRevision, bool, error) {
+			return store.LoopWithRevision{
+				Record: model.StateRecord{
+					LoopID:        loopID,
+					State:         model.LoopStateOverwriting,
+					CorrelationID: "corr-command-rejected",
+				},
+			}, true, nil
+		},
+		appendAuditFn: func(_ context.Context, rec store.AuditRecord) error {
+			audits = append(audits, rec)
+			return nil
+		},
+	}
+	runtime := loopRuntimeResponse{
+		Namespace:     "smith-system",
+		PodName:       "smith-replica-loop-command-99999-abc",
+		ContainerName: "replica",
+		PodPhase:      string(corev1.PodRunning),
+		Attachable:    true,
+	}
+	s.term.Attach("loop-command", "alice", "console-pods", runtime)
+
+	oversized := strings.Repeat("x", terminalCommandMaxSize+1)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"`+oversized+`"}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized command, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != 0 {
+		t.Fatalf("expected no pod exec call for oversized command, got %d", execRunner.calls)
+	}
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected audit entry, got %d", len(audits))
+	}
+	if audits[0].Action != "terminal-command-rejected" {
+		t.Fatalf("expected terminal-command-rejected action, got %q", audits[0].Action)
+	}
+	if audits[0].Metadata["result"] != "rejected" {
+		t.Fatalf("expected rejected metadata tag, got %q", audits[0].Metadata["result"])
+	}
+}
+
 func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, terminal, runtimeRef string) {
 	t.Helper()
 	if metadata["actor"] != actor {
@@ -482,4 +660,17 @@ func selectorValue(selector, key string) string {
 		}
 	}
 	return ""
+}
+
+type fakePodExecRunner struct {
+	result      podExecResult
+	err         error
+	calls       int
+	lastRequest podExecRequest
+}
+
+func (f *fakePodExecRunner) Execute(_ context.Context, req podExecRequest) (podExecResult, error) {
+	f.calls++
+	f.lastRequest = req
+	return f.result, f.err
 }

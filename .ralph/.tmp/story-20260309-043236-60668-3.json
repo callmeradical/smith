@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "total": 6,
+  "remaining": 4,
+  "quality_gates": [
+    "make build",
+    "go test ./cmd/smith-api/...",
+    "go test ./internal/source/...",
+    "go test ./...",
+    "npm run test:frontend",
+    "make test-matrix"
+  ],
+  "id": "US-003",
+  "title": "Execute line commands inside active loop container"
+}
