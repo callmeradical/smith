@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -11,7 +12,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +27,7 @@ import (
 	"smith/internal/source/provider"
 	"smith/internal/source/store"
 
+	"github.com/gorilla/websocket"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,7 +83,9 @@ type server struct {
 	term            *terminalSessionStore
 	runtimePods     runtimePodReader
 	podExec         podExecRunner
+	upgrader        websocket.Upgrader
 	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
+
 	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
 	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
 }
@@ -603,6 +609,9 @@ func main() {
 		term:        newTerminalSessionStore(),
 		runtimePods: runtimePods,
 		podExec:     podExec,
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -613,6 +622,7 @@ func main() {
 	mux.HandleFunc("/v1/environment/presets/", s.handleEnvironmentPresetByName)
 	mux.HandleFunc("/v1/ingress/github/issues", s.handleIngressGitHubIssues)
 	mux.HandleFunc("/v1/ingress/prd", s.handleIngressPRD)
+	mux.HandleFunc("/v1/chat/prd", s.handleChatPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
 	mux.HandleFunc("/v1/audit", s.handleAudit)
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
@@ -1278,6 +1288,146 @@ func resolveRuntimeContainerName(pod corev1.Pod, preferred string) (string, bool
 		return "", false
 	}
 	return pod.Spec.Containers[0].Name, true
+}
+
+type chatMessage struct {
+	Type         string `json:"type"`
+	Text         string `json:"text,omitempty"`
+	Actor        string `json:"actor,omitempty"`
+	Timestamp    string `json:"timestamp,omitempty"`
+	Error        string `json:"error,omitempty"`
+	FinalPRDPath string `json:"final_prd_path,omitempty"`
+}
+
+func (s *server) handleChatPRD(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	conn, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("prd chat upgrade failed: %v", err)
+		return
+	}
+	defer func() { _ = conn.Close() }()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	// Initial greeting or wait for prompt
+	_ = conn.WriteJSON(chatMessage{
+		Type:      "system",
+		Text:      "PRD Chat session started. Waiting for prompt...",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	})
+
+	var initialPrompt string
+	for {
+		var msg chatMessage
+		if err := conn.ReadJSON(&msg); err != nil {
+			return
+		}
+		if msg.Type == "user" && strings.TrimSpace(msg.Text) != "" {
+			initialPrompt = strings.TrimSpace(msg.Text)
+			break
+		}
+	}
+
+	// Create temp directory for PRD output
+	tmpDir, err := os.MkdirTemp("", "smith-prd-*")
+	if err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to create temp dir"})
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	prdOutPath := filepath.Join(tmpDir, "prd.json")
+	
+	// Build prompt file
+	promptContent := fmt.Sprintf(`You are an autonomous coding agent.
+Use the $prd skill to create a Product Requirements Document in JSON.
+Save the PRD to: %s
+Do NOT implement anything.
+Include exactly 5 user stories in the stories array.
+After creating the PRD, end with:
+PRD JSON saved to <path>. Close this chat and launch the Smith build loop.
+
+User request:
+%s`, prdOutPath, initialPrompt)
+
+	promptPath := filepath.Join(tmpDir, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte(promptContent), 0o644); err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to write prompt file"})
+		return
+	}
+
+	// Run codex interactively
+	cmd := exec.CommandContext(ctx, "sh", "-lc", fmt.Sprintf("codex --yolo --skip-git-repo-check %s", shellQuote(promptPath)))
+	stdin, _ := cmd.StdinPipe()
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to start codex agent: " + err.Error()})
+		return
+	}
+
+	// Proxy stdout to websocket
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			text := scanner.Text()
+			_ = conn.WriteJSON(chatMessage{
+				Type:      "agent",
+				Text:      text,
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+	}()
+
+	// Proxy stderr to websocket (as system messages or separate type)
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			text := scanner.Text()
+			_ = conn.WriteJSON(chatMessage{
+				Type:      "system",
+				Text:      "[agent-stderr] " + text,
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+	}()
+
+	// Proxy websocket to stdin
+	go func() {
+		for {
+			var msg chatMessage
+			if err := conn.ReadJSON(&msg); err != nil {
+				_ = stdin.Close()
+				return
+			}
+			if msg.Type == "user" {
+				_, _ = io.WriteString(stdin, msg.Text+"\n")
+			}
+		}
+	}()
+
+	err = cmd.Wait()
+	if err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "system", Text: "Agent session ended: " + err.Error()})
+	}
+
+	// Check if PRD was created
+	if _, statErr := os.Stat(prdOutPath); statErr == nil {
+		prdContent, _ := os.ReadFile(prdOutPath)
+		_ = conn.WriteJSON(chatMessage{
+			Type:         "system",
+			FinalPRDPath: prdOutPath,
+			Text:         string(prdContent), // Send the JSON content back
+		})
+	} else {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "PRD was not generated by the agent"})
+	}
 }
 
 func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID string) {
@@ -2727,183 +2877,9 @@ func (a *auditBridge) RecordAuthEvent(ctx context.Context, event provider.AuthEv
 	})
 }
 
-func (s *server) handleDocuments(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		docs, err := s.store.ListDocuments(r.Context())
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, docs)
-	case http.MethodPost:
-		var req documentRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeErr(w, http.StatusBadRequest, "invalid json payload")
-			return
-		}
-		if req.ProjectID == "" || req.Title == "" || req.Content == "" {
-			writeErr(w, http.StatusBadRequest, "project_id, title, and content are required")
-			return
-		}
-		docID := req.ID
-		if docID == "" {
-			docID = fmt.Sprintf("doc-%d", time.Now().UTC().UnixNano())
-		}
-		status := req.Status
-		if status == "" {
-			status = "active"
-		}
-		doc := model.Document{
-			ID:            docID,
-			ProjectID:     req.ProjectID,
-			Title:         req.Title,
-			Content:       req.Content,
-			Format:        req.Format,
-			SourceType:    req.SourceType,
-			SourceRef:     req.SourceRef,
-			Status:        status,
-			Metadata:      req.Metadata,
-			CorrelationID: fmt.Sprintf("doc-corr-%d", time.Now().UTC().UnixNano()),
-		}
-		if err := s.store.PutDocument(r.Context(), doc); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusCreated, doc)
-	default:
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
 	}
-}
-
-func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/v1/documents/")
-	parts := strings.Split(id, "/")
-	docID := parts[0]
-	if docID == "" {
-		writeErr(w, http.StatusBadRequest, "document id is required")
-		return
-	}
-	route := ""
-	if len(parts) > 1 {
-		route = parts[1]
-	}
-
-	doc, found, err := s.store.GetDocument(r.Context(), docID)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if !found {
-		writeErr(w, http.StatusNotFound, "document not found")
-		return
-	}
-
-	if route == "build" {
-		if r.Method != http.MethodPost {
-			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		// Build instantiates a smith loop from the document content
-		// Content is expected to be PRD JSON or Markdown
-		format := strings.ToLower(doc.Format)
-		if format == "" {
-			if strings.HasPrefix(strings.TrimSpace(doc.Content), "{") {
-				format = "json"
-			} else {
-				format = "markdown"
-			}
-		}
-
-		var drafts []ingress.LoopDraft
-		var errs []ingress.ParseError
-		baseMetadata := copyStringMap(doc.Metadata)
-		if baseMetadata == nil {
-			baseMetadata = make(map[string]string)
-		}
-		baseMetadata["document_id"] = doc.ID
-		baseMetadata["project_id"] = doc.ProjectID
-
-		switch format {
-		case "markdown", "md":
-			drafts, errs = ingress.ParsePRDMarkdown(doc.Content, doc.SourceRef, baseMetadata)
-		case "json":
-			var tasks []ingress.PRDTask
-			if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
-				drafts, errs = ingress.PRDTasksToDrafts(tasks, doc.SourceRef, baseMetadata)
-			} else {
-				writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
-				return
-			}
-		default:
-			writeErr(w, http.StatusBadRequest, "unsupported document format for build")
-			return
-		}
-
-		if len(errs) > 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
-			return
-		}
-
-		results := make([]ingressResult, 0, len(drafts))
-		for i, draft := range drafts {
-			res := s.createOneLoop(r.Context(), loopCreateRequest{
-				IdempotencyKey: draft.IdempotencyKey,
-				Title:          draft.Title,
-				Description:    draft.Description,
-				SourceType:     draft.SourceType,
-				SourceRef:      draft.SourceRef,
-				Metadata:       draft.Metadata,
-			})
-			results = append(results, ingressResult{
-				ItemIndex: i,
-				LoopID:    res.LoopID,
-				SourceRef: draft.SourceRef,
-				Status:    res.Status,
-				Created:   res.Created,
-				Message:   res.Message,
-			})
-		}
-		writeJSON(w, http.StatusOK, ingressSummary(results))
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, http.StatusOK, doc)
-	case http.MethodPut:
-		var req documentRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeErr(w, http.StatusBadRequest, "invalid json payload")
-			return
-		}
-		if req.Title != "" {
-			doc.Title = req.Title
-		}
-		if req.Content != "" {
-			doc.Content = req.Content
-		}
-		if req.Format != "" {
-			doc.Format = req.Format
-		}
-		if req.Status != "" {
-			doc.Status = req.Status
-		}
-		if req.Metadata != nil {
-			doc.Metadata = req.Metadata
-		}
-		if err := s.store.PutDocument(r.Context(), doc); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, doc)
-	case http.MethodDelete:
-		if err := s.store.DeleteDocument(r.Context(), docID); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
-	default:
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }

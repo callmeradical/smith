@@ -1452,7 +1452,72 @@
         transition: none !important;
       }
     }
+  .chat-shell {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .chat-header {
+    padding: 8px 12px;
+    background: var(--bg-page);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .chat-panel {
+    flex: 1;
+    padding: 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 14px;
+  }
+  .chat-bubble {
+    max-width: 80%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    line-height: 1.4;
+    word-wrap: break-word;
+  }
+  .chat-bubble.user {
+    align-self: flex-end;
+    background: var(--primary);
+    color: white;
+    border-bottom-right-radius: 2px;
+  }
+  .chat-bubble.agent {
+    align-self: flex-start;
+    background: var(--bg-page);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 2px;
+  }
+  .chat-bubble-meta {
+    font-size: 11px;
+    margin-top: 4px;
+    opacity: 0.7;
+  }
+  .chat-composer {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+  }
+  .chat-composer input {
+    flex: 1;
+    padding: 8px 12px;
+    background: var(--bg-page);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: inherit;
+  }
   </style>
+
 </head>
 <body>
   <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
@@ -1519,6 +1584,10 @@
                 <span class="pod-create-step-node">3</span>
                 <span class="pod-create-step-label">Details</span>
               </div>
+              <div id="pod-create-step-chip-4" class="pod-create-step-chip hidden">
+                <span class="pod-create-step-node">4</span>
+                <span class="pod-create-step-label">Chat</span>
+              </div>
             </div>
 
             <section id="pod-create-step-1" class="pod-create-step-panel" data-pod-create-step="1">
@@ -1540,10 +1609,11 @@
             </section>
 
             <section id="pod-create-step-2" class="pod-create-step-panel hidden" data-pod-create-step="2">
+              <select id="pod-create-project" aria-label="Project">
+                <option value="">Select project</option>
+              </select>
+
               <div id="pod-create-method-issue" data-pod-create-method-panel="issue">
-                <select id="pod-create-project" aria-label="Project">
-                  <option value="">Select project</option>
-                </select>
                 <input id="pod-create-issue-filter" type="search" placeholder="Filter issue (number/title)">
                 <select id="pod-create-issue" aria-label="Issue" disabled>
                   <option value="">Select issue</option>
@@ -1551,7 +1621,7 @@
                 <div id="pod-create-issue-preview" class="status-note">Select a project to load issues.</div>
               </div>
               <div id="pod-create-method-generate-prd" class="status-note hidden" data-pod-create-method-panel="generate_prd">
-                Select a project and optionally an issue, then provide a prompt in step 3 to generate a PRD.
+                Select a project, then provide an initial prompt in step 3. You will refine the PRD in chat in step 4.
               </div>
               <div id="pod-create-method-load-prd" class="status-note hidden" data-pod-create-method-panel="load_prd">
                 Select a project, then paste or upload PRD JSON in step 3.
@@ -1567,6 +1637,17 @@
               </select>
               <textarea id="pod-create-prompt" rows="6" placeholder="optional prompt or PRD JSON"></textarea>
               <input id="pod-create-prd-file" type="file" accept=".json,application/json">
+            </section>
+
+            <section id="pod-create-step-4" class="pod-create-step-panel hidden" data-pod-create-step="4">
+              <div class="chat-shell" style="height: 300px; margin-top: 12px;">
+                <div id="pod-create-chat-panel" class="chat-panel"></div>
+                <div class="chat-composer">
+                  <input id="pod-create-chat-input" type="text" placeholder="Type to refine PRD..." autocomplete="off">
+                  <button id="pod-create-chat-send" type="button" class="primary">send</button>
+                </div>
+              </div>
+              <div id="pod-create-chat-status" class="status-note">Chat with agent to finalize PRD.</div>
             </section>
 
             <div class="pod-create-footer">
@@ -1705,10 +1786,10 @@
             <button id="pod-view-delete" type="button" class="danger">delete loop</button>
           </div>
         </header>
-        <section class="journal">
+        <section id="pod-view-journal-shell" class="journal">
           <div class="journal-header">
             <strong id="journal-title">Pod Detail Journal</strong>
-            <span id="journal-latency" class="muted">p95 --</span>
+            <span id="journal-latency" class="muted" style="margin-left: 12px;">p95 --</span>
           </div>
           <pre id="terminal" class="terminal">[journal] select a pod tile to open pod detail view
 </pre>
@@ -1892,6 +1973,9 @@
       podCreateBusy: false,
       podCreateStep: 1,
       podCreateMethod: "issue",
+      podCreateFinalPRD: null,
+      podCreateChatSocket: null,
+      podCreateChatMessages: [],
       attachBusyLoopID: "",
       loopDeleteBusy: false,
       loopControlBusy: false,
@@ -1930,6 +2014,7 @@
     const podViewCommandEl = document.getElementById("pod-view-command");
     const podViewRunEl = document.getElementById("pod-view-run");
     const podViewTerminalStateEl = document.getElementById("pod-view-terminal-state");
+    const podViewJournalShellEl = document.getElementById("pod-view-journal-shell");
     const podViewRuntimeTargetEl = document.getElementById("pod-view-runtime-target");
     const podViewControlMessageEl = document.getElementById("pod-view-control-message");
     const podViewTitleEl = document.getElementById("pod-view-title");
@@ -1952,10 +2037,15 @@
     const podCreateCancelEl = document.getElementById("pod-create-cancel");
     const podCreateCloseEl = document.getElementById("pod-create-close");
     const podCreateStatusEl = document.getElementById("pod-create-status");
+    const podCreateChatPanelEl = document.getElementById("pod-create-chat-panel");
+    const podCreateChatInputEl = document.getElementById("pod-create-chat-input");
+    const podCreateChatSendEl = document.getElementById("pod-create-chat-send");
+    const podCreateChatStatusEl = document.getElementById("pod-create-chat-status");
     const podCreateStepChips = {
       1: document.getElementById("pod-create-step-chip-1"),
       2: document.getElementById("pod-create-step-chip-2"),
       3: document.getElementById("pod-create-step-chip-3"),
+      4: document.getElementById("pod-create-step-chip-4"),
     };
     const podCreateStepPanels = Array.from(document.querySelectorAll("[data-pod-create-step]"));
     const podCreateMethodButtons = Array.from(document.querySelectorAll("[data-pod-create-method]"));
@@ -2800,8 +2890,14 @@
     }
 
     function syncPodCreateWorkflow() {
-      const step = Math.max(1, Math.min(3, Number(state.podCreateStep || 1)));
+      const isInteractive = state.podCreateMethod === "issue" || state.podCreateMethod === "generate_prd";
+      const maxStep = isInteractive ? 4 : 3;
+      const step = Math.max(1, Math.min(maxStep, Number(state.podCreateStep || 1)));
       state.podCreateStep = step;
+
+      // Handle chip visibility
+      podCreateStepChips[4].classList.toggle("hidden", !isInteractive);
+
       for (const panel of podCreateStepPanels) {
         const panelStep = Number(panel.getAttribute("data-pod-create-step") || 0);
         panel.classList.toggle("hidden", panelStep !== step);
@@ -2817,150 +2913,147 @@
         button.classList.toggle("selected", method === state.podCreateMethod);
       }
       for (const panel of podCreateMethodPanels) {
-        const method = normalizePodCreateMethod(panel.getAttribute("data-pod-create-method-panel") || "");
-        panel.classList.toggle("hidden", method !== "issue");
+        const panelMethod = panel.getAttribute("data-pod-create-method-panel");
+        if (step === 2 && panelMethod === state.podCreateMethod) {
+          panel.classList.remove("hidden");
+        } else {
+          panel.classList.add("hidden");
+        }
       }
       podCreateBackEl.classList.toggle("hidden", step <= 1);
-      podCreateNextEl.classList.toggle("hidden", step >= 3);
-      podCreateSubmitEl.classList.toggle("hidden", step !== 3);
+
+      const isAtFinalStep = step === maxStep;
+      podCreateNextEl.classList.toggle("hidden", isAtFinalStep);
+      podCreateSubmitEl.classList.toggle("hidden", !isAtFinalStep);
+      
+      // Only enable submit if we have a final PRD (if interactive) or if we are not interactive
+      if (isAtFinalStep) {
+        if (isInteractive) {
+          podCreateSubmitEl.disabled = !state.podCreateFinalPRD;
+        } else {
+          podCreateSubmitEl.disabled = false;
+        }
+      }
+
       if (step === 3) {
         preparePodCreateDetails();
       }
+      if (step === 4 && isInteractive) {
+        if (!state.podCreateChatSocket) {
+          startPRDChat();
+        }
+      } else {
+        disconnectPodCreateChat();
+      }
+
       setPodCreateBusy(state.podCreateBusy);
     }
 
     function setPodCreateStep(step) {
-      state.podCreateStep = Math.max(1, Math.min(3, Number(step || 1)));
+      const isInteractive = state.podCreateMethod === "issue" || state.podCreateMethod === "generate_prd";
+      const maxStep = isInteractive ? 4 : 3;
+      state.podCreateStep = Math.max(1, Math.min(maxStep, Number(step || 1)));
       syncPodCreateWorkflow();
     }
 
-    function setDocCreateStep(step) {
-      state.docCreateStep = Math.max(1, Math.min(2, Number(step || 1)));
-      syncDocCreateWorkflow();
-    }
+    function startPRDChat() {
+      const projectID = podCreateProjectEl.value;
+      const prompt = podCreatePromptEl.value.trim();
+      const issueID = podCreateIssueEl.value;
 
-    function setDocCreateMethod(method) {
-      state.docCreateMethod = method;
-      syncDocCreateWorkflow();
-    }
-
-    function syncDocCreateWorkflow() {
-      const step = state.docCreateStep;
-      docCreateStepPanels.forEach(panel => {
-        const panelStep = Number(panel.getAttribute("data-doc-create-step") || 0);
-        panel.classList.toggle("hidden", panelStep !== step);
-      });
-      docCreateStepChips.forEach((chip, i) => {
-        const chipStep = i + 1;
-        chip.classList.toggle("active", chipStep === step);
-        chip.classList.toggle("complete", chipStep < step);
-      });
-      docCreateMethodButtons.forEach(btn => {
-        const method = btn.getAttribute("data-doc-create-method");
-        btn.classList.toggle("selected", method === state.docCreateMethod);
-      });
-      docCreateMethodPanels.forEach(panel => {
-        const method = panel.getAttribute("data-doc-create-method-panel");
-        panel.classList.toggle("hidden", method !== state.docCreateMethod);
-      });
-      docCreateBackEl.classList.toggle("hidden", step <= 1);
-      docCreateNextEl.classList.toggle("hidden", step >= 2);
-      docCreateSubmitEl.classList.toggle("hidden", step !== 2);
-      
-      if (step === 2) {
-        renderDocCreateProjectOptions();
-      }
-    }
-
-    function renderDocCreateProjectOptions() {
-      const selected = docCreateProjectEl.value;
-      docCreateProjectEl.innerHTML = '<option value="">Select project</option>';
-      state.projects.forEach(p => {
-        const opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.name || p.id;
-        docCreateProjectEl.appendChild(opt);
-      });
-      docCreateProjectEl.value = selected;
-    }
-
-    async function submitDocCreate() {
-      const projectID = docCreateProjectEl.value;
-      if (!projectID) {
-        setDocCreateStatus("Please select a project.", "err");
-        return;
-      }
-
-      let content = "";
-      let title = docCreateTitleEl.value || "Untitled Document";
-      let sourceType = state.docCreateMethod;
-      let sourceRef = "";
-
-      if (state.docCreateMethod === "issue") {
-        const issueID = docCreateIssueEl.value;
-        if (!issueID) {
-          setDocCreateStatus("Please select an issue.", "err");
-          return;
-        }
-        const project = state.projects.find(p => p.id === projectID);
-        const issues = state.podProjectIssues[projectID] || [];
-        const issue = issues.find(i => String(i.id) === issueID);
+      let initialMsg = prompt;
+      if (!initialMsg && issueID) {
+        const issue = state.podProjectIssues[projectID]?.find(i => String(i.number) === issueID);
         if (issue) {
-          title = "Issue #" + issue.number + ": " + issue.title;
-          content = issue.body || "";
-          sourceRef = "github:issue:" + issue.number;
+          initialMsg = `Build a PRD from GitHub issue #${issue.number}: ${issue.title}\n\n${issue.body || ""}`;
         }
-      } else if (state.docCreateMethod === "generate") {
-        content = docCreatePromptEl.value;
-        if (!content) {
-          setDocCreateStatus("Please provide a prompt.", "err");
-          return;
-        }
-        // In a real implementation, we might call an LLM here
-        // For now, we just save the prompt as content
-        sourceRef = "generated";
-      } else if (state.docCreateMethod === "upload") {
-        content = docCreateContentEl.value;
-        if (!content) {
-          setDocCreateStatus("Please provide document content.", "err");
-          return;
-        }
-        sourceRef = "upload";
       }
 
-      setDocCreateBusy(true);
-      try {
-        await postJSON("/v1/documents", {
-          project_id: projectID,
-          title: title,
-          content: content,
-          source_type: sourceType,
-          source_ref: sourceRef,
-          format: content.trim().startsWith("{") ? "json" : "markdown"
-        });
-        setDocCreateStatus("Document created.", "ok");
-        docCreatePanelEl.setAttribute("aria-hidden", "true");
-        void refreshDocuments();
-      } catch (err) {
-        setDocCreateStatus("Error creating document: " + err.message, "err");
-      } finally {
-        setDocCreateBusy(false);
+      if (!initialMsg) {
+        initialMsg = "Let's build a new PRD.";
+      }
+
+      connectPodCreateChat(initialMsg);
+    }
+
+    function connectPodCreateChat(initialMessage) {
+      disconnectPodCreateChat();
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.host;
+      const url = `${protocol}//${host}/v1/chat/prd`;
+
+      const socket = new WebSocket(url);
+      state.podCreateChatSocket = socket;
+      state.podCreateChatMessages = [];
+      state.podCreateFinalPRD = null;
+      renderPodCreateChat();
+
+      socket.onopen = () => {
+        console.log("Pod creation PRD chat connected");
+        if (initialMessage) {
+          socket.send(JSON.stringify({ type: "user", text: initialMessage }));
+        }
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "system" && msg.final_prd_path) {
+            state.podCreateFinalPRD = msg.text; // The PRD JSON content
+            podCreateChatStatusEl.textContent = "PRD finalized! Click 'create loop' to start.";
+            podCreateChatStatusEl.className = "status-note ok";
+            podCreateSubmitEl.disabled = false;
+          }
+ else if (msg.type === "error") {
+            podCreateChatStatusEl.textContent = "Error: " + (msg.error || "unknown");
+            podCreateChatStatusEl.className = "status-note err";
+          }
+          state.podCreateChatMessages.push(msg);
+          renderPodCreateChat();
+        } catch (err) {
+          console.error("Failed to parse pod create chat message", err);
+        }
+      };
+
+      socket.onclose = () => {
+        console.log("Pod creation PRD chat closed");
+        state.podCreateChatSocket = null;
+      };
+    }
+
+    function disconnectPodCreateChat() {
+      if (state.podCreateChatSocket) {
+        state.podCreateChatSocket.close();
+        state.podCreateChatSocket = null;
       }
     }
 
-    function setDocCreateBusy(busy) {
-      state.docCreateBusy = busy;
-      docCreateSubmitEl.disabled = busy;
-      docCreateNextEl.disabled = busy;
-      docCreateBackEl.disabled = busy;
-      docCreateStatusEl.textContent = busy ? "Working..." : "";
+    function sendPodCreateChatMessage() {
+      const text = podCreateChatInputEl.value.trim();
+      if (!text || !state.podCreateChatSocket) return;
+
+      state.podCreateChatSocket.send(JSON.stringify({ type: "user", text: text }));
+      podCreateChatInputEl.value = "";
+      state.podCreateChatMessages.push({ type: "user", text: text, timestamp: new Date().toISOString() });
+      renderPodCreateChat();
     }
 
-    function setDocCreateStatus(msg, type) {
-      docCreateStatusEl.textContent = msg;
-      docCreateStatusEl.className = "status-note " + (type || "");
-    }
+    function renderPodCreateChat() {
+      podCreateChatPanelEl.innerHTML = "";
+      state.podCreateChatMessages.forEach((msg) => {
+        if (msg.type === "system" && !msg.text) return;
+        const bubble = document.createElement("div");
+        bubble.className = "chat-bubble " + (msg.type === "user" ? "user" : "agent");
+        if (msg.type === "system") bubble.className = "chat-bubble agent system-msg";
 
+        const content = document.createElement("div");
+        content.textContent = msg.text;
+        bubble.appendChild(content);
+
+        podCreateChatPanelEl.appendChild(bubble);
+      });
+      podCreateChatPanelEl.scrollTop = podCreateChatPanelEl.scrollHeight;
+    }
     function configuredLoopProviders() {
       const labelByID = providerCatalog.reduce((acc, provider) => {
         acc[provider.id] = provider.label;
@@ -3087,6 +3180,8 @@
     function resetPodCreateWorkflow() {
       state.podCreateMethod = "issue";
       state.podCreateStep = 1;
+      state.podCreateFinalPRD = null;
+      disconnectPodCreateChat();
       podCreateIssueFilterEl.value = "";
       podCreateIssueEl.value = "";
       podCreateLoopNameEl.value = "";
@@ -3438,14 +3533,20 @@
       const loopID =
         slugifySegment(project.name || project.id || "project") + "-" + loopNameSlug;
       const sourceType =
-        issue
+        state.podCreateFinalPRD
+          ? "prompt"
+          : hasProvidedPRD
+          ? "prompt"
+          : issue
           ? "github_issue"
           : method === "generate_prd"
           ? "interactive_prompt"
           : "prompt";
       const sourcePrefix =
         method === "generate_prd" ? "generate-prd" : method === "load_prd" ? "load-prd" : "prompt";
-      const sourceRef = issue
+      const sourceRef = state.podCreateFinalPRD
+        ? "prompt:console-chat"
+        : issue
         ? repository + "#" + String(issue.number)
         : sourcePrefix + ":" + slugifySegment(project.id || project.name || "project") + ":" + loopNameSlug;
       const idempotencyKey =
@@ -3462,7 +3563,9 @@
         "Provider: " + providerInfo.label,
         issue ? "Issue: " + sourceRef : "Prompt Source: " + sourceRef,
       ];
-      if (prompt && !hasProvidedPRD) {
+      if (state.podCreateFinalPRD) {
+        descriptionParts.push("", "PRD generated interactively in console.");
+      } else if (prompt && !hasProvidedPRD) {
         descriptionParts.push("", "Prompt:", prompt);
       }
       if (hasProvidedPRD) {
@@ -3473,12 +3576,12 @@
       }
 
       setPodCreateBusy(true);
-      setPodCreateStatus(issue ? "Loading issue context..." : "Creating loop...", "muted");
+      setPodCreateStatus(issue && !state.podCreateFinalPRD ? "Loading issue context..." : "Creating loop...", "muted");
       try {
         let issueContext = null;
         let issueContextJSON = "";
         let issueContextTruncated = false;
-        if (issue) {
+        if (issue && !state.podCreateFinalPRD) {
           issueContext = await fetchIssueContext(project, repository, issue.number);
           issueContextJSON = stringifyMetadataJSON(issueContext, 120000);
           issueContextTruncated =
@@ -3490,7 +3593,9 @@
         const payload = {
           loop_id: loopID,
           idempotency_key: idempotencyKey,
-          title: issue ? "Loop " + loopName + ": " + issue.title : "Loop " + loopName + ": prompt request",
+          title: issue
+            ? "Loop " + loopName + ": " + issue.title
+            : "Loop " + loopName + ": prompt request",
           description: descriptionParts.join("\n"),
           provider_id: provider,
           source_type: sourceType,
@@ -3512,8 +3617,10 @@
             workspace_agent: provider,
             workspace_provider: provider,
             invocation_method: method,
-            workspace_prompt: hasProvidedPRD ? "" : prompt,
-            workspace_prd_json: hasProvidedPRD ? stringifyMetadataJSON(providedPRD, 120000) : "",
+            workspace_prompt: hasProvidedPRD || state.podCreateFinalPRD ? "" : prompt,
+            workspace_prd_json:
+              state.podCreateFinalPRD ||
+              (hasProvidedPRD ? stringifyMetadataJSON(providedPRD, 120000) : ""),
             workspace_prd_path: ".agents/tasks/prd.json",
             workspace_seed_image: String(project.skills_image || "").trim(),
             workspace_seed_pull_policy:
@@ -5031,6 +5138,17 @@
         setPodCreateStatus("Failed to read PRD file.", "err");
       }
     });
+    podCreateChatSendEl.addEventListener("click", () => {
+      sendPodCreateChatMessage();
+    });
+
+    podCreateChatInputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendPodCreateChatMessage();
+      }
+    });
+
     podCreateSubmitEl.addEventListener("click", () => {
       void startLoopFromIssue();
     });

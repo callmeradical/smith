@@ -484,6 +484,35 @@ func (s *Store) ListAudit(ctx context.Context, loopID string, limit int64) ([]Au
 	return records, nil
 }
 
+func (s *Store) WatchJournal(ctx context.Context, loopID string) <-chan model.JournalEntry {
+	out := make(chan model.JournalEntry)
+	prefix := model.JournalPrefix(loopID) + "/"
+	watchCh := s.cli.Watch(ctx, prefix, clientv3.WithPrefix())
+	go func() {
+		defer close(out)
+		for watchResp := range watchCh {
+			if watchResp.Err() != nil {
+				continue
+			}
+			for _, event := range watchResp.Events {
+				if event.Type != clientv3.EventTypePut || len(event.Kv.Value) == 0 {
+					continue
+				}
+				var entry model.JournalEntry
+				if err := json.Unmarshal(event.Kv.Value, &entry); err != nil {
+					continue
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case out <- entry:
+				}
+			}
+		}
+	}()
+	return out
+}
+
 func (s *Store) WatchState(ctx context.Context) <-chan Event {
 	out := make(chan Event)
 	watchCh := s.cli.Watch(ctx, model.PrefixState+"/", clientv3.WithPrefix())
