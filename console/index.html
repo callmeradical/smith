@@ -2072,6 +2072,28 @@
     const projectEmptyEl = document.getElementById("project-empty");
     const projectFormStatusEl = document.getElementById("project-form-status");
     const overrideLoopEl = document.getElementById("override-loop");
+    const docSearchEl = document.getElementById("doc-search");
+    const docCreateToggleEl = document.getElementById("doc-create-toggle");
+    const docCreateCloseEl = document.getElementById("doc-create-close");
+    const docCreateCancelEl = document.getElementById("doc-create-cancel");
+    const docCreatePanelEl = document.getElementById("doc-create-panel");
+    const docCreateProjectEl = document.getElementById("doc-create-project");
+    const docCreateIssueFilterEl = document.getElementById("doc-create-issue-filter");
+    const docCreateIssueEl = document.getElementById("doc-create-issue");
+    const docCreateTitleEl = document.getElementById("doc-create-title");
+    const docCreateContentEl = document.getElementById("doc-create-content");
+    const docCreateFileEl = document.getElementById("doc-create-file");
+    const docCreateBackEl = document.getElementById("doc-create-back");
+    const docCreateNextEl = document.getElementById("doc-create-next");
+    const docCreateSubmitEl = document.getElementById("doc-create-submit");
+    const docCreateStatusEl = document.getElementById("doc-create-status");
+    const docCreateStepChips = {
+      1: document.getElementById("doc-create-step-chip-1"),
+      2: document.getElementById("doc-create-step-chip-2"),
+    };
+    const docCreateStepPanels = Array.from(document.querySelectorAll("[data-doc-create-step]"));
+    const docCreateMethodButtons = Array.from(document.querySelectorAll("[data-doc-create-method]"));
+    const docCreateMethodPanels = Array.from(document.querySelectorAll("[data-doc-create-method-panel]"));
     const sidebarEl = document.querySelector(".sidebar");
     const sidebarOverlayEl = document.getElementById("sidebar-overlay");
     const providerDrawerOverlayEl = document.getElementById("provider-drawer-overlay");
@@ -5153,48 +5175,68 @@
       void startLoopFromIssue();
     });
 
-    docSearchEl.addEventListener("input", () => {
-      state.docSearchQuery = docSearchEl.value;
-      renderDocuments();
-    });
-    docCreateToggleEl.addEventListener("click", () => setDocCreateOpen(true));
-    docCreateCloseEl.addEventListener("click", () => setDocCreateOpen(false));
-    docCreateCancelEl.addEventListener("click", () => setDocCreateOpen(false));
-    docCreateProjectEl.addEventListener("change", () => {
-      docCreateIssueFilterEl.value = "";
-      docCreateIssueEl.value = "";
-      void loadDocProjectIssues();
-    });
+    if (docSearchEl) {
+      docSearchEl.addEventListener("input", () => {
+        state.docSearchQuery = docSearchEl.value;
+        renderDocuments();
+      });
+    }
+    if (docCreateToggleEl) {
+      docCreateToggleEl.addEventListener("click", () => setDocCreateOpen(true));
+    }
+    if (docCreateCloseEl) {
+      docCreateCloseEl.addEventListener("click", () => setDocCreateOpen(false));
+    }
+    if (docCreateCancelEl) {
+      docCreateCancelEl.addEventListener("click", () => setDocCreateOpen(false));
+    }
+    if (docCreateProjectEl) {
+      docCreateProjectEl.addEventListener("change", () => {
+        if (docCreateIssueFilterEl) docCreateIssueFilterEl.value = "";
+        if (docCreateIssueEl) docCreateIssueEl.value = "";
+        void loadDocProjectIssues();
+      });
+    }
     docCreateMethodButtons.forEach((button) => {
       button.addEventListener("click", () => {
         const method = button.getAttribute("data-doc-create-method") || "";
         setDocCreateMethod(method);
       });
     });
-    docCreateBackEl.addEventListener("click", () => {
-      setDocCreateStatus("", "muted");
-      setDocCreateStep(state.docCreateStep - 1);
-    });
-    docCreateNextEl.addEventListener("click", () => {
-      setDocCreateStep(state.docCreateStep + 1);
-    });
-    docCreateIssueFilterEl.addEventListener("input", () => {
-      renderDocIssueOptions(docCreateProjectEl.value);
-    });
-    docCreateSubmitEl.addEventListener("click", () => {
-      void submitDocCreate();
-    });
-    docCreateFileEl.addEventListener("change", async () => {
-      const file = docCreateFileEl.files && docCreateFileEl.files[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        docCreateContentEl.value = text;
-        setDocCreateStatus("Loaded file: " + file.name, "ok");
-      } catch (_err) {
-        setDocCreateStatus("Failed to read file.", "err");
-      }
-    });
+    if (docCreateBackEl) {
+      docCreateBackEl.addEventListener("click", () => {
+        setDocCreateStatus("", "muted");
+        setDocCreateStep(state.docCreateStep - 1);
+      });
+    }
+    if (docCreateNextEl) {
+      docCreateNextEl.addEventListener("click", () => {
+        setDocCreateStep(state.docCreateStep + 1);
+      });
+    }
+    if (docCreateIssueFilterEl) {
+      docCreateIssueFilterEl.addEventListener("input", () => {
+        if (docCreateProjectEl) renderDocIssueOptions(docCreateProjectEl.value);
+      });
+    }
+    if (docCreateSubmitEl) {
+      docCreateSubmitEl.addEventListener("click", () => {
+        void submitDocCreate();
+      });
+    }
+    if (docCreateFileEl) {
+      docCreateFileEl.addEventListener("change", async () => {
+        const file = docCreateFileEl.files && docCreateFileEl.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          if (docCreateContentEl) docCreateContentEl.value = text;
+          setDocCreateStatus("Loaded file: " + file.name, "ok");
+        } catch (_err) {
+          setDocCreateStatus("Failed to read file.", "err");
+        }
+      });
+    }
 
     document.getElementById("override-apply").addEventListener("click", applyOverride);
     document.getElementById("provider-back").addEventListener("click", () => setProviderConfigOpen(false));
