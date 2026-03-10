@@ -617,6 +617,7 @@ func main() {
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/readyz", s.handleReady)
 	mux.HandleFunc("/v1/loops", s.handleLoops)
+	mux.HandleFunc("/v1/loops/stream", s.handleLoopStream)
 	mux.HandleFunc("/v1/loops/", s.handleLoopByID)
 	mux.HandleFunc("/v1/environment/presets", s.handleEnvironmentPresets)
 	mux.HandleFunc("/v1/environment/presets/", s.handleEnvironmentPresetByName)
@@ -3055,12 +3056,73 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, doc)
 	case http.MethodDelete:
-		if err := s.store.DeleteDocument(r.Context(), docID); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	        if err := s.store.DeleteDocument(r.Context(), docID); err != nil {
+	                writeErr(w, http.StatusInternalServerError, err.Error())
+	                return
+	        }
+	        writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	default:
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	        writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
-}
+	}
+
+	func (s *server) handleLoopStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+	writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+	writeErr(w, http.StatusInternalServerError, "streaming unsupported")
+	return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	send := func(event string, payload any) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+	return err
+	}
+	if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+	return err
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+	return err
+	}
+	flusher.Flush()
+	return nil
+	}
+
+	_ = send("ready", map[string]string{"status": "connected"})
+
+	// Emit initial states
+	states, err := s.store.ListStates(r.Context())
+	if err == nil {
+	for _, loop := range states {
+	_ = send("update", loop)
+	}
+	}
+
+	// Watch for updates
+	events := s.store.WatchState(r.Context())
+	for {
+	select {
+	case <-r.Context().Done():
+	return
+	case ev, ok := <-events:
+	if !ok {
+	return
+	}
+	if ev.HasState {
+		_ = send("update", store.LoopWithRevision{
+			Record:   ev.State,
+			Revision: ev.Revision,
+		})
+	}	}
+	}
+	}

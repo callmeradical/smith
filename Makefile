@@ -158,6 +158,7 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
+	  --set global.rolloutId="$(shell date +%s)" \
 	  -f "$(SMITH_LOCAL_VALUES)"
 
 deploy-staging: ## Deploy Smith via Helm using staging values profile
