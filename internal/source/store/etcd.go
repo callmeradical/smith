@@ -262,6 +262,66 @@ func (s *Store) AppendJournal(ctx context.Context, entry model.JournalEntry) err
 	return err
 }
 
+func (s *Store) PutDocument(ctx context.Context, doc model.Document) error {
+	if strings.TrimSpace(doc.ID) == "" {
+		return errors.New("document id is required")
+	}
+	doc.SchemaVersion = model.SchemaVersion
+	now := time.Now().UTC()
+	if doc.CreatedAt.IsZero() {
+		doc.CreatedAt = now
+	}
+	doc.UpdatedAt = now
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	_, err = s.cli.Put(ctx, model.DocumentKey(doc.ID), string(payload))
+	return err
+}
+
+func (s *Store) GetDocument(ctx context.Context, docID string) (model.Document, bool, error) {
+	resp, err := s.cli.Get(ctx, model.DocumentKey(docID))
+	if err != nil {
+		return model.Document{}, false, err
+	}
+	if len(resp.Kvs) == 0 {
+		return model.Document{}, false, nil
+	}
+	var doc model.Document
+	if err := json.Unmarshal(resp.Kvs[0].Value, &doc); err != nil {
+		return model.Document{}, false, err
+	}
+	return doc, true, nil
+}
+
+func (s *Store) ListDocuments(ctx context.Context) ([]model.Document, error) {
+	resp, err := s.cli.Get(ctx, model.PrefixDocuments+"/", clientv3.WithPrefix())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.Document, 0, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		var doc model.Document
+		if err := json.Unmarshal(kv.Value, &doc); err != nil {
+			continue
+		}
+		out = append(out, doc)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) DeleteDocument(ctx context.Context, docID string) error {
+	if strings.TrimSpace(docID) == "" {
+		return errors.New("document id is required")
+	}
+	_, err := s.cli.Delete(ctx, model.DocumentKey(docID))
+	return err
+}
+
 func (s *Store) ListJournal(ctx context.Context, loopID string, limit int64) ([]model.JournalEntry, error) {
 	opts := []clientv3.OpOption{clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend)}
 	if limit > 0 {

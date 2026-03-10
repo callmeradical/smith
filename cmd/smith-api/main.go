@@ -162,6 +162,22 @@ type loopDeleteRequest struct {
 	Actor string `json:"actor"`
 }
 
+type documentRequest struct {
+	ID         string            `json:"id,omitempty"`
+	ProjectID  string            `json:"project_id"`
+	Title      string            `json:"title"`
+	Content    string            `json:"content"`
+	Format     string            `json:"format"`
+	SourceType string            `json:"source_type"`
+	SourceRef  string            `json:"source_ref,omitempty"`
+	Status     string            `json:"status,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+}
+
+type documentBuildRequest struct {
+	Actor string `json:"actor"`
+}
+
 type loopCreateRequest struct {
 	LoopID         string                 `json:"loop_id,omitempty"`
 	IdempotencyKey string                 `json:"idempotency_key,omitempty"`
@@ -610,6 +626,8 @@ func main() {
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
 	mux.HandleFunc("/v1/audit", s.handleAudit)
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
+	mux.HandleFunc("/v1/documents", s.handleDocuments)
+	mux.HandleFunc("/v1/documents/", s.handleDocumentByID)
 	mux.HandleFunc("/v1/auth/codex/connect/start", s.handleCodexAuthStart)
 	mux.HandleFunc("/v1/auth/codex/connect/complete", s.handleCodexAuthComplete)
 	mux.HandleFunc("/v1/auth/codex/connect/api-key", s.handleCodexAuthAPIKey)
