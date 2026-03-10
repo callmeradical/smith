@@ -998,6 +998,95 @@
       grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     }
 
+    /* Documents Page Layout */
+    .doc-container {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      min-height: calc(100vh - 120px);
+    }
+
+    .doc-sidebar {
+      background: var(--bg-elev);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .doc-main {
+      background: var(--bg);
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .doc-sidebar-section {
+      display: grid;
+      gap: 8px;
+    }
+
+    .doc-sidebar-header {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      font-weight: 700;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .doc-sidebar-list {
+      display: grid;
+      gap: 2px;
+    }
+
+    .doc-sidebar-item {
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: var(--muted);
+      transition: all 120ms ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .doc-sidebar-item:hover {
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    .doc-sidebar-item.active {
+      background: var(--panel-strong);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .doc-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    .doc-breadcrumb span {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .doc-breadcrumb::before {
+      content: "/";
+      color: var(--border);
+      margin-right: 4px;
+    }
+
     .pod-group {
       border: 0;
       border-radius: 0;
@@ -1690,6 +1779,7 @@
           <div class="topbar-left">
             <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
             <div class="topbar-title">Documents</div>
+            <div id="doc-breadcrumb" class="doc-breadcrumb"><span>All Projects</span></div>
           </div>
           <div class="controls">
             <input id="doc-search" type="search" placeholder="Filter documents">
@@ -1766,10 +1856,30 @@
           </section>
         </aside>
 
-        <section id="doc-list" class="board">
-          <!-- Grouped documents will be rendered here -->
-          <div class="status-note">Loading documents...</div>
-        </section>
+        <div class="doc-container">
+          <aside id="doc-sidebar" class="doc-sidebar">
+            <div class="doc-sidebar-section">
+              <div class="doc-sidebar-header">Projects</div>
+              <div id="doc-project-list" class="doc-sidebar-list">
+                <div class="doc-sidebar-item active" data-doc-filter-project="all">All Projects</div>
+              </div>
+            </div>
+            <div class="doc-sidebar-section">
+              <div class="doc-sidebar-header">Status</div>
+              <div id="doc-status-list" class="doc-sidebar-list">
+                <div class="doc-sidebar-item" data-doc-filter-status="all">All</div>
+                <div class="doc-sidebar-item" data-doc-filter-status="active">Active</div>
+                <div class="doc-sidebar-item" data-doc-filter-status="archived">Archived</div>
+              </div>
+            </div>
+          </aside>
+          <main class="doc-main">
+            <section id="doc-list" class="pod-grid">
+              <!-- Grouped documents will be rendered here -->
+              <div class="status-note">Loading documents...</div>
+            </section>
+          </main>
+        </div>
         </section>
 
         <section id="page-projects" class="page">
@@ -1999,6 +2109,8 @@
         },
       },
       documents: [],
+      docFilterProject: "all",
+      docFilterStatus: "active",
       docCreateBusy: false,
       docCreateStep: 1,
       docCreateMethod: "issue",
@@ -2094,6 +2206,9 @@
     const docCreateStepPanels = Array.from(document.querySelectorAll("[data-doc-create-step]"));
     const docCreateMethodButtons = Array.from(document.querySelectorAll("[data-doc-create-method]"));
     const docCreateMethodPanels = Array.from(document.querySelectorAll("[data-doc-create-method-panel]"));
+    const docBreadcrumbEl = document.getElementById("doc-breadcrumb");
+    const docProjectListEl = document.getElementById("doc-project-list");
+    const docStatusListEl = document.getElementById("doc-status-list");
     const sidebarEl = document.querySelector(".sidebar");
     const sidebarOverlayEl = document.getElementById("sidebar-overlay");
     const providerDrawerOverlayEl = document.getElementById("provider-drawer-overlay");
@@ -4501,64 +4616,79 @@
       docListEl.innerHTML = "";
       
       const query = (state.docSearchQuery || "").toLowerCase();
-      const filtered = state.documents.filter(d => 
-        (d.title || "").toLowerCase().includes(query) || 
-        (d.id || "").toLowerCase().includes(query) ||
-        (d.projectID || "").toLowerCase().includes(query)
-      );
+      const filtered = state.documents.filter(d => {
+        const matchesQuery = (d.title || "").toLowerCase().includes(query) || 
+                            (d.id || "").toLowerCase().includes(query) ||
+                            (d.projectID || "").toLowerCase().includes(query);
+        const matchesProject = state.docFilterProject === "all" || d.projectID === state.docFilterProject;
+        const matchesStatus = state.docFilterStatus === "all" || d.status === state.docFilterStatus;
+        return matchesQuery && matchesProject && matchesStatus;
+      });
+
+      // Update sidebar projects
+      if (docProjectListEl) {
+        const projects = Array.from(new Set(state.documents.map(d => d.projectID))).sort();
+        docProjectListEl.innerHTML = '<div class="doc-sidebar-item' + (state.docFilterProject === "all" ? " active" : "") + '" data-doc-filter-project="all">All Projects</div>';
+        projects.forEach(p => {
+          const item = document.createElement("div");
+          item.className = "doc-sidebar-item" + (state.docFilterProject === p ? " active" : "");
+          item.dataset.docFilterProject = p;
+          item.textContent = p;
+          docProjectListEl.appendChild(item);
+        });
+      }
+
+      // Update sidebar status
+      if (docStatusListEl) {
+        docStatusListEl.querySelectorAll(".doc-sidebar-item").forEach(item => {
+          item.classList.toggle("active", item.dataset.docFilterStatus === state.docFilterStatus);
+        });
+      }
+
+      // Update breadcrumb
+      if (docBreadcrumbEl) {
+        const projectLabel = state.docFilterProject === "all" ? "All Projects" : state.docFilterProject;
+        const statusLabel = state.docFilterStatus === "all" ? "" : " / " + state.docFilterStatus.charAt(0).toUpperCase() + state.docFilterStatus.slice(1);
+        docBreadcrumbEl.innerHTML = `<span>${escapeHtml(projectLabel)}</span>${escapeHtml(statusLabel)}`;
+      }
 
       if (filtered.length === 0) {
         docListEl.innerHTML = '<div class="status-note">No documents found.</div>';
         return;
       }
 
-      // Group by project
-      const grouped = {};
-      filtered.forEach(doc => {
-        if (!grouped[doc.projectID]) grouped[doc.projectID] = [];
-        grouped[doc.projectID].push(doc);
-      });
-
-      const projectIDs = Object.keys(grouped).sort();
-      projectIDs.forEach(projectID => {
-        const section = document.createElement("section");
-        section.className = "tiles-shell";
-        
-        const header = document.createElement("div");
-        header.className = "tiles-header";
-        header.innerHTML = "<strong>Project: " + escapeHtml(projectID) + "</strong>";
-        section.appendChild(header);
-
-        const grid = document.createElement("div");
-        grid.className = "pod-grid";
-        
-        grouped[projectID].forEach(doc => {
-          const tile = document.createElement("div");
-          tile.className = "pod-tile";
-          if (doc.status === "archived") tile.style.opacity = "0.6";
-          
-          tile.innerHTML = `
-            <div class="pod-tile-head">
-              <div class="pod-tile-id">${escapeHtml(doc.title || "Untitled")}</div>
-              <div class="pod-tile-state ${doc.status === "active" ? "state-synced" : "state-cancelled"}">${escapeHtml(doc.status || "active")}</div>
-            </div>
-            <div class="pod-tile-meta">
-              <span class="muted">${escapeHtml(doc.sourceType || "unknown")}: ${escapeHtml(doc.sourceRef || "direct")}</span>
-              <span class="muted">${new Date(doc.updatedAt).toLocaleString()}</span>
-            </div>
-            <div class="pod-tile-actions" style="margin-top: 12px; display: flex; gap: 8px;">
-              <button class="doc-edit" data-doc-id="${doc.id}">Edit</button>
-              <button class="doc-build primary" data-doc-id="${doc.id}">Build</button>
-              <button class="doc-archive" data-doc-id="${doc.id}">${doc.status === "active" ? "Archive" : "Unarchive"}</button>
-              <button class="doc-delete danger" data-doc-id="${doc.id}">Delete</button>
-            </div>
-          `;
-          grid.appendChild(tile);
+      // Group by project if "all" is selected
+      if (state.docFilterProject === "all") {
+        const grouped = {};
+        filtered.forEach(doc => {
+          if (!grouped[doc.projectID]) grouped[doc.projectID] = [];
+          grouped[doc.projectID].push(doc);
         });
-        
-        section.appendChild(grid);
-        docListEl.appendChild(section);
-      });
+
+        const projectIDs = Object.keys(grouped).sort();
+        projectIDs.forEach(projectID => {
+          const section = document.createElement("section");
+          section.className = "pod-group";
+          section.style.width = "100%";
+          section.style.gridColumn = "1 / -1";
+          
+          const header = document.createElement("div");
+          header.className = "doc-sidebar-header";
+          header.style.marginBottom = "12px";
+          header.innerHTML = "Project: " + escapeHtml(projectID);
+          section.appendChild(header);
+
+          const grid = document.createElement("div");
+          grid.className = "pod-grid";
+          
+          grouped[projectID].forEach(doc => renderDocTile(doc, grid));
+          
+          section.appendChild(grid);
+          docListEl.appendChild(section);
+        });
+      } else {
+        filtered.forEach(doc => renderDocTile(doc, docListEl));
+      }
 
       // Add event listeners to buttons
       docListEl.querySelectorAll(".doc-edit").forEach(btn => {
@@ -4573,6 +4703,30 @@
       docListEl.querySelectorAll(".doc-delete").forEach(btn => {
         btn.onclick = (e) => { e.stopPropagation(); deleteDocument(btn.dataset.docId); };
       });
+    }
+
+    function renderDocTile(doc, container) {
+      const tile = document.createElement("div");
+      tile.className = "pod-tile";
+      if (doc.status === "archived") tile.style.opacity = "0.6";
+      
+      tile.innerHTML = `
+        <div class="pod-tile-head">
+          <div class="pod-tile-id">${escapeHtml(doc.title || "Untitled")}</div>
+          <div class="pod-tile-state ${doc.status === "active" ? "state-synced" : "state-cancelled"}">${escapeHtml(doc.status || "active")}</div>
+        </div>
+        <div class="pod-tile-meta">
+          <span class="muted">${escapeHtml(doc.sourceType || "unknown")}: ${escapeHtml(doc.sourceRef || "direct")}</span>
+          <span class="muted">${new Date(doc.updatedAt).toLocaleString()}</span>
+        </div>
+        <div class="pod-tile-actions" style="margin-top: 12px; display: flex; gap: 8px;">
+          <button class="doc-edit" data-doc-id="${doc.id}">Edit</button>
+          <button class="doc-build primary" data-doc-id="${doc.id}">Build</button>
+          <button class="doc-archive" data-doc-id="${doc.id}">${doc.status === "active" ? "Archive" : "Unarchive"}</button>
+          <button class="doc-delete danger" data-doc-id="${doc.id}">Delete</button>
+        </div>
+      `;
+      container.appendChild(tile);
     }
 
     async function archiveDocument(id) {
@@ -5179,6 +5333,24 @@
       docSearchEl.addEventListener("input", () => {
         state.docSearchQuery = docSearchEl.value;
         renderDocuments();
+      });
+    }
+    if (docProjectListEl) {
+      docProjectListEl.addEventListener("click", (e) => {
+        const item = e.target.closest("[data-doc-filter-project]");
+        if (item) {
+          state.docFilterProject = item.dataset.docFilterProject;
+          renderDocuments();
+        }
+      });
+    }
+    if (docStatusListEl) {
+      docStatusListEl.addEventListener("click", (e) => {
+        const item = e.target.closest("[data-doc-filter-status]");
+        if (item) {
+          state.docFilterStatus = item.dataset.docFilterStatus;
+          renderDocuments();
+        }
       });
     }
     if (docCreateToggleEl) {
