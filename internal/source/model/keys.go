@@ -10,6 +10,7 @@ const (
 	PrefixLocks     = "/smith/v1/locks"
 	PrefixOverrides = "/smith/v1/overrides"
 	PrefixAudit     = "/smith/v1/audit"
+	PrefixDocuments = "/smith/v1/documents"
 )
 
 func AnomalyKey(loopID string) string {
@@ -18,6 +19,10 @@ func AnomalyKey(loopID string) string {
 
 func StateKey(loopID string) string {
 	return fmt.Sprintf("%s/%s", PrefixState, loopID)
+}
+
+func DocumentKey(documentID string) string {
+	return fmt.Sprintf("%s/%s", PrefixDocuments, documentID)
 }
 
 func JournalPrefix(loopID string) string {

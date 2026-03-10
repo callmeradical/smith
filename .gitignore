@@ -10,3 +10,10 @@ site/
 .cache/
 node_modules/
 output/playwright/
+smith
+smith-api
+smith-core
+smith-replica
+smith-verify-completion
+smithctl
+.gemini/

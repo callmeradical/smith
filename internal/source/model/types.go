@@ -106,3 +106,19 @@ type OperatorOverride struct {
 	CorrelationID string    `json:"correlation_id"`
 	SchemaVersion string    `json:"schema_version"`
 }
+
+type Document struct {
+	ID            string            `json:"id"`
+	ProjectID     string            `json:"project_id"`
+	Title         string            `json:"title"`
+	Content       string            `json:"content"`
+	Format        string            `json:"format"`
+	SourceType    string            `json:"source_type"`
+	SourceRef     string            `json:"source_ref,omitempty"`
+	Status        string            `json:"status"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	CorrelationID string            `json:"correlation_id"`
+	SchemaVersion string            `json:"schema_version"`
+}

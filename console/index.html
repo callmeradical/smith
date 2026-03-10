@@ -1470,6 +1470,7 @@
 
       <nav class="quick-nav" aria-label="Configuration pages">
         <a id="nav-pods" class="nav-link active" data-page-link="pods" href="#pods">Pods</a>
+        <a id="nav-documents" class="nav-link" data-page-link="documents" href="#documents">Documents</a>
         <a id="nav-projects" class="nav-link" data-page-link="projects" href="#projects">Projects</a>
         <a id="nav-providers" class="nav-link" data-page-link="providers" href="#providers">Providers</a>
         <a id="nav-controls" class="nav-link" data-page-link="controls" href="#controls">Manual Controls</a>
@@ -1601,9 +1602,97 @@
             <div id="grid" class="pod-grid" role="list" aria-label="Pods grouped by project"></div>
           </section>
         </section>
-      </section>
+        </section>
 
-      <section id="page-pod-view" class="page">
+        <section id="page-documents" class="page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Documents</div>
+          </div>
+          <div class="controls">
+            <input id="doc-search" type="search" placeholder="Filter documents">
+            <button id="doc-create-toggle" class="primary">New Document</button>
+          </div>
+        </header>
+
+        <aside id="doc-create-panel" class="pod-create-modal" aria-hidden="true">
+          <div class="provider-drawer-head">
+            <div class="provider-drawer-title">New Document</div>
+            <button id="doc-create-close" type="button" class="provider-drawer-close" aria-label="Close document creation">&times;</button>
+          </div>
+          <section class="panel">
+            <div class="pod-create-step-indicators" aria-hidden="true">
+              <div id="doc-create-step-chip-1" class="doc-create-step-chip active">
+                <span class="pod-create-step-node">1</span>
+                <span class="pod-create-step-label">Method</span>
+              </div>
+              <div id="doc-create-step-chip-2" class="doc-create-step-chip">
+                <span class="pod-create-step-node">2</span>
+                <span class="pod-create-step-label">Details</span>
+              </div>
+            </div>
+
+            <section id="doc-create-step-1" class="pod-create-step-panel" data-doc-create-step="1">
+              <div class="status-note">How should this document be created?</div>
+              <div class="pod-create-method-options">
+                <button type="button" class="doc-create-method-button selected" data-doc-create-method="issue">
+                  <strong>From GitHub Issue</strong>
+                  <span>Import a document from a project issue.</span>
+                </button>
+                <button type="button" class="doc-create-method-button" data-doc-create-method="generate">
+                  <strong>Generate</strong>
+                  <span>Interactively generate a PRD document.</span>
+                </button>
+                <button type="button" class="doc-create-method-button" data-doc-create-method="upload">
+                  <strong>Upload</strong>
+                  <span>Upload a JSON or YAML document.</span>
+                </button>
+              </div>
+            </section>
+
+            <section id="doc-create-step-2" class="pod-create-step-panel hidden" data-doc-create-step="2">
+              <select id="doc-create-project" aria-label="Project">
+                <option value="">Select project</option>
+              </select>
+
+              <div id="doc-create-method-issue-panel" data-doc-create-method-panel="issue">
+                <input id="doc-create-issue-filter" type="search" placeholder="Filter issue (number/title)">
+                <select id="doc-create-issue" aria-label="Issue" disabled>
+                  <option value="">Select issue</option>
+                </select>
+              </div>
+
+              <div id="doc-create-method-generate-panel" class="hidden" data-doc-create-method-panel="generate">
+                <textarea id="doc-create-prompt" rows="4" placeholder="Describe what you want to generate..."></textarea>
+              </div>
+
+              <div id="doc-create-method-upload-panel" class="hidden" data-doc-create-method-panel="upload">
+                <input id="doc-create-file" type="file" accept=".json,.yaml,.yml">
+                <textarea id="doc-create-content" rows="6" placeholder="Or paste JSON/YAML here..."></textarea>
+              </div>
+
+              <input id="doc-create-title" type="text" placeholder="Document Title (optional)">
+            </section>
+
+            <div class="pod-create-footer">
+              <button id="doc-create-back" type="button">back</button>
+              <button id="doc-create-next" type="button" class="primary">next</button>
+              <button id="doc-create-submit" type="button" class="primary hidden">create document</button>
+              <button id="doc-create-cancel" type="button">cancel</button>
+            </div>
+            <div id="doc-create-status" class="status-note"></div>
+          </section>
+        </aside>
+
+        <section id="doc-list" class="board">
+          <!-- Grouped documents will be rendered here -->
+          <div class="status-note">Loading documents...</div>
+        </section>
+        </section>
+
+        <section id="page-projects" class="page">
+
         <header class="topbar">
           <div class="topbar-left">
             <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
@@ -1825,8 +1914,12 @@
           api_key_revealed: "",
         },
       },
-    };
-
+      documents: [],
+      docCreateBusy: false,
+      docCreateStep: 1,
+      docCreateMethod: "issue",
+      docSearchQuery: "",
+      };
     const gridEl = document.getElementById("grid");
     const terminalEl = document.getElementById("terminal");
     const podViewBackEl = document.getElementById("pod-view-back");
@@ -1898,6 +1991,7 @@
     const pages = {
       pods: document.getElementById("page-pods"),
       podView: document.getElementById("page-pod-view"),
+      documents: document.getElementById("page-documents"),
       projects: document.getElementById("page-projects"),
       providers: document.getElementById("page-providers"),
       controls: document.getElementById("page-controls"),
@@ -2740,6 +2834,133 @@
       syncPodCreateWorkflow();
     }
 
+    function setDocCreateStep(step) {
+      state.docCreateStep = Math.max(1, Math.min(2, Number(step || 1)));
+      syncDocCreateWorkflow();
+    }
+
+    function setDocCreateMethod(method) {
+      state.docCreateMethod = method;
+      syncDocCreateWorkflow();
+    }
+
+    function syncDocCreateWorkflow() {
+      const step = state.docCreateStep;
+      docCreateStepPanels.forEach(panel => {
+        const panelStep = Number(panel.getAttribute("data-doc-create-step") || 0);
+        panel.classList.toggle("hidden", panelStep !== step);
+      });
+      docCreateStepChips.forEach((chip, i) => {
+        const chipStep = i + 1;
+        chip.classList.toggle("active", chipStep === step);
+        chip.classList.toggle("complete", chipStep < step);
+      });
+      docCreateMethodButtons.forEach(btn => {
+        const method = btn.getAttribute("data-doc-create-method");
+        btn.classList.toggle("selected", method === state.docCreateMethod);
+      });
+      docCreateMethodPanels.forEach(panel => {
+        const method = panel.getAttribute("data-doc-create-method-panel");
+        panel.classList.toggle("hidden", method !== state.docCreateMethod);
+      });
+      docCreateBackEl.classList.toggle("hidden", step <= 1);
+      docCreateNextEl.classList.toggle("hidden", step >= 2);
+      docCreateSubmitEl.classList.toggle("hidden", step !== 2);
+      
+      if (step === 2) {
+        renderDocCreateProjectOptions();
+      }
+    }
+
+    function renderDocCreateProjectOptions() {
+      const selected = docCreateProjectEl.value;
+      docCreateProjectEl.innerHTML = '<option value="">Select project</option>';
+      state.projects.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name || p.id;
+        docCreateProjectEl.appendChild(opt);
+      });
+      docCreateProjectEl.value = selected;
+    }
+
+    async function submitDocCreate() {
+      const projectID = docCreateProjectEl.value;
+      if (!projectID) {
+        setDocCreateStatus("Please select a project.", "err");
+        return;
+      }
+
+      let content = "";
+      let title = docCreateTitleEl.value || "Untitled Document";
+      let sourceType = state.docCreateMethod;
+      let sourceRef = "";
+
+      if (state.docCreateMethod === "issue") {
+        const issueID = docCreateIssueEl.value;
+        if (!issueID) {
+          setDocCreateStatus("Please select an issue.", "err");
+          return;
+        }
+        const project = state.projects.find(p => p.id === projectID);
+        const issues = state.podProjectIssues[projectID] || [];
+        const issue = issues.find(i => String(i.id) === issueID);
+        if (issue) {
+          title = "Issue #" + issue.number + ": " + issue.title;
+          content = issue.body || "";
+          sourceRef = "github:issue:" + issue.number;
+        }
+      } else if (state.docCreateMethod === "generate") {
+        content = docCreatePromptEl.value;
+        if (!content) {
+          setDocCreateStatus("Please provide a prompt.", "err");
+          return;
+        }
+        // In a real implementation, we might call an LLM here
+        // For now, we just save the prompt as content
+        sourceRef = "generated";
+      } else if (state.docCreateMethod === "upload") {
+        content = docCreateContentEl.value;
+        if (!content) {
+          setDocCreateStatus("Please provide document content.", "err");
+          return;
+        }
+        sourceRef = "upload";
+      }
+
+      setDocCreateBusy(true);
+      try {
+        await postJSON("/v1/documents", {
+          project_id: projectID,
+          title: title,
+          content: content,
+          source_type: sourceType,
+          source_ref: sourceRef,
+          format: content.trim().startsWith("{") ? "json" : "markdown"
+        });
+        setDocCreateStatus("Document created.", "ok");
+        docCreatePanelEl.setAttribute("aria-hidden", "true");
+        void refreshDocuments();
+      } catch (err) {
+        setDocCreateStatus("Error creating document: " + err.message, "err");
+      } finally {
+        setDocCreateBusy(false);
+      }
+    }
+
+    function setDocCreateBusy(busy) {
+      state.docCreateBusy = busy;
+      docCreateSubmitEl.disabled = busy;
+      docCreateNextEl.disabled = busy;
+      docCreateBackEl.disabled = busy;
+      docCreateStatusEl.textContent = busy ? "Working..." : "";
+    }
+
+    function setDocCreateStatus(msg, type) {
+      docCreateStatusEl.textContent = msg;
+      docCreateStatusEl.className = "status-note " + (type || "");
+    }
+
     function configuredLoopProviders() {
       const labelByID = providerCatalog.reduce((acc, provider) => {
         acc[provider.id] = provider.label;
@@ -3382,6 +3603,52 @@
       try {
         window.localStorage.setItem(projectStorageKey, JSON.stringify(payload));
       } catch (_) {}
+    }
+
+    function setDocCreateOpen(open) {
+      const isOpen = Boolean(open);
+      document.body.classList.toggle("pod-drawer-open", isOpen);
+      docCreatePanelEl.classList.toggle("open", isOpen);
+      docCreatePanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      syncRightDrawerOverlay();
+      if (isOpen) {
+        setDocCreateStep(1);
+        setDocCreateMethod("issue");
+        setDocCreateStatus("", "muted");
+      }
+    }
+
+    async function loadDocProjectIssues() {
+      const projectID = docCreateProjectEl.value;
+      if (!projectID) {
+        docCreateIssueEl.innerHTML = '<option value="">Select project</option>';
+        docCreateIssueEl.disabled = true;
+        return;
+      }
+      try {
+        const issues = await fetchJSON("/v1/projects/" + projectID + "/issues");
+        state.podProjectIssues[projectID] = Array.isArray(issues) ? issues : [];
+        renderDocIssueOptions(projectID);
+      } catch (err) {
+        setDocCreateStatus("Error loading issues: " + err.message, "err");
+      }
+    }
+
+    function renderDocIssueOptions(projectID) {
+      const issues = state.podProjectIssues[projectID] || [];
+      const filter = (docCreateIssueFilterEl.value || "").toLowerCase();
+      const filtered = issues.filter(i => 
+        String(i.number).includes(filter) || 
+        (i.title || "").toLowerCase().includes(filter)
+      );
+      docCreateIssueEl.innerHTML = '<option value="">Select issue (' + filtered.length + ')</option>';
+      filtered.forEach(i => {
+        const opt = document.createElement("option");
+        opt.value = String(i.id);
+        opt.textContent = "#" + i.number + " " + i.title;
+        docCreateIssueEl.appendChild(opt);
+      });
+      docCreateIssueEl.disabled = filtered.length === 0;
     }
 
     function syncRightDrawerOverlay() {
@@ -4069,6 +4336,7 @@
         updateStats(state.loops);
         renderGrid();
         renderProjects();
+        refreshDocuments();
         syncPodViewActions();
         apiDotEl.className = "dot ok";
         if (state.selectedLoop && !state.loops.some((l) => l.loopID === state.selectedLoop)) {
@@ -4087,6 +4355,136 @@
       } catch (_) {
         apiDotEl.className = "dot err";
       }
+    }
+
+    async function refreshDocuments() {
+      try {
+        const raw = await fetchJSON("/v1/documents");
+        state.documents = Array.isArray(raw) ? raw : [];
+        renderDocuments();
+      } catch (err) {
+        console.error("Error fetching documents:", err);
+      }
+    }
+
+    function renderDocuments() {
+      if (!docListEl) return;
+      docListEl.innerHTML = "";
+      
+      const query = (state.docSearchQuery || "").toLowerCase();
+      const filtered = state.documents.filter(d => 
+        (d.title || "").toLowerCase().includes(query) || 
+        (d.id || "").toLowerCase().includes(query) ||
+        (d.projectID || "").toLowerCase().includes(query)
+      );
+
+      if (filtered.length === 0) {
+        docListEl.innerHTML = '<div class="status-note">No documents found.</div>';
+        return;
+      }
+
+      // Group by project
+      const grouped = {};
+      filtered.forEach(doc => {
+        if (!grouped[doc.projectID]) grouped[doc.projectID] = [];
+        grouped[doc.projectID].push(doc);
+      });
+
+      const projectIDs = Object.keys(grouped).sort();
+      projectIDs.forEach(projectID => {
+        const section = document.createElement("section");
+        section.className = "tiles-shell";
+        
+        const header = document.createElement("div");
+        header.className = "tiles-header";
+        header.innerHTML = "<strong>Project: " + escapeHtml(projectID) + "</strong>";
+        section.appendChild(header);
+
+        const grid = document.createElement("div");
+        grid.className = "pod-grid";
+        
+        grouped[projectID].forEach(doc => {
+          const tile = document.createElement("div");
+          tile.className = "pod-tile";
+          if (doc.status === "archived") tile.style.opacity = "0.6";
+          
+          tile.innerHTML = `
+            <div class="pod-tile-head">
+              <div class="pod-tile-id">${escapeHtml(doc.title || "Untitled")}</div>
+              <div class="pod-tile-state ${doc.status === "active" ? "state-synced" : "state-cancelled"}">${escapeHtml(doc.status || "active")}</div>
+            </div>
+            <div class="pod-tile-meta">
+              <span class="muted">${escapeHtml(doc.sourceType || "unknown")}: ${escapeHtml(doc.sourceRef || "direct")}</span>
+              <span class="muted">${new Date(doc.updatedAt).toLocaleString()}</span>
+            </div>
+            <div class="pod-tile-actions" style="margin-top: 12px; display: flex; gap: 8px;">
+              <button class="doc-edit" data-doc-id="${doc.id}">Edit</button>
+              <button class="doc-build primary" data-doc-id="${doc.id}">Build</button>
+              <button class="doc-archive" data-doc-id="${doc.id}">${doc.status === "active" ? "Archive" : "Unarchive"}</button>
+              <button class="doc-delete danger" data-doc-id="${doc.id}">Delete</button>
+            </div>
+          `;
+          grid.appendChild(tile);
+        });
+        
+        section.appendChild(grid);
+        docListEl.appendChild(section);
+      });
+
+      // Add event listeners to buttons
+      docListEl.querySelectorAll(".doc-edit").forEach(btn => {
+        btn.onclick = (e) => { e.stopPropagation(); editDocument(btn.dataset.docId); };
+      });
+      docListEl.querySelectorAll(".doc-build").forEach(btn => {
+        btn.onclick = (e) => { e.stopPropagation(); buildDocument(btn.dataset.docId); };
+      });
+      docListEl.querySelectorAll(".doc-archive").forEach(btn => {
+        btn.onclick = (e) => { e.stopPropagation(); archiveDocument(btn.dataset.docId); };
+      });
+      docListEl.querySelectorAll(".doc-delete").forEach(btn => {
+        btn.onclick = (e) => { e.stopPropagation(); deleteDocument(btn.dataset.docId); };
+      });
+    }
+
+    async function archiveDocument(id) {
+      const doc = state.documents.find(d => d.id === id);
+      if (!doc) return;
+      const nextStatus = doc.status === "active" ? "archived" : "active";
+      try {
+        await requestJSON("/v1/documents/" + id, "PUT", { status: nextStatus });
+        void refreshDocuments();
+      } catch (err) {
+        setNotice("Error archiving document: " + err.message, "err");
+      }
+    }
+
+    async function deleteDocument(id) {
+      if (!confirm("Delete this document?")) return;
+      try {
+        await deleteJSON("/v1/documents/" + id);
+        void refreshDocuments();
+      } catch (err) {
+        setNotice("Error deleting document: " + err.message, "err");
+      }
+    }
+
+    async function buildDocument(id) {
+      try {
+        await postJSON("/v1/documents/" + id + "/build", {});
+        setNotice("Build loop instantiated for document: " + id, "ok");
+        void refreshLoops();
+        setActivePage("pods", true);
+      } catch (err) {
+        setNotice("Error building document: " + err.message, "err");
+      }
+    }
+
+    function editDocument(id) {
+      const doc = state.documents.find(d => d.id === id);
+      if (!doc) return;
+      const nextContent = prompt("Edit Document Content", doc.content);
+      if (nextContent === null) return;
+      void requestJSON("/v1/documents/" + id, "PUT", { content: nextContent }).then(() => refreshDocuments());
     }
 
     function clearJournal(reason) {
@@ -4636,6 +5034,50 @@
     podCreateSubmitEl.addEventListener("click", () => {
       void startLoopFromIssue();
     });
+
+    docSearchEl.addEventListener("input", () => {
+      state.docSearchQuery = docSearchEl.value;
+      renderDocuments();
+    });
+    docCreateToggleEl.addEventListener("click", () => setDocCreateOpen(true));
+    docCreateCloseEl.addEventListener("click", () => setDocCreateOpen(false));
+    docCreateCancelEl.addEventListener("click", () => setDocCreateOpen(false));
+    docCreateProjectEl.addEventListener("change", () => {
+      docCreateIssueFilterEl.value = "";
+      docCreateIssueEl.value = "";
+      void loadDocProjectIssues();
+    });
+    docCreateMethodButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const method = button.getAttribute("data-doc-create-method") || "";
+        setDocCreateMethod(method);
+      });
+    });
+    docCreateBackEl.addEventListener("click", () => {
+      setDocCreateStatus("", "muted");
+      setDocCreateStep(state.docCreateStep - 1);
+    });
+    docCreateNextEl.addEventListener("click", () => {
+      setDocCreateStep(state.docCreateStep + 1);
+    });
+    docCreateIssueFilterEl.addEventListener("input", () => {
+      renderDocIssueOptions(docCreateProjectEl.value);
+    });
+    docCreateSubmitEl.addEventListener("click", () => {
+      void submitDocCreate();
+    });
+    docCreateFileEl.addEventListener("change", async () => {
+      const file = docCreateFileEl.files && docCreateFileEl.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        docCreateContentEl.value = text;
+        setDocCreateStatus("Loaded file: " + file.name, "ok");
+      } catch (_err) {
+        setDocCreateStatus("Failed to read file.", "err");
+      }
+    });
+
     document.getElementById("override-apply").addEventListener("click", applyOverride);
     document.getElementById("provider-back").addEventListener("click", () => setProviderConfigOpen(false));
     providerListEl.addEventListener("click", (ev) => {
