@@ -2883,3 +2883,184 @@ func shellQuote(value string) string {
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
+
+func (s *server) handleDocuments(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		docs, err := s.store.ListDocuments(r.Context())
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, docs)
+	case http.MethodPost:
+		var req documentRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		if req.ProjectID == "" || req.Title == "" || req.Content == "" {
+			writeErr(w, http.StatusBadRequest, "project_id, title, and content are required")
+			return
+		}
+		docID := req.ID
+		if docID == "" {
+			docID = fmt.Sprintf("doc-%d", time.Now().UTC().UnixNano())
+		}
+		status := req.Status
+		if status == "" {
+			status = "active"
+		}
+		doc := model.Document{
+			ID:            docID,
+			ProjectID:     req.ProjectID,
+			Title:         req.Title,
+			Content:       req.Content,
+			Format:        req.Format,
+			SourceType:    req.SourceType,
+			SourceRef:     req.SourceRef,
+			Status:        status,
+			Metadata:      req.Metadata,
+			CorrelationID: fmt.Sprintf("doc-corr-%d", time.Now().UTC().UnixNano()),
+		}
+		if err := s.store.PutDocument(r.Context(), doc); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, doc)
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/v1/documents/")
+	parts := strings.Split(id, "/")
+	docID := parts[0]
+	if docID == "" {
+		writeErr(w, http.StatusBadRequest, "document id is required")
+		return
+	}
+	route := ""
+	if len(parts) > 1 {
+		route = parts[1]
+	}
+
+	doc, found, err := s.store.GetDocument(r.Context(), docID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "document not found")
+		return
+	}
+
+	if route == "build" {
+		if r.Method != http.MethodPost {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		// Build instantiates a smith loop from the document content
+		// Content is expected to be PRD JSON or Markdown
+		format := strings.ToLower(doc.Format)
+		if format == "" {
+			if strings.HasPrefix(strings.TrimSpace(doc.Content), "{") {
+				format = "json"
+			} else {
+				format = "markdown"
+			}
+		}
+
+		var drafts []ingress.LoopDraft
+		var errs []ingress.ParseError
+		baseMetadata := copyStringMap(doc.Metadata)
+		if baseMetadata == nil {
+			baseMetadata = make(map[string]string)
+		}
+		baseMetadata["document_id"] = doc.ID
+		baseMetadata["project_id"] = doc.ProjectID
+
+		switch format {
+		case "markdown", "md":
+			drafts, errs = ingress.ParsePRDMarkdown(doc.Content, doc.SourceRef, baseMetadata)
+		case "json":
+			var tasks []ingress.PRDTask
+			if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
+				drafts, errs = ingress.PRDTasksToDrafts(tasks, doc.SourceRef, baseMetadata)
+			} else {
+				writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
+				return
+			}
+		default:
+			writeErr(w, http.StatusBadRequest, "unsupported document format for build")
+			return
+		}
+
+		if len(errs) > 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
+			return
+		}
+
+		results := make([]ingressResult, 0, len(drafts))
+		for i, draft := range drafts {
+			res := s.createOneLoop(r.Context(), loopCreateRequest{
+				IdempotencyKey: draft.IdempotencyKey,
+				Title:          draft.Title,
+				Description:    draft.Description,
+				SourceType:     draft.SourceType,
+				SourceRef:      draft.SourceRef,
+				Metadata:       draft.Metadata,
+			})
+			results = append(results, ingressResult{
+				ItemIndex: i,
+				LoopID:    res.LoopID,
+				SourceRef: draft.SourceRef,
+				Status:    res.Status,
+				Created:   res.Created,
+				Message:   res.Message,
+			})
+		}
+		writeJSON(w, http.StatusOK, ingressSummary(results))
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, doc)
+	case http.MethodPut:
+		var req documentRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		if req.Title != "" {
+			doc.Title = req.Title
+		}
+		if req.Content != "" {
+			doc.Content = req.Content
+		}
+		if req.Format != "" {
+			doc.Format = req.Format
+		}
+		if req.Status != "" {
+			doc.Status = req.Status
+		}
+		if req.Metadata != nil {
+			doc.Metadata = req.Metadata
+		}
+		if err := s.store.PutDocument(r.Context(), doc); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, doc)
+	case http.MethodDelete:
+		if err := s.store.DeleteDocument(r.Context(), docID); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
