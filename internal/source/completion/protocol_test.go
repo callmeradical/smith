@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"smith/internal/source/model"
 )
 
 func TestExecuteSuccess(t *testing.T) {
@@ -122,16 +124,16 @@ func TestExecuteRequiresLoopID(t *testing.T) {
 	}
 }
 
-func assertHasPhase(t *testing.T, phases []PhaseRecord, phase Phase) {
+func assertHasPhase(t *testing.T, phases []model.JournalEntry, phase Phase) {
 	t.Helper()
 	if !hasPhase(phases, phase) {
 		t.Fatalf("expected phase %q in %+v", phase, phases)
 	}
 }
 
-func hasPhase(phases []PhaseRecord, phase Phase) bool {
+func hasPhase(phases []model.JournalEntry, phase Phase) bool {
 	for _, record := range phases {
-		if record.Phase == phase {
+		if record.Metadata != nil && record.Metadata["completion_phase"] == string(phase) {
 			return true
 		}
 	}
@@ -139,12 +141,12 @@ func hasPhase(phases []PhaseRecord, phase Phase) bool {
 }
 
 type fakeStore struct {
-	phases           []PhaseRecord
+	phases           []model.JournalEntry
 	syncErr          error
 	unresolvedReason string
 }
 
-func (f *fakeStore) RecordPhase(_ context.Context, record PhaseRecord) error {
+func (f *fakeStore) RecordPhase(_ context.Context, record model.JournalEntry) error {
 	f.phases = append(f.phases, record)
 	return nil
 }

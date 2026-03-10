@@ -458,3 +458,28 @@ func (s *Store) WatchState(ctx context.Context) <-chan Event {
 	}()
 	return out
 }
+
+// RecordPhase implements completion.PhaseStore
+func (s *Store) RecordPhase(ctx context.Context, record model.JournalEntry) error {
+	return s.AppendJournal(ctx, record)
+}
+
+// SetStateSynced implements completion.PhaseStore
+func (s *Store) SetStateSynced(ctx context.Context, loopID string, commitSHA string) error {
+	_, err := s.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
+		current.State = model.LoopStateSynced
+		current.Reason = fmt.Sprintf("completion-saga-succeeded: commit=%s", commitSHA)
+		return current, nil
+	})
+	return err
+}
+
+// SetStateUnresolved implements completion.PhaseStore
+func (s *Store) SetStateUnresolved(ctx context.Context, loopID string, reason string) error {
+	_, err := s.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
+		current.State = model.LoopStateUnresolved
+		current.Reason = reason
+		return current, nil
+	})
+	return err
+}
