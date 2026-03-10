@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"smith/internal/source/model"
 )
 
 var (
@@ -30,6 +32,21 @@ type PhaseRecord struct {
 	Description string
 }
 
+func (r PhaseRecord) ToJournal() model.JournalEntry {
+	return model.JournalEntry{
+		LoopID:    r.LoopID,
+		Phase:     "completion",
+		Level:     "info",
+		ActorType: "replica",
+		ActorID:   "smith-replica",
+		Message:   fmt.Sprintf("phase: %s - %s", r.Phase, r.Description),
+		Metadata: map[string]string{
+			"completion_phase": string(r.Phase),
+			"commit_sha":       r.CommitSHA,
+		},
+	}
+}
+
 type CommitRequest struct {
 	LoopID        string
 	CorrelationID string
@@ -50,7 +67,7 @@ type CommitResult struct {
 }
 
 type PhaseStore interface {
-	RecordPhase(ctx context.Context, record PhaseRecord) error
+	RecordPhase(ctx context.Context, record model.JournalEntry) error
 	SetStateSynced(ctx context.Context, loopID string, commitSHA string) error
 	SetStateUnresolved(ctx context.Context, loopID string, reason string) error
 }
@@ -81,7 +98,7 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 		LoopID:      req.LoopID,
 		Phase:       PhasePrepared,
 		Description: "completion protocol prepared",
-	}); err != nil {
+	}.ToJournal()); err != nil {
 		return CommitResult{}, err
 	}
 
@@ -98,7 +115,7 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 		Phase:       PhaseCodeCommitted,
 		CommitSHA:   commitSHA,
 		Description: "code commit pushed",
-	}); err != nil {
+	}.ToJournal()); err != nil {
 		return CommitResult{}, err
 	}
 
@@ -108,7 +125,7 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 			Phase:       PhaseCompensationNeed,
 			CommitSHA:   commitSHA,
 			Description: "state sync failed after code commit",
-		})
+		}.ToJournal())
 
 		if revertErr := p.git.Revert(ctx, req.LoopID, commitSHA); revertErr != nil {
 			return CommitResult{
@@ -126,7 +143,7 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 			Phase:       PhaseCompensated,
 			CommitSHA:   commitSHA,
 			Description: "commit reverted after state sync failure",
-		})
+		}.ToJournal())
 		_ = p.store.SetStateUnresolved(ctx, req.LoopID, "compensated-after-sync-failure")
 
 		return CommitResult{
@@ -140,7 +157,7 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 		Phase:       PhaseStateCommitted,
 		CommitSHA:   commitSHA,
 		Description: "state transitioned to synced",
-	}); err != nil {
+	}.ToJournal()); err != nil {
 		return CommitResult{}, err
 	}
 

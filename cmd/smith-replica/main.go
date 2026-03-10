@@ -15,6 +15,7 @@ import (
 
 	"smith/internal/source/model"
 	"smith/internal/source/store"
+	"smith/internal/source/completion"
 )
 
 const (
@@ -161,7 +162,52 @@ func main() {
 		log.Fatalf("replica loop failed: %v", runErr)
 	}
 
-	finalState, finalizeErr := finalizeLoopState(ctx, storeClient, loopID, desiredState, finalizeReason)
+	finalState := desiredState
+	var finalizeErr error
+
+	if desiredState == model.LoopStateSynced {
+		gitPAT := strings.TrimSpace(os.Getenv("SMITH_GIT_PAT"))
+		gitRepo := strings.TrimSpace(os.Getenv("SMITH_GIT_REPOSITORY"))
+		gitBranch := strings.TrimSpace(os.Getenv("SMITH_GIT_BRANCH"))
+
+		protocol := completion.NewProtocol(storeClient, &completion.RealGit{
+			Workspace:  workspace,
+			Repository: gitRepo,
+			Branch:     gitBranch,
+			PAT:        gitPAT,
+		})
+
+		_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        loopID,
+			Phase:         "completion",
+			Level:         "info",
+			ActorType:     "replica",
+			ActorID:       hostnameOr("smith-replica"),
+			Message:       "starting completion saga (commit + sync)",
+			CorrelationID: correlationID,
+			Metadata: map[string]string{
+				"repository": gitRepo,
+				"branch":     gitBranch,
+			},
+		})
+
+		result, err := protocol.Execute(ctx, completion.CommitRequest{
+			LoopID:    loopID,
+			FinalDiff: "autonomous completion", // In a real scenario we might capture a diff summary
+		})
+		if err != nil {
+			finalizeErr = err
+			finalState = model.LoopStateFlatline
+			finalizeReason = "completion-saga-failed"
+		} else {
+			finalState = model.LoopStateSynced
+			finalizeReason = "completion-saga-succeeded"
+			log.Printf("completion saga succeeded: commit=%s", result.CommitSHA)
+		}
+	} else {
+		finalState, finalizeErr = finalizeLoopState(ctx, storeClient, loopID, desiredState, finalizeReason)
+	}
+
 	if finalizeErr != nil {
 		recordRuntimeFailure(ctx, storeClient, loopID, correlationID, finalizeErr)
 		log.Fatalf("failed to finalize state: %v", finalizeErr)
