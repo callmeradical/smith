@@ -248,17 +248,17 @@ build-local: ## Build local binaries for deploy-local workflow
 	fi
 
 image-build-local: ## Build local Smith container images with deploy-local tags
-	docker build -f docker/core.Dockerfile -t "$(SMITH_CORE_IMAGE)" .
-	docker build -f docker/api.Dockerfile -t "$(SMITH_API_IMAGE)" .
-	docker build -f docker/replica.Dockerfile -t "$(SMITH_REPLICA_IMAGE)" .
-	docker build -f docker/console.Dockerfile -t "$(SMITH_CONSOLE_IMAGE)" .
+	docker build -f docker/core.Dockerfile -t "$(SMITH_LOCAL_CORE_IMAGE)" .
+	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
+	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
+	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
 
 image-load-local: ## Import local Smith container images into the k3d cluster
 	k3d image import -c "$(SMITH_K3D_CLUSTER_NAME)" \
-	  "$(SMITH_CORE_IMAGE)" \
-	  "$(SMITH_API_IMAGE)" \
-	  "$(SMITH_REPLICA_IMAGE)" \
-	  "$(SMITH_CONSOLE_IMAGE)"
+	  "$(SMITH_LOCAL_CORE_IMAGE)" \
+	  "$(SMITH_LOCAL_API_IMAGE)" \
+	  "$(SMITH_LOCAL_REPLICA_IMAGE)" \
+	  "$(SMITH_LOCAL_CONSOLE_IMAGE)"
 
 images-local: image-build-local image-load-local ## Build and load local Smith images for deploy-local
 

@@ -13,6 +13,8 @@ spec:
       app.kubernetes.io/component: console
   template:
     metadata:
+      annotations:
+        rollout-id: {{ randAlphaNum 5 | quote }}
       labels:
         {{- include "smith.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: console
