@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "project": "Console Interactive WebSocket Chat",
+  "overview": "Enable a rich chat interface in the console for interactive PRD generation and loop clarification. This replaces or supplements the line-based terminal with a WebSocket-driven chat bubble UI, allowing users to converse with the agent during interactive phases.",
+  "goals": [
+    "Implement a WebSocket endpoint in smith-api for real-time bidirectional chat",
+    "Add a Chat UI component to the pod detail view with support for chat bubbles",
+    "Integrate the chat with the smith-replica interactive PRD generation phase",
+    "Ensure the chat is authenticated and auditable"
+  ],
+  "nonGoals": [
+    "Replacing the system-level journal (chat messages should also be journaled)",
+    "Full-screen immersive chat mode (should fit within pod detail view)",
+    "Support for voice or image-based interaction"
+  ],
+  "successMetrics": [
+    "WebSocket connection establishes within 1 second of opening the chat tab",
+    "Messages are delivered and rendered with less than 200ms latency (excluding LLM processing time)",
+    "100% of chat messages are persisted as journal entries for traceability",
+    "Unauthorized WebSocket upgrade attempts are rejected with 401/403"
+  ],
+  "openQuestions": [
+    "Should the chat history be stored separately or just derived from the journal?",
+    "How do we handle multiple concurrent operators in the same chat?",
+    "Should we use a specific chat agent CLI command or just wrap the existing smith --prompt?"
+  ],
+  "stack": {
+    "backend": "Go (cmd/smith-api) with gorilla/websocket",
+    "frontend": "Vanilla JS (console/index.html)",
+    "state": "etcd (via smith-api journal/store)"
+  },
+  "routes": [
+    {
+      "path": "GET /v1/loops/{id}/control/chat",
+      "name": "WebSocket Chat Endpoint",
+      "purpose": "Upgrade connection to WebSocket for real-time chat interaction"
+    }
+  ],
+  "uiNotes": [
+    "Add a 'Chat' tab or toggle in the pod detail view.",
+    "Render user messages on the right, agent messages on the left.",
+    "Include a 'thinking' indicator while the agent is processing.",
+    "Auto-scroll to the bottom on new messages."
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Implement WebSocket endpoint in smith-api",
+      "status": "done",
+      "description": "Add a new route /v1/loops/{id}/control/chat that upgrades to WebSocket and handles bidirectional message flow.",
+      "acceptanceCriteria": [
+        "New endpoint `/v1/loops/{id}/control/chat` is registered.",
+        "Connection upgrades successfully using gorilla/websocket.",
+        "Messages sent from client are echoed or logged correctly.",
+        "Authentication is enforced before upgrade."
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Add Chat UI to console pod detail",
+      "status": "done",
+      "description": "Implement the chat interface in console/index.html including message rendering and input handling.",
+      "acceptanceCriteria": [
+        "A 'Chat' toggle or button is added to the pod detail view.",
+        "A chat panel appears when enabled, separate from the raw journal terminal.",
+        "User can type and send messages via WebSocket.",
+        "Messages from the server are rendered as chat bubbles."
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Integrate chat with interactive PRD generation",
+      "status": "done",
+      "description": "Connect the WebSocket chat to the smith-replica interactive prompt loop so user input drives PRD creation.",
+      "acceptanceCriteria": [
+        "When smith-replica is in interactive mode, it listens for chat messages via etcd or a proxy.",
+        "User chat messages are fed into the agent prompt.",
+        "Agent responses are streamed back to the WebSocket chat."
+      ]
+    }
+  ]
+}

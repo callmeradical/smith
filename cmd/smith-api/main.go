@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -11,7 +12,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +27,7 @@ import (
 	"smith/internal/source/provider"
 	"smith/internal/source/store"
 
+	"github.com/gorilla/websocket"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,7 +83,9 @@ type server struct {
 	term            *terminalSessionStore
 	runtimePods     runtimePodReader
 	podExec         podExecRunner
+	upgrader        websocket.Upgrader
 	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
+
 	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
 	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
 }
@@ -587,6 +593,9 @@ func main() {
 		term:        newTerminalSessionStore(),
 		runtimePods: runtimePods,
 		podExec:     podExec,
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -597,6 +606,7 @@ func main() {
 	mux.HandleFunc("/v1/environment/presets/", s.handleEnvironmentPresetByName)
 	mux.HandleFunc("/v1/ingress/github/issues", s.handleIngressGitHubIssues)
 	mux.HandleFunc("/v1/ingress/prd", s.handleIngressPRD)
+	mux.HandleFunc("/v1/chat/prd", s.handleChatPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
 	mux.HandleFunc("/v1/audit", s.handleAudit)
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
@@ -1260,6 +1270,146 @@ func resolveRuntimeContainerName(pod corev1.Pod, preferred string) (string, bool
 		return "", false
 	}
 	return pod.Spec.Containers[0].Name, true
+}
+
+type chatMessage struct {
+	Type         string `json:"type"`
+	Text         string `json:"text,omitempty"`
+	Actor        string `json:"actor,omitempty"`
+	Timestamp    string `json:"timestamp,omitempty"`
+	Error        string `json:"error,omitempty"`
+	FinalPRDPath string `json:"final_prd_path,omitempty"`
+}
+
+func (s *server) handleChatPRD(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	conn, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("prd chat upgrade failed: %v", err)
+		return
+	}
+	defer func() { _ = conn.Close() }()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	// Initial greeting or wait for prompt
+	_ = conn.WriteJSON(chatMessage{
+		Type:      "system",
+		Text:      "PRD Chat session started. Waiting for prompt...",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	})
+
+	var initialPrompt string
+	for {
+		var msg chatMessage
+		if err := conn.ReadJSON(&msg); err != nil {
+			return
+		}
+		if msg.Type == "user" && strings.TrimSpace(msg.Text) != "" {
+			initialPrompt = strings.TrimSpace(msg.Text)
+			break
+		}
+	}
+
+	// Create temp directory for PRD output
+	tmpDir, err := os.MkdirTemp("", "smith-prd-*")
+	if err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to create temp dir"})
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	prdOutPath := filepath.Join(tmpDir, "prd.json")
+	
+	// Build prompt file
+	promptContent := fmt.Sprintf(`You are an autonomous coding agent.
+Use the $prd skill to create a Product Requirements Document in JSON.
+Save the PRD to: %s
+Do NOT implement anything.
+Include exactly 5 user stories in the stories array.
+After creating the PRD, end with:
+PRD JSON saved to <path>. Close this chat and launch the Smith build loop.
+
+User request:
+%s`, prdOutPath, initialPrompt)
+
+	promptPath := filepath.Join(tmpDir, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte(promptContent), 0o644); err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to write prompt file"})
+		return
+	}
+
+	// Run codex interactively
+	cmd := exec.CommandContext(ctx, "sh", "-lc", fmt.Sprintf("codex --yolo --skip-git-repo-check %s", shellQuote(promptPath)))
+	stdin, _ := cmd.StdinPipe()
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to start codex agent: " + err.Error()})
+		return
+	}
+
+	// Proxy stdout to websocket
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			text := scanner.Text()
+			_ = conn.WriteJSON(chatMessage{
+				Type:      "agent",
+				Text:      text,
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+	}()
+
+	// Proxy stderr to websocket (as system messages or separate type)
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			text := scanner.Text()
+			_ = conn.WriteJSON(chatMessage{
+				Type:      "system",
+				Text:      "[agent-stderr] " + text,
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+	}()
+
+	// Proxy websocket to stdin
+	go func() {
+		for {
+			var msg chatMessage
+			if err := conn.ReadJSON(&msg); err != nil {
+				_ = stdin.Close()
+				return
+			}
+			if msg.Type == "user" {
+				_, _ = io.WriteString(stdin, msg.Text+"\n")
+			}
+		}
+	}()
+
+	err = cmd.Wait()
+	if err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "system", Text: "Agent session ended: " + err.Error()})
+	}
+
+	// Check if PRD was created
+	if _, statErr := os.Stat(prdOutPath); statErr == nil {
+		prdContent, _ := os.ReadFile(prdOutPath)
+		_ = conn.WriteJSON(chatMessage{
+			Type:         "system",
+			FinalPRDPath: prdOutPath,
+			Text:         string(prdContent), // Send the JSON content back
+		})
+	} else {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "PRD was not generated by the agent"})
+	}
 }
 
 func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID string) {
@@ -2707,4 +2857,11 @@ func (a *auditBridge) RecordAuthEvent(ctx context.Context, event provider.AuthEv
 			"provider_id": event.ProviderID,
 		},
 	})
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
