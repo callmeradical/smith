@@ -1,5 +1,6 @@
 global:
   environment: local
+  rolloutId: ""
   imagePullSecrets: []
   featureFlags:
     loopPolicyConfig: true

@@ -14,7 +14,7 @@ spec:
   template:
     metadata:
       annotations:
-        rollout-id: {{ randAlphaNum 5 | quote }}
+        rollout-id: {{ .Values.global.rolloutId | default (randAlphaNum 5) | quote }}
       labels:
         {{- include "smith.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
