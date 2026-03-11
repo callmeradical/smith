@@ -102,15 +102,22 @@
 <section class="board">
 	<section class="tiles-shell">
 		<div class="pod-grid" role="list">
-			{#each filteredLoops as loop (loop.loopID)}
-				<PodTile 
-					{loop} 
-					selected={$appState.selectedLoop === loop.loopID} 
-					onSelect={selectLoop} 
-				/>
+			{#if $appState.projects.length === 0}
+				<div class="empty">
+					<p>No projects configured yet.</p>
+					<p><a href="/projects" class="nav-link" style="display: inline; padding: 0; color: var(--accent); text-decoration: underline;">Configure a project</a> to start creating loops.</p>
+				</div>
 			{:else}
-				<div class="empty">No pods found.</div>
-			{/each}
+				{#each filteredLoops as loop (loop.loopID)}
+					<PodTile 
+						{loop} 
+						selected={$appState.selectedLoop === loop.loopID} 
+						onSelect={selectLoop} 
+					/>
+				{:else}
+					<div class="empty">No pods found.</div>
+				{/each}
+			{/if}
 		</div>
 	</section>
 </section>
