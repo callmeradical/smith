@@ -28,9 +28,14 @@
 	let skillsPullPolicy = $state('IfNotPresent');
 	let busy = $state(false);
 
+  // Use bind:hidden for drawer control
+  let isHidden = $state(true);
+  $effect(() => { isHidden = !open; });
+  $effect(() => { if (open && isHidden) onClose(); });
+
   let transitionParams = {
-    x: 320,
-    duration: 200,
+    x: 450,
+    duration: 300,
     easing: sineIn
   };
 
@@ -60,21 +65,11 @@
 		}
 	});
 
-	async function refreshProjects() {
-		try {
-			const projects = await fetchJSON("/v1/projects");
-			appState.update(s => ({ ...s, projects: Array.isArray(projects) ? projects : [] }));
-		} catch (err) {
-			console.error("Failed to load projects", err);
-		}
-	}
-
 	async function saveProject() {
 		if (!name || !repoUrl) {
 			pushToast("Name and Repo URL are required", "err");
 			return;
 		}
-
 		busy = true;
 		const projectId = isEditing ? id : slugifySegment(name);
 		const projectPayload = {
@@ -87,25 +82,20 @@
 			skills_image: skillsImage,
 			skills_pull_policy: skillsPullPolicy
 		};
-
 		try {
 			if (isEditing) {
 				await requestJSON(`/v1/projects/${projectId}`, "PUT", projectPayload);
 			} else {
 				await postJSON("/v1/projects", projectPayload);
 			}
-
 			if (githubCredential) {
 				await postJSON("/v1/projects/credentials/github", {
-					actor: "operator",
-					project_id: projectId,
-					github_user: githubUser,
-					credential: githubCredential
+					actor: "operator", project_id: projectId, github_user: githubUser, credential: githubCredential
 				});
 			}
-
 			pushToast(`Project ${isEditing ? 'updated' : 'created'} successfully`, "ok");
-			await refreshProjects();
+			const projects = await fetchJSON("/v1/projects");
+			appState.update(s => ({ ...s, projects: Array.isArray(projects) ? projects : [] }));
 			onClose();
 		} catch (err: any) {
 			pushToast(err.message || "Failed to save project", "err");
@@ -119,13 +109,9 @@
 		busy = true;
 		try {
 			await deleteJSON(`/v1/projects/${id}`);
-			await requestJSON("/v1/projects/credentials/github", "DELETE", {
-				actor: "operator",
-				project_id: id
-			}).catch(() => {});
-			
 			pushToast("Project deleted", "ok");
-			await refreshProjects();
+			const projects = await fetchJSON("/v1/projects");
+			appState.update(s => ({ ...s, projects: Array.isArray(projects) ? projects : [] }));
 			onClose();
 		} catch (err: any) {
 			pushToast(err.message || "Failed to delete project", "err");
@@ -139,12 +125,13 @@
   placement="right" 
   transitionType="fly" 
   {transitionParams} 
-  bind:open={open} 
+  bind:hidden={isHidden} 
+  outsideclose={true}
   id="project-editor-drawer" 
   width="w-[450px]" 
-  class="bg-black border-l border-gray-800 p-0 z-50 overflow-y-auto"
+  class="fixed top-0 right-0 bg-black border-l border-gray-800 z-50 overflow-y-auto h-full m-0 shadow-2xl p-0"
 >
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full relative">
     <!-- Header -->
     <div class="px-8 py-10 bg-slate-900/20 border-b border-gray-900 flex items-center justify-between">
       <div class="flex items-center gap-4">
@@ -157,7 +144,7 @@
         </div>
       </div>
       <button 
-        class="text-gray-500 hover:text-white transition-colors"
+        class="text-white hover:text-[#86BC25] transition-colors p-2"
         onclick={onClose}
         aria-label="Close Drawer"
       >
@@ -198,54 +185,27 @@
               <Input type="password" id="token" placeholder="••••••••" bind:value={githubCredential} disabled={busy} class="bg-black border-gray-800 text-white rounded-none focus:border-[#86BC25]" />
             </div>
           </div>
-          <Helper class="text-gray-600 text-[10px] uppercase font-bold leading-relaxed">
-            Credentials are encrypted and stored in the system vault.
-          </Helper>
         </div>
 
         <div class="my-8 border-t border-gray-900"></div>
 
         <div class="space-y-6">
-          <h4 class="text-[10px] font-bold uppercase tracking-[0.3em] text-[#86BC25]">Runtime Environment</h4>
-          <div class="space-y-4">
+          <h4 class="text-[10px] font-bold uppercase tracking-[0.3em] text-[#86BC25]">Runtime & Skills</h4>
+          <div class="grid grid-cols-1 gap-4">
             <div>
               <Label for="r-image" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Replica Image</Label>
               <Input type="text" id="r-image" placeholder="smith-replica:latest" bind:value={runtimeImage} disabled={busy} class="bg-black border-gray-800 text-white font-mono text-sm rounded-none focus:border-[#86BC25]" />
             </div>
             <div>
-              <Label for="r-policy" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Pull Policy</Label>
-              <Select id="r-policy" bind:value={runtimePullPolicy} disabled={busy} class="bg-black border-gray-800 text-white rounded-none focus:border-[#86BC25]">
-                <option value="IfNotPresent">IfNotPresent</option>
-                <option value="Always">Always</option>
-                <option value="Never">Never</option>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        <div class="my-8 border-t border-gray-900"></div>
-
-        <div class="space-y-6">
-          <h4 class="text-[10px] font-bold uppercase tracking-[0.3em] text-[#86BC25]">Skills Configuration</h4>
-          <div class="space-y-4">
-            <div>
               <Label for="s-image" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Skills Image</Label>
               <Input type="text" id="s-image" placeholder="smith-skills:latest" bind:value={skillsImage} disabled={busy} class="bg-black border-gray-800 text-white font-mono text-sm rounded-none focus:border-[#86BC25]" />
-            </div>
-            <div>
-              <Label for="s-policy" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Pull Policy</Label>
-              <Select id="s-policy" bind:value={skillsPullPolicy} disabled={busy} class="bg-black border-gray-800 text-white rounded-none focus:border-[#86BC25]">
-                <option value="IfNotPresent">IfNotPresent</option>
-                <option value="Always">Always</option>
-                <option value="Never">Never</option>
-              </Select>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Footer Actions -->
-      <div class="pt-10 pb-20 border-t border-gray-900 flex justify-between gap-4">
+      <div class="pt-10 pb-20 border-t border-gray-900 flex justify-between gap-4 mt-auto">
         {#if isEditing}
           <Button color="red" size="sm" class="rounded-none font-bold uppercase text-[10px] tracking-widest px-6" onclick={deleteProject} disabled={busy}>
             <TrashBinOutline size="xs" class="mr-2" />
@@ -253,8 +213,8 @@
           </Button>
         {/if}
         <div class="flex gap-3 ml-auto">
-          <Button color="alternative" size="sm" class="rounded-none font-bold uppercase text-[10px] tracking-widest border-gray-800 hover:bg-white/5 px-6" onclick={onClose} disabled={busy}>Cancel</Button>
-          <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest rounded-none px-8 py-2" type="submit" disabled={busy}>
+          <Button color="alternative" size="sm" class="rounded-none font-bold uppercase text-[10px] tracking-widest border-gray-700 bg-slate-800 text-gray-300 hover:bg-slate-700 px-6" onclick={onClose} disabled={busy}>Cancel</Button>
+          <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest rounded-none px-8 py-2 hover:bg-[#a1e02c]" type="submit" disabled={busy}>
             <CheckOutline size="xs" class="mr-2" />
             {isEditing ? 'Update Project' : 'Create Project'}
           </Button>
@@ -267,5 +227,15 @@
 <style>
   :global(#project-editor-drawer) {
     background-color: #000000 !important;
+    left: auto !important;
+    right: 0 !important;
+  }
+  /* Force hide Flowbite's default absolute-positioned close button */
+  :global(#project-editor-drawer button[aria-label="Close"]) {
+    display: none !important;
+  }
+  /* Preserve custom close button visibility */
+  :global(#project-editor-drawer .relative > button[aria-label="Close Drawer"]) {
+    display: flex !important;
   }
 </style>

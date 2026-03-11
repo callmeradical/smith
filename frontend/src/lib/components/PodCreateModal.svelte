@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { appState, pushToast } from '$lib/stores';
 	import { fetchJSON, postJSON } from '$lib/api';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { slugifySegment, normalizeBranchName } from '$lib/utils';
   import { Modal, Button, Label, Input, Select, Textarea, Badge } from 'flowbite-svelte';
   import { ArrowLeftOutline, ArrowRightOutline, RocketOutline, PaperPlaneOutline } from 'flowbite-svelte-icons';
@@ -119,6 +119,10 @@
 
 	async function submit() {
 		busy = true;
+		if (chatSocket) {
+			chatSocket.close();
+			chatSocket = null;
+		}
 		try {
 			const payload = {
 				loop_id: slugifySegment(projectID + "-" + (loopName || "loop")),
@@ -146,9 +150,19 @@
   $effect(() => {
     if (!open) {
       step = 1;
-      if (chatSocket) chatSocket.close();
+      if (chatSocket) {
+				chatSocket.close();
+				chatSocket = null;
+			}
     }
   });
+
+	onDestroy(() => {
+		if (chatSocket) {
+			chatSocket.close();
+			chatSocket = null;
+		}
+	});
 </script>
 
 <Modal bind:open title="Start New Loop" size="md" autoclose={false} class="bg-black border border-gray-800 rounded-none">

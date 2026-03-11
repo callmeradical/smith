@@ -26,7 +26,16 @@ function pageFromHash() {
     state.pendingPodViewLoopID = "";
     return "podView";
   }
-  const validPages = ["pods", "podView", "documents", "projects", "providers", "controls"];
+  if (raw.startsWith("doc-view/")) {
+    const encoded = rawValue.slice("doc-view/".length);
+    try {
+      state.selectedDocument = decodeURIComponent(encoded);
+    } catch (_) {
+      state.selectedDocument = encoded;
+    }
+    return "docView";
+  }
+  const validPages = ["pods", "podView", "documents", "docView", "projects", "providers", "controls"];
   return validPages.includes(raw) ? raw : "pods";
 }
 

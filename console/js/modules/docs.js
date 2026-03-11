@@ -358,12 +358,197 @@ function renderDocTile(doc, container) {
     </div>
   `;
   
-  tile.querySelector(".doc-edit").onclick = (e) => { e.stopPropagation(); editDocument(doc.id); };
+  tile.querySelector(".doc-edit").onclick = (e) => { e.stopPropagation(); openDocumentDetail(doc.id); };
   tile.querySelector(".doc-build").onclick = (e) => { e.stopPropagation(); buildDocument(doc.id); };
   tile.querySelector(".doc-archive").onclick = (e) => { e.stopPropagation(); archiveDocument(doc.id); };
   tile.querySelector(".doc-delete").onclick = (e) => { e.stopPropagation(); deleteDocument(doc.id); };
   
+  tile.onclick = () => openDocumentDetail(doc.id);
+
   container.appendChild(tile);
+}
+
+export function openDocumentDetail(id) {
+  state.selectedDocument = id;
+  const doc = state.documents.find(d => d.id === id);
+  if (!doc) return;
+
+  const titleEl = getDocViewTitleEl();
+  if (titleEl) titleEl.textContent = "Document: " + (doc.title || doc.id);
+
+  const metaEl = getDocViewMetaEl();
+  if (metaEl) metaEl.textContent = "Project: " + doc.project_id + " | Status: " + doc.status + " | Format: " + (doc.format || "markdown");
+
+  syncDocViewContent();
+  setDocViewTab("content");
+  setActivePage("docView", true);
+  syncDocViewActions();
+}
+
+export function syncDocViewContent() {
+  const doc = state.documents.find(d => d.id === state.selectedDocument);
+  const contentEl = getDocViewContentEl();
+  if (contentEl && doc) {
+    contentEl.value = doc.content || "";
+  }
+}
+
+export function setDocViewTab(tab) {
+  const contentPanel = getDocViewContentPanelEl();
+  const draftingPanel = getDocViewDraftingPanelEl();
+  if (contentPanel) contentPanel.classList.toggle("hidden", tab !== "content");
+  if (draftingPanel) draftingPanel.classList.toggle("hidden", tab !== "drafting");
+
+  getDocViewTabs().forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.docTab === tab);
+  });
+}
+
+export function syncDocViewActions() {
+  const doc = state.documents.find(d => d.id === state.selectedDocument);
+  const connected = !!state.docChatSocket;
+
+  const connectEl = getDocViewConnectEl();
+  if (connectEl) {
+    connectEl.textContent = connected ? "Disconnect Agent" : "Connect Drafting Agent";
+    connectEl.onclick = connected ? disconnectDocChat : connectDocChat;
+  }
+
+  const statusEl = getDocTerminalStatusEl();
+  if (statusEl) {
+    statusEl.textContent = state.docChatStatus || "idle";
+  }
+
+  const inputEl = getDocViewChatInputEl();
+  if (inputEl) {
+    inputEl.disabled = !connected;
+    inputEl.placeholder = connected ? "Type to refine document..." : "Connect agent to start drafting";
+  }
+
+  const sendEl = getDocViewChatSendEl();
+  if (sendEl) sendEl.disabled = !connected;
+
+  const buildEl = getDocViewBuildEl();
+  if (buildEl) buildEl.onclick = () => buildDocument(state.selectedDocument);
+
+  const deleteEl = getDocViewDeleteEl();
+  if (deleteEl) deleteEl.onclick = () => deleteDocument(state.selectedDocument);
+
+  const backEl = getDocViewBackEl();
+  if (backEl) backEl.onclick = () => setActivePage("documents", true);
+}
+
+export function connectDocChat() {
+  const doc = state.documents.find(d => d.id === state.selectedDocument);
+  if (!doc) return;
+
+  disconnectDocChat();
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = window.location.host;
+  // We'll reuse the PRD chat endpoint as a drafting agent for now
+  const url = `${protocol}//${host}/v1/chat/prd?provider=openai`;
+  
+  const socket = new WebSocket(url);
+  state.docChatSocket = socket;
+  state.docChatMessages = [{
+    type: "system",
+    text: "Connecting to drafting agent for document: " + doc.title,
+    timestamp: new Date().toISOString()
+  }];
+  state.docChatStatus = "connecting";
+
+  socket.onopen = () => {
+    state.docChatStatus = "connected";
+    pushToast("Drafting agent connected.", "ok");
+    // Send initial context if needed
+    socket.send(JSON.stringify({
+      type: "user",
+      text: "I want to refine the following document: \n\n" + doc.content
+    }));
+    syncDocViewActions();
+    renderDocChat();
+  };
+
+  socket.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      state.docChatMessages.push(msg);
+      renderDocChat();
+      
+      // If the agent produces a final PRD, we could potentially update the document
+      if (msg.type === "system" && msg.FinalPRDPath) {
+         pushToast("Agent produced a refined draft.", "ok");
+      }
+    } catch (err) {
+      console.error("Failed to parse doc chat message", err);
+    }
+  };
+
+  socket.onclose = () => {
+    state.docChatSocket = null;
+    state.docChatStatus = "disconnected";
+    pushToast("Drafting agent disconnected.", "warn");
+    syncDocViewActions();
+  };
+
+  socket.onerror = (err) => {
+    state.docChatStatus = "error";
+    pushToast("Drafting agent connection error.", "err");
+    syncDocViewActions();
+  };
+
+  syncDocViewActions();
+  renderDocChat();
+}
+
+export function disconnectDocChat() {
+  if (state.docChatSocket) {
+    state.docChatSocket.close();
+    state.docChatSocket = null;
+  }
+  state.docChatStatus = "idle";
+  syncDocViewActions();
+}
+
+export function renderDocChat() {
+  const panel = getDocChatPanelEl();
+  if (!panel) return;
+
+  panel.innerHTML = "";
+  state.docChatMessages.forEach((msg) => {
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble " + (msg.type === "user" ? "user" : "agent");
+    if (msg.type === "system") bubble.className = "chat-bubble agent system-msg";
+    
+    const text = document.createElement("div");
+    text.textContent = msg.text || msg.Error || "";
+    bubble.appendChild(text);
+
+    if (msg.timestamp) {
+      const meta = document.createElement("div");
+      meta.className = "chat-bubble-meta";
+      meta.textContent = new Date(msg.timestamp).toLocaleTimeString();
+      bubble.appendChild(meta);
+    }
+
+    panel.appendChild(bubble);
+  });
+
+  panel.scrollTop = panel.scrollHeight;
+}
+
+export function sendDocChatMessage() {
+  const inputEl = getDocViewChatInputEl();
+  const text = inputEl?.value.trim();
+  if (!text || !state.docChatSocket) return;
+
+  state.docChatSocket.send(JSON.stringify({
+    type: "user",
+    text: text
+  }));
+
+  inputEl.value = "";
 }
 
 export async function archiveDocument(id) {

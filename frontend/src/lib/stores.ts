@@ -56,6 +56,8 @@ export const appState = writable({
 });
 
 export const sidebarOpen = writable(false);
+export const chatOpen = writable(false);
+export const chatType = writable('prd-refinement');
 export const toastMessages = writable([]);
 
 export function pushToast(message: string, level: 'ok' | 'err' | 'muted' = 'muted') {

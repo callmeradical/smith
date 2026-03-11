@@ -87,6 +87,11 @@ export function setActivePage(page, updateHash) {
       window.location.hash = selected
         ? "#pod-view/" + encodeURIComponent(selected)
         : "#pods";
+    } else if (target === "docView") {
+      const selected = String(state.selectedDocument || "").trim();
+      window.location.hash = selected
+        ? "#doc-view/" + encodeURIComponent(selected)
+        : "#documents";
     } else {
       window.location.hash = "#" + target;
     }
@@ -100,9 +105,12 @@ export function setActivePage(page, updateHash) {
   if (target !== "pods" && target !== "podView") {
     document.body.classList.remove("pod-drawer-open");
   }
-  
+
   if (target === "podView" && requestedPodViewLoopID && requestedPodViewLoopID !== state.selectedLoop) {
     state.selectedLoop = requestedPodViewLoopID;
+  }
+  if (target === "docView" && state.selectedDocument) {
+    import("./docs.js").then(m => m.openDocumentDetail(state.selectedDocument));
   }
   state.pendingPodViewLoopID = "";
   syncRightDrawerOverlay();

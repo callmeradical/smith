@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -28,6 +31,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if wantsHelp(args) {
 		printHelp(stdout)
 		return 0
+	}
+
+	if len(args) > 0 && args[0] == "agent-chat" {
+		return runAgentChat(args[1:], stdin, stdout, stderr)
 	}
 
 	hasPRDMode := hasFlag(args, "--prd") || hasFlag(args, "--prompt")
@@ -322,9 +329,188 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  smith --prd \"<feature request>\" [--out path] [--stories N] [--agent-cmd \"...\"]")
 	fmt.Fprintln(w, "  smith --prompt <prompt-file> [--out path] [--agent-cmd \"...\"]")
+	fmt.Fprintln(w, "  smith agent-chat [--agent-cmd \"...\"]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Notes:")
 	fmt.Fprintln(w, "  --prd composes a Ralph-style prompt that invokes the $prd skill.")
 	fmt.Fprintln(w, "  --prompt sends an existing prompt file directly to the agent command.")
-	fmt.Fprintln(w, "  Default --out is .agents/tasks/prd.json.")
+	fmt.Fprintln(w, "  agent-chat provides a structured JSON bridge for API integration.")
+}
+
+func runAgentChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("agent-chat", flag.ContinueOnError)
+	var agentCmd string
+	fs.StringVar(&agentCmd, "agent-cmd", defaultPRDAgentFromEnv(), "Agent command")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	sendEvent := func(evt any) {
+		data, _ := json.Marshal(evt)
+		fmt.Fprintln(stdout, string(data))
+	}
+
+	isACP := strings.Contains(agentCmd, "acp")
+	sendEvent(map[string]any{"type": "status", "text": "Agent bridge active", "acp": isACP})
+
+	// Start the agent
+	fields := strings.Fields(agentCmd)
+	if len(fields) == 0 {
+		sendEvent(map[string]string{"type": "error", "text": "empty agent command"})
+		return 1
+	}
+	
+	cmd := exec.Command(fields[0], fields[1:]...)
+	agentStdin, _ := cmd.StdinPipe()
+	agentStdout, _ := cmd.StdoutPipe()
+	agentStderr, _ := cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		sendEvent(map[string]string{"type": "error", "text": "failed to start agent: " + err.Error()})
+		return 1
+	}
+
+	// Helper to send JSON-RPC to agent
+	sendRPC := func(method string, params any, id any) {
+		req := map[string]any{
+			"jsonrpc": "2.0",
+			"method":  method,
+			"params":  params,
+		}
+		if id != nil {
+			req["id"] = id
+		}
+		data, _ := json.Marshal(req)
+		_, _ = agentStdin.Write(data)
+		_, _ = agentStdin.Write([]byte("\n"))
+	}
+
+	// Handle ACP Handshake
+	var sessionID string
+	if isACP {
+		sendRPC("initialize", map[string]any{
+			"capabilities": map[string]any{"text": true},
+			"client_info":  map[string]any{"name": "smith-console", "version": "1.0.0"},
+		}, 1)
+	}
+
+	// Proxy stdin to agent (user prompts)
+	go func() {
+		scanner := bufio.NewScanner(stdin)
+		for scanner.Scan() {
+			text := scanner.Text()
+			if isACP && sessionID != "" {
+				sendRPC("session/prompt", map[string]any{
+					"session_id": sessionID,
+					"message": map[string]any{
+						"role": "user",
+						"parts": []map[string]any{
+							{"content_type": "text/plain", "content": text},
+						},
+					},
+				}, time.Now().UnixNano())
+			} else if !isACP {
+				_, _ = io.WriteString(agentStdin, text+"\n")
+			}
+		}
+		_ = agentStdin.Close()
+	}()
+
+	// Proxy stderr to logs
+	go func() {
+		s := bufio.NewScanner(agentStderr)
+		for s.Scan() {
+			sendEvent(map[string]string{"type": "log", "level": "stderr", "text": s.Text()})
+		}
+	}()
+
+	// Proxy stdout to client
+	var accumulated bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		s := bufio.NewScanner(agentStdout)
+		for s.Scan() {
+			text := s.Text()
+			accumulated.WriteString(text + "\n")
+			
+			var rpc map[string]any
+			if json.Unmarshal([]byte(text), &rpc) == nil {
+				// Handle ACP responses
+				if isACP {
+					method, _ := rpc["method"].(string)
+					id, _ := rpc["id"]
+					
+					// Capability negotiation response
+					if id == float64(1) {
+						sendRPC("session/new", map[string]any{
+							"working_directory": "/workspace",
+						}, 2)
+					} else if id == float64(2) {
+						if res, ok := rpc["result"].(map[string]any); ok {
+							sessionID, _ = res["session_id"].(string)
+							sendEvent(map[string]string{"type": "status", "text": "Agent session established: " + sessionID})
+						}
+					}
+
+					// Notifications
+					if method == "session/update" {
+						if params, ok := rpc["params"].(map[string]any); ok {
+							if msg, ok := params["message"].(map[string]any); ok {
+								if parts, ok := msg["parts"].([]any); ok && len(parts) > 0 {
+									if part, ok := parts[0].(map[string]any); ok {
+										content, _ := part["content"].(string)
+										sendEvent(map[string]string{"type": "output", "text": content})
+									}
+								}
+							}
+						}
+					}
+				}
+				sendEvent(map[string]any{"type": "rpc", "data": rpc})
+			} else {
+				sendEvent(map[string]string{"type": "output", "text": text})
+			}
+		}
+		close(done)
+	}()
+
+	err := cmd.Wait()
+	<-done
+
+	if err != nil {
+		sendEvent(map[string]string{"type": "status", "text": "Agent exited", "error": err.Error()})
+	} else {
+		sendEvent(map[string]string{"type": "status", "text": "Agent completed"})
+	}
+
+	// Final JSON-PRD extraction attempt
+	outputStr := accumulated.String()
+	var jsonStr string
+	depth := 0
+	start := -1
+	for i, r := range outputStr {
+		if r == '{' {
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		} else if r == '}' {
+			depth--
+			if depth == 0 && start != -1 {
+				candidate := outputStr[start : i+1]
+				var prd map[string]any
+				if json.Unmarshal([]byte(candidate), &prd) == nil {
+					if _, hasProj := prd["project"]; hasProj {
+						jsonStr = candidate
+					}
+				}
+			}
+		}
+	}
+
+	if jsonStr != "" {
+		sendEvent(map[string]any{"type": "final_prd", "content": json.RawMessage(jsonStr)})
+	}
+
+	return 0
 }

@@ -46,3 +46,10 @@ console:
     repository: smith-console
     tag: local
     pullPolicy: Never
+
+chat:
+  replicaCount: 1
+  image:
+    repository: smith-chat
+    tag: local
+    pullPolicy: Never

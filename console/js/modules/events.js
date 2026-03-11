@@ -50,7 +50,10 @@ import {
   getPodViewTerminateEl,
   getPodViewDeleteEl,
   getPodViewCommandEl,
-  getPodViewRunEl
+  getPodViewRunEl,
+  getDocViewChatInputEl,
+  getDocViewChatSendEl,
+  getDocViewTabs
 } from "./elements.js";
 import { state } from "./state.js";
 
@@ -176,6 +179,29 @@ export function initEventListeners() {
     commandInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         import("./terminal.js").then(m => m.runSelectedLoopCommand());
+      }
+    });
+  }
+
+  // Doc View Actions
+  getDocViewTabs().forEach(btn => {
+    btn.addEventListener("click", () => {
+      import("./docs.js").then(m => m.setDocViewTab(btn.dataset.docTab));
+    });
+  });
+
+  const docSendBtn = getDocViewChatSendEl();
+  if (docSendBtn) {
+    docSendBtn.addEventListener("click", () => {
+      import("./docs.js").then(m => m.sendDocChatMessage());
+    });
+  }
+
+  const docChatInput = getDocViewChatInputEl();
+  if (docChatInput) {
+    docChatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        import("./docs.js").then(m => m.sendDocChatMessage());
       }
     });
   }

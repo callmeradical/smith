@@ -447,6 +447,60 @@
           </main>
         </div>
       </section>
+
+      <section id="page-doc-view" class="page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <button id="doc-view-back" type="button" aria-label="Back to documents">&larr;</button>
+            <div id="doc-view-title" class="topbar-title">Document Detail</div>
+          </div>
+          <div class="controls">
+            <button id="doc-view-build" type="button" class="primary">build loop</button>
+            <button id="doc-view-delete" type="button" class="danger">delete</button>
+          </div>
+        </header>
+        
+        <div class="doc-view-tabs" role="tablist">
+          <button type="button" class="doc-view-tab active" data-doc-tab="content">Content</button>
+          <button type="button" class="doc-view-tab" data-doc-tab="drafting">Drafting Agent</button>
+        </div>
+
+        <section id="doc-view-content-panel" class="doc-view-panel">
+          <textarea id="doc-view-content" class="terminal" style="width: 100%; height: calc(72vh - 80px); background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; color: var(--text); font-family: var(--mono); font-size: 0.9rem; line-height: 1.5;" readonly></textarea>
+        </section>
+
+        <section id="doc-view-drafting-panel" class="doc-view-panel hidden">
+          <section id="doc-view-terminal-shell" class="journal">
+            <div class="journal-header">
+              <strong id="doc-terminal-title">Drafting Agent Terminal</strong>
+              <span id="doc-terminal-status" class="muted" style="margin-left: 12px;">idle</span>
+            </div>
+            <div id="doc-chat-panel" class="chat-panel terminal" style="background: rgba(0,0,0,0.4); height: calc(72vh - 160px);">
+              <div class="chat-bubble agent">
+                Hello! I'm your drafting agent. Type below to start drafting or refining your document.
+              </div>
+            </div>
+            <div class="pod-command-row journal-prompt-row">
+              <span class="journal-prompt-glyph" aria-hidden="true">$</span>
+              <input
+                id="doc-view-chat-input"
+                type="text"
+                placeholder="Type to draft or refine..."
+                autocomplete="off"
+                spellcheck="false"
+              >
+              <button id="doc-view-chat-send" type="button">send</button>
+            </div>
+          </section>
+          <section class="pod-control-panel" aria-label="Drafting controls" style="margin-top: 12px;">
+            <div class="pod-control-row">
+              <strong id="doc-view-meta" class="pod-runtime-summary">document: --</strong>
+              <button id="doc-view-connect" type="button">connect agent</button>
+            </div>
+          </section>
+        </section>
+      </section>
     </main>
   </div>
 

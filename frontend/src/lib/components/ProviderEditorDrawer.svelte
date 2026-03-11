@@ -18,9 +18,14 @@
 	let accountId = $state('');
 	let busy = $state(false);
 
+  // Use bind:hidden for drawer control
+  let isHidden = $state(true);
+  $effect(() => { isHidden = !open; });
+  $effect(() => { if (open && isHidden) onClose(); });
+
   let transitionParams = {
-    x: 320,
-    duration: 200,
+    x: 450,
+    duration: 300,
     easing: sineIn
   };
 
@@ -36,15 +41,11 @@
 			pushToast("API Key is required", "err");
 			return;
 		}
-
 		busy = true;
 		try {
 			await postJSON(`/v1/auth/codex/connect/api-key`, {
-				actor: "operator",
-				api_key: apiKey,
-        account_id: accountId || 'default'
+				actor: "operator", api_key: apiKey, account_id: accountId || 'default'
 			});
-
 			pushToast(`Provider ${provider?.label || 'Codex'} configured successfully`, "ok");
 			onClose();
 		} catch (err: any) {
@@ -59,12 +60,13 @@
   placement="right" 
   transitionType="fly" 
   {transitionParams} 
-  bind:open={open} 
+  bind:hidden={isHidden} 
+  outsideclose={true}
   id="provider-editor-drawer" 
   width="w-[450px]" 
-  class="bg-black border-l border-gray-800 p-0 z-50 overflow-y-auto"
+  class="fixed top-0 right-0 bg-black border-l border-gray-800 z-50 overflow-y-auto h-full m-0 shadow-2xl p-0"
 >
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full relative">
     <!-- Header -->
     <div class="px-8 py-10 bg-slate-900/20 border-b border-gray-900 flex items-center justify-between">
       <div class="flex items-center gap-4">
@@ -77,7 +79,7 @@
         </div>
       </div>
       <button 
-        class="text-gray-500 hover:text-white transition-colors"
+        class="text-white hover:text-[#86BC25] transition-colors p-2"
         onclick={onClose}
         aria-label="Close Drawer"
       >
@@ -112,8 +114,8 @@
 
       <!-- Footer Actions -->
       <div class="pt-10 pb-20 border-t border-gray-900 flex justify-end gap-4 mt-auto">
-        <Button color="alternative" size="sm" class="rounded-none font-bold uppercase text-[10px] tracking-widest border-gray-800 hover:bg-white/5 px-6" onclick={onClose} disabled={busy}>Cancel</Button>
-        <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest rounded-none px-8 py-2" type="submit" disabled={busy}>
+        <Button color="alternative" size="sm" class="rounded-none font-bold uppercase text-[10px] tracking-widest border-gray-700 bg-slate-900 text-gray-300 hover:bg-slate-700 px-6" onclick={onClose} disabled={busy}>Cancel</Button>
+        <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest rounded-none px-8 py-2 hover:bg-[#a1e02c]" type="submit" disabled={busy}>
           <CheckOutline size="xs" class="mr-2" />
           Update Credentials
         </Button>
@@ -125,5 +127,15 @@
 <style>
   :global(#provider-editor-drawer) {
     background-color: #000000 !important;
+    left: auto !important;
+    right: 0 !important;
+  }
+  /* Force hide default absolute close button */
+  :global(#provider-editor-drawer button[aria-label="Close"]) {
+    display: none !important;
+  }
+  /* Preserve custom close button visibility */
+  :global(#provider-editor-drawer .relative > button[aria-label="Close Drawer"]) {
+    display: flex !important;
   }
 </style>

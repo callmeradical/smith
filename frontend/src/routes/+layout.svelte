@@ -2,14 +2,19 @@
 	import '../app.css';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Toast from '$lib/components/Toast.svelte';
-	import { sidebarOpen, appState, pushToast } from '$lib/stores';
-	import { onMount } from 'svelte';
+	import ChatPanel from '$lib/components/chat/ChatPanel.svelte';
+	import { sidebarOpen, chatOpen, chatType, appState, pushToast } from '$lib/stores';
+	import { onMount, onDestroy } from 'svelte';
 	import { fetchJSON } from '$lib/api';
 
 	let { children } = $props();
 
+	let loopsSource: EventSource | null = null;
+	let docsSource: EventSource | null = null;
+	let auditSource: EventSource | null = null;
+
 	function normalizeLoop(item: any) {
-		const record = item.record || item.Record || item.State || {};
+		const record = item.record || item.Record || item.state || item.State || {};
 		const loopID = record.loop_id || record.LoopID || item.loop_id || item.LoopID || "unknown-loop";
 		const status = (record.state || record.State || "unknown").toLowerCase();
 		const attempt = Number(record.attempt || record.Attempt || 0);
@@ -38,7 +43,7 @@
 
 	function connectStreams() {
 		const loopsUrl = '/api/v1/loops/stream';
-		const loopsSource = new EventSource(loopsUrl);
+		loopsSource = new EventSource(loopsUrl);
 		loopsSource.addEventListener('update', (event) => {
 			try {
 				const data = JSON.parse(event.data);
@@ -57,7 +62,7 @@
 		});
 
 		const docsUrl = '/api/v1/documents/stream';
-		const docsSource = new EventSource(docsUrl);
+		docsSource = new EventSource(docsUrl);
 		docsSource.addEventListener('update', (event) => {
 			try {
 				const doc = JSON.parse(event.data);
@@ -75,7 +80,7 @@
 		});
 
 		const auditUrl = '/api/v1/audit/stream';
-		const auditSource = new EventSource(auditUrl);
+		auditSource = new EventSource(auditUrl);
 		auditSource.addEventListener('update', (event) => {
 			try {
 				const rec = JSON.parse(event.data);
@@ -88,16 +93,28 @@
     document.documentElement.classList.add('dark');
 		initApp();
 	});
+
+	onDestroy(() => {
+		loopsSource?.close();
+		docsSource?.close();
+		auditSource?.close();
+	});
 </script>
 
 <Toast />
 
-<div class="shell min-h-screen bg-black">
+<div class="shell min-h-screen bg-black flex overflow-hidden">
 	<Sidebar />
 
-	<main class="workspace max-w-screen-2xl mx-auto px-4 lg:px-8">
+	<main class="workspace flex-1 max-w-screen-2xl mx-auto px-4 lg:px-8 overflow-y-auto">
 		{@render children()}
 	</main>
+
+    {#if $chatOpen}
+        <div class="w-96 h-screen flex-shrink-0">
+            <ChatPanel type={$chatType} onClose={() => chatOpen.set(false)} />
+        </div>
+    {/if}
 </div>
 
 <style>

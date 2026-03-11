@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,6 +84,8 @@ type server struct {
 	term            *terminalSessionStore
 	runtimePods     runtimePodReader
 	podExec         podExecRunner
+	kube            kubernetes.Interface
+	restConfig      *rest.Config
 	upgrader        websocket.Upgrader
 	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
 
@@ -605,6 +607,11 @@ func main() {
 		log.Printf("smith-api pod exec unavailable: %v", err)
 	}
 
+	kube, restConfig, err := kubeClientWithConfig()
+	if err != nil {
+		log.Printf("smith-api kubernetes client unavailable: %v", err)
+	}
+
 	s := &server{
 		cfg:          cfg,
 		store:        es,
@@ -616,6 +623,8 @@ func main() {
 		term:         newTerminalSessionStore(),
 		runtimePods:  runtimePods,
 		podExec:      podExec,
+		kube:         kube,
+		restConfig:   restConfig,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -875,9 +884,13 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 
 	loopID := strings.TrimSpace(req.LoopID)
 	if loopID == "" {
-		loopID = deriveLoopID(req.IdempotencyKey, req.SourceType, req.SourceRef)
-	}
-	if existing, found, err := s.store.GetState(ctx, loopID); err == nil && found {
+	        projectID := req.Metadata["project_id"]
+	        if projectID == "" {
+	                projectID = req.Metadata["project"]
+	        }
+	        loopID = deriveLoopID(projectID, req.IdempotencyKey, req.SourceType, req.SourceRef)
+	        }
+	        if existing, found, err := s.store.GetState(ctx, loopID); err == nil && found {
 		stored, storedFound, _ := s.store.GetAnomaly(ctx, loopID)
 		if !storedFound {
 			stored.Environment = environment
@@ -1329,7 +1342,7 @@ func (s *server) handleChatPRD(w http.ResponseWriter, r *http.Request) {
 	// Initial greeting or wait for prompt
 	_ = conn.WriteJSON(chatMessage{
 		Type:      "system",
-		Text:      "PRD Chat session started. Waiting for prompt...",
+		Text:      "PRD Drafting Agent starting in Kubernetes... Waiting for prompt.",
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	})
 
@@ -1345,103 +1358,214 @@ func (s *server) handleChatPRD(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Create temp directory for PRD output
-	tmpDir, err := os.MkdirTemp("", "smith-prd-*")
-	if err != nil {
-		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to create temp dir"})
-		return
+	providerID := strings.ToLower(r.URL.Query().Get("provider"))
+	if providerID == "" {
+		providerID = "openai" // default
 	}
-	defer os.RemoveAll(tmpDir)
 
-	prdOutPath := filepath.Join(tmpDir, "prd.json")
+	agentImage := "smith-replica:local"
 	
-	// Build prompt file
-	promptContent := fmt.Sprintf(`You are an autonomous coding agent.
-Use the $prd skill to create a Product Requirements Document in JSON.
-Save the PRD to: %s
-Do NOT implement anything.
-Include exactly 5 user stories in the stories array.
-After creating the PRD, end with:
-PRD JSON saved to <path>. Close this chat and launch the Smith build loop.
+	// Goose provider mapping
+	gooseProvider := "openai"
+	switch providerID {
+	case "google", "gemini":
+		gooseProvider = "google"
+	case "anthropic", "claude":
+		gooseProvider = "anthropic"
+	}
 
-User request:
-%s`, prdOutPath, initialPrompt)
+	agentChatCmd := "smith agent-chat --agent-cmd '/root/.local/bin/goose acp'"
+	podName := fmt.Sprintf("smith-drafter-%d", time.Now().UTC().UnixNano())
+	namespace := s.cfg.runtimeNamespace
+	if namespace == "" {
+		namespace = "smith-system"
+	}
 
-	promptPath := filepath.Join(tmpDir, "prompt.md")
-	if err := os.WriteFile(promptPath, []byte(promptContent), 0o644); err != nil {
-		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to write prompt file"})
+	_ = conn.WriteJSON(chatMessage{
+		Type:      "system",
+		Text:      fmt.Sprintf("Launching %s agent (Goose) in pod %s...", providerID, podName),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	})
+
+	envVars := []corev1.EnvVar{
+		{Name: "GOOSE_PROVIDER", Value: gooseProvider},
+		{Name: "SMITH_RUNTIME_CREDENTIALS", Value: s.cfg.operatorToken},
+		{Name: "OPENAI_API_KEY", Value: s.cfg.operatorToken},
+		{Name: "GOOGLE_API_KEY", Value: s.cfg.operatorToken},
+		{Name: "ANTHROPIC_API_KEY", Value: s.cfg.operatorToken},
+	}
+
+	_ , err = s.createDraftingPod(ctx, namespace, podName, agentImage, envVars)
+	if err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to create drafting pod: " + err.Error()})
+		return
+	}
+	defer func() {
+		cleanupCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		_ = s.kube.CoreV1().Pods(namespace).Delete(cleanupCtx, podName, metav1.DeleteOptions{})
+	}()
+
+	// Stream pipes
+	stdinReader, stdinWriter := io.Pipe()
+	stdoutReader, stdoutWriter := io.Pipe()
+	stderrReader, stderrWriter := io.Pipe()
+
+	// Wait for pod to be running
+	for i := 0; i < 30; i++ {
+		p, err := s.kube.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+		if err == nil && p.Status.Phase == corev1.PodRunning {
+			break
+		}
+		_ = conn.WriteJSON(chatMessage{Type: "system", Text: "Waiting for agent pod to start..."})
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+
+	// Setup interactive exec
+	execRequest := s.kube.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Namespace(namespace).
+		Name(podName).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: "agent",
+			Command:   []string{"/bin/sh", "-lc", agentChatCmd},
+			Stdin:     true,
+			Stdout:    true,
+			Stderr:    true,
+			TTY:       false,
+		}, kubescheme.ParameterCodec)
+
+	executor, err := remotecommand.NewSPDYExecutor(s.restConfig, http.MethodPost, execRequest.URL())
+	if err != nil {
+		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to setup executor: " + err.Error()})
 		return
 	}
 
-	// Run codex interactively
-	cmd := exec.CommandContext(ctx, "sh", "-lc", fmt.Sprintf("codex --yolo --skip-git-repo-check %s", shellQuote(promptPath)))
-	stdin, _ := cmd.StdinPipe()
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-
-	if err := cmd.Start(); err != nil {
-		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to start codex agent: " + err.Error()})
-		return
-	}
-
-	// Proxy stdout to websocket
+	// Feed initial prompt into stdin (agent-chat reads first line as prompt)
 	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			text := scanner.Text()
-			_ = conn.WriteJSON(chatMessage{
-				Type:      "agent",
-				Text:      text,
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-			})
-		}
+		_, _ = io.WriteString(stdinWriter, initialPrompt+"\n")
 	}()
-
-	// Proxy stderr to websocket (as system messages or separate type)
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			text := scanner.Text()
-			_ = conn.WriteJSON(chatMessage{
-				Type:      "system",
-				Text:      "[agent-stderr] " + text,
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-			})
-		}
-	}()
-
-	// Proxy websocket to stdin
+	// Proxy WS to stdin
 	go func() {
 		for {
 			var msg chatMessage
 			if err := conn.ReadJSON(&msg); err != nil {
-				_ = stdin.Close()
+				_ = stdinWriter.Close()
 				return
 			}
 			if msg.Type == "user" {
-				_, _ = io.WriteString(stdin, msg.Text+"\n")
+				_, _ = io.WriteString(stdinWriter, msg.Text+"\n")
 			}
 		}
 	}()
 
-	err = cmd.Wait()
+	// Proxy bridge JSON events to WS
+	var finalJSON string
+	go func() {
+		scanner := bufio.NewScanner(stdoutReader)
+		for scanner.Scan() {
+			var evt map[string]any
+			if err := json.Unmarshal(scanner.Bytes(), &evt); err != nil {
+				// Raw non-JSON output, send as agent text
+				_ = conn.WriteJSON(chatMessage{
+					Type:      "agent",
+					Text:      scanner.Text(),
+					Timestamp: time.Now().UTC().Format(time.RFC3339),
+				})
+				continue
+			}
+
+			switch evt["type"] {
+			case "status":
+				text, _ := evt["text"].(string)
+				_ = conn.WriteJSON(chatMessage{Type: "system", Text: "[bridge] " + text})
+			case "output":
+				text, _ := evt["text"].(string)
+				_ = conn.WriteJSON(chatMessage{Type: "agent", Text: text})
+			case "log":
+				text, _ := evt["text"].(string)
+				_ = conn.WriteJSON(chatMessage{Type: "system", Text: "[agent-log] " + text})
+			case "final_prd":
+				content, _ := evt["content"]
+				data, _ := json.Marshal(content)
+				finalJSON = string(data)
+			case "error":
+				text, _ := evt["text"].(string)
+				_ = conn.WriteJSON(chatMessage{Type: "error", Error: text})
+			}
+		}
+	}()
+
+	// Proxy raw stderr to system messages
+	go func() {
+		scanner := bufio.NewScanner(stderrReader)
+		for scanner.Scan() {
+			_ = conn.WriteJSON(chatMessage{
+				Type:      "system",
+				Text:      "[pod-stderr] " + scanner.Text(),
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+	}()
+
+	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  stdinReader,
+		Stdout: stdoutWriter,
+		Stderr: stderrWriter,
+		Tty:    false,
+	})
+
 	if err != nil {
-		_ = conn.WriteJSON(chatMessage{Type: "system", Text: "Agent session ended: " + err.Error()})
+		_ = conn.WriteJSON(chatMessage{Type: "system", Text: "Agent pod execution failed: " + err.Error()})
 	}
 
-	// Check if PRD was created
-	if _, statErr := os.Stat(prdOutPath); statErr == nil {
-		prdContent, _ := os.ReadFile(prdOutPath)
-		_ = conn.WriteJSON(chatMessage{
-			Type:         "system",
-			FinalPRDPath: prdOutPath,
-			Text:         string(prdContent), // Send the JSON content back
-		})
-	} else {
-		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "PRD was not generated by the agent"})
+	if finalJSON != "" {
+		var prd model.PRD
+		if err := json.Unmarshal([]byte(finalJSON), &prd); err == nil {
+			if valErr := prd.Validate(); valErr == nil {
+				_ = conn.WriteJSON(chatMessage{
+					Type:         "system",
+					FinalPRDPath: "drafted-via-agent.json",
+					Text:         finalJSON,
+				})
+				return
+			} else {
+				_ = conn.WriteJSON(chatMessage{Type: "error", Error: "Generated PRD failed validation: " + valErr.Error()})
+			}
+		}
 	}
+	_ = conn.WriteJSON(chatMessage{Type: "error", Error: "Agent failed to produce a valid structured PRD JSON."})
 }
 
+func (s *server) createDraftingPod(ctx context.Context, namespace, name, image string, env []corev1.EnvVar) (*corev1.Pod, error) {
+        pod := &corev1.Pod{
+                ObjectMeta: metav1.ObjectMeta{
+                        Name:      name,
+                        Namespace: namespace,
+                        Labels: map[string]string{
+                                "smith.io/component": "drafter",
+                        },
+                },
+                Spec: corev1.PodSpec{
+                        RestartPolicy: corev1.RestartPolicyNever,
+                        Containers: []corev1.Container{
+                                {
+                                        Name:            "agent",
+                                        Image:           image,
+                                        ImagePullPolicy: corev1.PullNever,
+                                        Command:         []string{"/bin/sh", "-c", "sleep 3600"}, // Keep alive for exec
+                                        Env:             env,
+                                },
+                        },
+                },
+        }
+        return s.kube.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
+}
 func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID string) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -2697,24 +2821,47 @@ func loadConfig() (config, error) {
 	}, nil
 }
 
-func deriveLoopID(idempotencyKey, sourceType, sourceRef string) string {
-	key := strings.TrimSpace(idempotencyKey)
-	if key == "" {
-		key = sourceType + ":" + sourceRef
-	}
-	key = strings.ToLower(strings.TrimSpace(key))
-	replacer := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-", ":", "-")
-	key = replacer.Replace(key)
-	key = strings.Trim(key, "-")
-	if key == "" {
-		key = fmt.Sprintf("loop-%d", time.Now().UTC().UnixNano())
-	}
-	if len(key) > 48 {
-		key = key[:48]
-	}
-	return "loop-" + key
-}
+func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) string {
+        prefix := "smi"
+        if len(projectID) >= 3 {
+                prefix = strings.ToLower(projectID[:3])
+        } else if len(projectID) > 0 {
+                prefix = strings.ToLower(projectID)
+        }
 
+        key := strings.TrimSpace(idempotencyKey)
+        if key == "" {
+                key = sourceType + ":" + sourceRef
+        }
+        key = strings.ToLower(strings.TrimSpace(key))
+        replacer := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-", ":", "-")
+        key = replacer.Replace(key)
+        key = strings.Trim(key, "-")
+
+        // Generate a stable short hash for the "xxxxx" part if we want it to look like the example
+        h := sha256.New()
+        h.Write([]byte(key))
+        hashPart := hex.EncodeToString(h.Sum(nil))[:5]
+
+        if key == "" {
+                return fmt.Sprintf("%s-%s-%d", prefix, hashPart, time.Now().UTC().UnixNano())
+        }
+
+        // Clean key for use in ID
+        key = strings.Map(func(r rune) rune {
+                if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+                        return r
+                }
+                return -1
+        }, key)
+        key = strings.Trim(key, "-")
+
+        if len(key) > 32 {
+                key = key[:32]
+        }
+
+        return fmt.Sprintf("%s-%s-%s", prefix, hashPart, key)
+}
 func ingressSummary(results []ingressResult) map[string]any {
 	created := 0
 	existing := 0
@@ -3074,77 +3221,86 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if route == "build" {
-		if r.Method != http.MethodPost {
-			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		// Build instantiates a smith loop from the document content
-		// Content is expected to be PRD JSON or Markdown
-		format := strings.ToLower(doc.Format)
-		if format == "" {
-			if strings.HasPrefix(strings.TrimSpace(doc.Content), "{") {
-				format = "json"
-			} else {
-				format = "markdown"
-			}
-		}
+	        if r.Method != http.MethodPost {
+	                writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	                return
+	        }
+	        // Build instantiates a smith loop from the document content
+	        // Content is expected to be PRD JSON or Markdown
+	        format := strings.ToLower(doc.Format)
+	        if format == "" {
+	                if strings.HasPrefix(strings.TrimSpace(doc.Content), "{") {
+	                        format = "json"
+	                } else {
+	                        format = "markdown"
+	                }
+	        }
 
-		var drafts []ingress.LoopDraft
-		var errs []ingress.ParseError
-		baseMetadata := copyStringMap(doc.Metadata)
-		if baseMetadata == nil {
-			baseMetadata = make(map[string]string)
-		}
-		baseMetadata["document_id"] = doc.ID
-		baseMetadata["project_id"] = doc.ProjectID
+	        var drafts []ingress.LoopDraft
+	        var errs []ingress.ParseError
+	        baseMetadata := copyStringMap(doc.Metadata)
+	        if baseMetadata == nil {
+	                baseMetadata = make(map[string]string)
+	        }
+	        baseMetadata["document_id"] = doc.ID
+	        baseMetadata["project_id"] = doc.ProjectID
 
-		switch format {
-		case "markdown", "md":
-			drafts, errs = ingress.ParsePRDMarkdown(doc.Content, doc.SourceRef, baseMetadata)
-		case "json":
-			var tasks []ingress.PRDTask
-			if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
-				drafts, errs = ingress.PRDTasksToDrafts(tasks, doc.SourceRef, baseMetadata)
-			} else {
-				writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
-				return
-			}
-		default:
-			writeErr(w, http.StatusBadRequest, "unsupported document format for build")
-			return
-		}
+	        sourceRef := doc.SourceRef
+	        if sourceRef == "" {
+	                sourceRef = fmt.Sprintf("doc:%s", doc.ID)
+	        }
 
-		if len(errs) > 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
-			return
-		}
+	        switch format {
+	        case "markdown", "md":
+	                drafts, errs = ingress.ParsePRDMarkdown(doc.Content, sourceRef, baseMetadata)
+	        case "json":
+	                var tasks []ingress.PRDTask
+	                if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
+	                        drafts, errs = ingress.PRDTasksToDrafts(tasks, sourceRef, baseMetadata)
+	                } else {
+	                        writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
+	                        return
+	                }
+	        default:
+	                writeErr(w, http.StatusBadRequest, "unsupported document format for build")
+	                return
+	        }
 
-		results := make([]ingressResult, 0, len(drafts))
-		for i, draft := range drafts {
-			res := s.createOneLoop(r.Context(), loopCreateRequest{
-				IdempotencyKey: draft.IdempotencyKey,
-				Title:          draft.Title,
-				Description:    draft.Description,
-				SourceType:     draft.SourceType,
-				SourceRef:      draft.SourceRef,
-				Metadata:       draft.Metadata,
-			})
-			results = append(results, ingressResult{
-				ItemIndex: i,
-				LoopID:    res.LoopID,
-				SourceRef: draft.SourceRef,
-				Status:    res.Status,
-				Created:   res.Created,
-				Message:   res.Message,
-			})
-		}
-		writeJSON(w, http.StatusOK, ingressSummary(results))
-		return
+	        if len(errs) > 0 {
+	                writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
+	                return
+	        }
+
+	        results := make([]ingressResult, 0, len(drafts))
+	        for i, draft := range drafts {
+	                title := draft.Title
+	                if doc.Title != "" {
+	                        title = fmt.Sprintf("[%s] %s", doc.Title, draft.Title)
+	                }
+	                res := s.createOneLoop(r.Context(), loopCreateRequest{
+	                        IdempotencyKey: draft.IdempotencyKey,
+	                        Title:          title,
+	                        Description:    draft.Description,
+	                        SourceType:     draft.SourceType,
+	                        SourceRef:      draft.SourceRef,
+	                        Metadata:       draft.Metadata,
+	                })
+	                results = append(results, ingressResult{
+	                        ItemIndex: i,
+	                        LoopID:    res.LoopID,
+	                        SourceRef: draft.SourceRef,
+	                        Status:    res.Status,
+	                        Created:   res.Created,
+	                        Message:   res.Message,
+	                })
+	        }
+	        writeJSON(w, http.StatusOK, ingressSummary(results))
+	        return
 	}
 
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, doc)
+	        writeJSON(w, http.StatusOK, doc)
 	case http.MethodPut:
 		var req documentRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
