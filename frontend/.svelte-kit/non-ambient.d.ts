@@ -27,14 +27,21 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/";
+		RouteId(): "/" | "/controls" | "/documents" | "/pod-view" | "/pod-view/[id]" | "/pods" | "/projects" | "/providers";
 		RouteParams(): {
-			
+			"/pod-view/[id]": { id: string }
 		};
 		LayoutParams(): {
-			"/": Record<string, never>
+			"/": { id?: string };
+			"/controls": Record<string, never>;
+			"/documents": Record<string, never>;
+			"/pod-view": { id?: string };
+			"/pod-view/[id]": { id: string };
+			"/pods": Record<string, never>;
+			"/projects": Record<string, never>;
+			"/providers": Record<string, never>
 		};
-		Pathname(): "/";
+		Pathname(): "/" | "/controls" | "/documents" | `/pod-view/${string}` & {} | "/pods" | "/projects" | "/providers";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): string & {};
 	}

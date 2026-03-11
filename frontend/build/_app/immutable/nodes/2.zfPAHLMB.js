@@ -1,1 +1,0 @@
-import{a as r,f as n}from"../chunks/D7LCSliF.js";import"../chunks/BmXgWk4A.js";import{f as a,n as p}from"../chunks/Cuk7NfDh.js";var m=n("<h1></h1> <p>Rebuilding in progress...</p>",1);function l(t){var o=m(),e=a(o);e.textContent="Welcome to SMITH Svelte Console",p(2),r(t,o)}export{l as component};

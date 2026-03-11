@@ -1,6 +1,13 @@
 import "clsx";
-function _page($$renderer) {
-  $$renderer.push(`<h1>Welcome to SMITH Svelte Console</h1> <p>Rebuilding in progress...</p>`);
+import "@sveltejs/kit/internal";
+import "../../chunks/exports.js";
+import "../../chunks/utils.js";
+import "@sveltejs/kit/internal/server";
+import "../../chunks/root.js";
+import "../../chunks/state.svelte.js";
+function _page($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+  });
 }
 export {
   _page as default

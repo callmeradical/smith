@@ -1,0 +1,1 @@
+import"../chunks/CWj6FrbW.js";import"../chunks/DKEgHmYa.js";import{o as p}from"../chunks/DI9EknOs.js";import{p as r,a as t}from"../chunks/BSF8bnmw.js";import{i as m}from"../chunks/Dg2Cxe62.js";import{g as a}from"../chunks/DLfYY0uq.js";function u(i,o){r(o,!1),p(()=>{a("/pods")}),m(),t()}export{u as component};

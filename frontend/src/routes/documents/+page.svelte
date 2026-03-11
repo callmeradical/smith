@@ -6,6 +6,7 @@
 	import DocTile from '$lib/components/DocTile.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import DocEditorModal from '$lib/components/DocEditorModal.svelte';
+	import DocChatModal from '$lib/components/DocChatModal.svelte';
 	import { escapeHtml } from '$lib/utils';
 
 	let showAll = $state(false);
@@ -14,6 +15,8 @@
 	let editingDocId = $state<string | null>(null);
 	let editTitle = $state("");
 	let editContent = $state("");
+
+	let chatOpen = $state(false);
 
 	const filteredDocs = $derived(
 		$appState.documents.filter((d: any) => {
@@ -90,10 +93,43 @@
 		editorOpen = true;
 	}
 
+	function createNewDocument() {
+		editingDocId = null;
+		editTitle = "";
+		editContent = "";
+		editorOpen = true;
+	}
+
 	function handleEditorSave(title: string, content: string) {
-		if (!editingDocId) return;
-		requestJSON("/v1/documents/" + editingDocId, "PUT", { title, content });
+		if (editingDocId) {
+			requestJSON("/v1/documents/" + editingDocId, "PUT", { title, content });
+		} else {
+			// New document creation
+			const projectID = $appState.docFilterProject === "all" || $appState.docFilterProject === "" 
+				? ($appState.projects[0]?.id || "default") 
+				: $appState.docFilterProject;
+			
+			postJSON("/v1/documents", {
+				project_id: projectID,
+				title: title || "New Document",
+				content: content,
+				format: "markdown",
+				status: "active",
+				source_type: "direct"
+			}).then(() => {
+				pushToast("Document created", "ok");
+			}).catch(err => {
+				pushToast(err.message, "err");
+			});
+		}
 		editorOpen = false;
+	}
+
+	function handleDraftFinalized(title: string, content: string) {
+		editTitle = title;
+		editContent = content;
+		editingDocId = null;
+		editorOpen = true; // Open editor for final review
 	}
 </script>
 
@@ -104,10 +140,11 @@
 		value={$appState.docSearchQuery}
 		oninput={(e) => appState.update(s => ({ ...s, docSearchQuery: e.currentTarget.value }))}
 	/>
-	<label class="muted">
+	<label class="muted" style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
 		<input type="checkbox" bind:checked={showAll} /> Show All
 	</label>
-	<button class="primary">New Document</button>
+	<button class="primary" onclick={() => chatOpen = true} style="margin-left: 8px;">Draft with AI</button>
+	<button onclick={createNewDocument}>New Doc</button>
 {/snippet}
 
 <TopBar title="Documents" {controls} />
@@ -118,6 +155,12 @@
 	bind:content={editContent}
 	onClose={() => editorOpen = false} 
 	onSave={handleEditorSave} 
+/>
+
+<DocChatModal
+	open={chatOpen}
+	onClose={() => chatOpen = false}
+	onDraftFinalized={handleDraftFinalized}
 />
 
 <div class="doc-container">
@@ -155,8 +198,8 @@
 			<EmptyState 
 				title="No Documents Found" 
 				description="There are no documents matching your current filters for this project."
-				buttonText="Create Document"
-				buttonHref="#"
+				buttonText="Draft with AI"
+				onclick={() => chatOpen = true}
 				icon="📄"
 			/>
 		{:else}
@@ -197,6 +240,20 @@
 		width: 100%;
 		display: flex;
 		align-items: center;
+		padding: 8px 12px;
+		border-radius: 6px;
+		color: var(--muted);
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.doc-sidebar-item:hover {
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--text);
+	}
+	.doc-sidebar-item.active {
+		background: var(--panel-strong);
+		color: var(--accent);
+		font-weight: 600;
 	}
 	.project-loop-list {
 		display: grid;
