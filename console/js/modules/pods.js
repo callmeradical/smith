@@ -25,6 +25,7 @@ import {
   getPodCreateChatInputEl,
   getPodCreateChatStatusEl,
   getPodCreatePanelEl,
+  getPodViewTitleEl,
   getApiDotEl
 } from "./elements.js";
 
@@ -79,10 +80,7 @@ export function renderGrid() {
         <div class="tile-meta"><span>ATT ${loop.attempt}</span><span>REV ${loop.revision}</span></div>
       </div>
     `;
-    tile.onclick = () => {
-      state.selectedLoop = loop.loopID;
-      setActivePage("podView", true);
-    };
+    tile.onclick = () => selectLoop(loop.loopID);
     gridEl.appendChild(tile);
   });
   
@@ -452,14 +450,12 @@ export async function startLoopFromIssue() {
     setPodCreateBusy(false);
   }
 }
+
 export async function refreshLoops() {
-  console.log('PODS: Refreshing loops...');
   try {
     const raw = await fetchJSON("/v1/loops");
-    console.log('PODS: Received loops:', raw?.length);
     state.loops = Array.isArray(raw) ? raw.map(normalizeLoop) : [];
     renderGrid();
-
     const dot = getApiDotEl();
     if (dot) dot.className = "dot ok";
   } catch (_) {

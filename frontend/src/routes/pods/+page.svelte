@@ -5,6 +5,7 @@
 	import TopBar from '$lib/components/TopBar.svelte';
 	import PodTile from '$lib/components/PodTile.svelte';
 	import PodCreateModal from '$lib/components/PodCreateModal.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 
 	let stateFilter = $state('all');
 	let searchQuery = $state('');
@@ -103,10 +104,13 @@
 	<section class="tiles-shell">
 		<div class="pod-grid" role="list">
 			{#if $appState.projects.length === 0}
-				<div class="empty">
-					<p>No projects configured yet.</p>
-					<p><a href="/projects" class="nav-link" style="display: inline; padding: 0; color: var(--accent); text-decoration: underline;">Configure a project</a> to start creating loops.</p>
-				</div>
+				<EmptyState 
+					title="Welcome to SMITH" 
+					description="To get started, you'll need to configure a project. Projects connect your repositories and enable autonomous development loops."
+					buttonText="Configure Project"
+					buttonHref="/projects"
+					icon="🚀"
+				/>
 			{:else}
 				{#each filteredLoops as loop (loop.loopID)}
 					<PodTile 

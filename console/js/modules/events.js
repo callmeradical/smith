@@ -40,6 +40,7 @@ import {
   getDocCreateNextEl,
   getDocCreateSubmitEl,
   getDocSearchEl,
+  getDocCreateProjectEl,
   getSidebarToggleButtons,
   getSidebarOverlayEl,
   getPageLinks,

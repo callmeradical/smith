@@ -4,6 +4,7 @@
 	import { fetchJSON, deleteJSON, requestJSON, postJSON } from '$lib/api';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import DocTile from '$lib/components/DocTile.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { escapeHtml } from '$lib/utils';
 
 	async function refreshDocuments() {
@@ -149,9 +150,19 @@
 	</aside>
 	<main class="doc-main">
 		{#if $appState.docFilterProject === ""}
-			<div class="status-note">Select a project to view documents.</div>
+			<EmptyState 
+				title="Document Explorer" 
+				description="Select a project from the sidebar to view associated Product Requirement Documents (PRDs) and technical specs."
+				icon="🔍"
+			/>
 		{:else if sortedProjectIDs.length === 0}
-			<div class="status-note">No documents found.</div>
+			<EmptyState 
+				title="No Documents Found" 
+				description="There are no documents matching your current filters for this project."
+				buttonText="Create Document"
+				buttonHref="#"
+				icon="📄"
+			/>
 		{:else}
 			<div class="pod-grid">
 				{#each sortedProjectIDs as projectID}

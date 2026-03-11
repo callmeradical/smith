@@ -47,9 +47,7 @@
 
 <TopBar title={`Pod: ${id}`} {controls} />
 
-<Journal loopID={id} />
-
-<section class="pod-control-panel">
+<Journal loopID={id}>
 	<div class="pod-command-row journal-prompt-row">
 		<span class="journal-prompt-glyph" aria-hidden="true">$</span>
 		<input
@@ -57,9 +55,27 @@
 			placeholder="Run command (e.g. pwd)"
 			bind:value={command}
 			onkeydown={(e) => e.key === 'Enter' && runCommand()}
+			disabled={busy}
+			style="background: transparent; border: none; color: #fff; outline: none; font-family: var(--mono); width: 100%;"
 		/>
-		<button type="button" onclick={runCommand} disabled={busy}>
-			{busy ? 'running...' : 'run'}
+		<button type="button" onclick={runCommand} disabled={busy} class="primary" style="margin-left: 12px; padding: 4px 12px;">
+			{busy ? '...' : 'run'}
 		</button>
 	</div>
-</section>
+</Journal>
+
+<style>
+	.pod-command-row {
+		display: flex;
+		align-items: center;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 6px;
+		padding: 4px 8px;
+	}
+	.journal-prompt-glyph {
+		color: var(--accent);
+		margin-right: 8px;
+		font-weight: bold;
+	}
+</style>
