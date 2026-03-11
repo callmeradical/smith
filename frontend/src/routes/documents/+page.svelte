@@ -5,20 +5,15 @@
 	import TopBar from '$lib/components/TopBar.svelte';
 	import DocTile from '$lib/components/DocTile.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import DocEditorModal from '$lib/components/DocEditorModal.svelte';
 	import { escapeHtml } from '$lib/utils';
 
-	async function refreshDocuments() {
-		try {
-			const raw = await fetchJSON("/v1/documents");
-			appState.update(s => ({ ...s, documents: Array.isArray(raw) ? raw : [] }));
-		} catch (err) {
-			console.error("Error fetching documents:", err);
-		}
-	}
-
-	onMount(() => {
-		refreshDocuments();
-	});
+	let showAll = $state(false);
+	
+	let editorOpen = $state(false);
+	let editingDocId = $state<string | null>(null);
+	let editTitle = $state("");
+	let editContent = $state("");
 
 	const filteredDocs = $derived(
 		$appState.documents.filter((d: any) => {
@@ -28,7 +23,8 @@
 								(d.id || "").toLowerCase().includes(query) ||
 								(d.project_id || "").toLowerCase().includes(query);
 			const matchesProject = $appState.docFilterProject === "all" || $appState.docFilterProject === "" || d.project_id === $appState.docFilterProject;
-			const matchesStatus = $appState.docFilterStatus === "all" || d.status === $appState.docFilterStatus;
+			// If not showing all, only show documents that are "active" (yet to be built)
+			const matchesStatus = showAll || d.status === "active" || d.status === "unresolved";
 			return matchesQuery && matchesProject && matchesStatus;
 		})
 	);
@@ -56,17 +52,12 @@
 		appState.update(s => ({ ...s, docFilterProject: p }));
 	}
 
-	function setFilterStatus(s: string) {
-		appState.update(s => ({ ...s, docFilterStatus: s }));
-	}
-
 	async function archiveDocument(id: string) {
 		const doc = $appState.documents.find((d: any) => d.id === id);
 		if (!doc) return;
 		const nextStatus = doc.status === "active" ? "archived" : "active";
 		try {
 			await requestJSON("/v1/documents/" + id, "PUT", { status: nextStatus });
-			refreshDocuments();
 		} catch (err: any) {
 			pushToast("Error archiving document: " + err.message, "err");
 		}
@@ -76,7 +67,6 @@
 		if (!confirm("Delete this document?")) return;
 		try {
 			await deleteJSON("/v1/documents/" + id);
-			refreshDocuments();
 		} catch (err: any) {
 			pushToast("Error deleting document: " + err.message, "err");
 		}
@@ -94,9 +84,16 @@
 	function editDocument(id: string) {
 		const doc = $appState.documents.find((d: any) => d.id === id);
 		if (!doc) return;
-		const nextContent = prompt("Edit Document Content", doc.content);
-		if (nextContent === null) return;
-		requestJSON("/v1/documents/" + id, "PUT", { content: nextContent }).then(() => refreshDocuments());
+		editingDocId = id;
+		editTitle = doc.title || "";
+		editContent = doc.content || "";
+		editorOpen = true;
+	}
+
+	function handleEditorSave(title: string, content: string) {
+		if (!editingDocId) return;
+		requestJSON("/v1/documents/" + editingDocId, "PUT", { title, content });
+		editorOpen = false;
 	}
 </script>
 
@@ -107,10 +104,21 @@
 		value={$appState.docSearchQuery}
 		oninput={(e) => appState.update(s => ({ ...s, docSearchQuery: e.currentTarget.value }))}
 	/>
+	<label class="muted">
+		<input type="checkbox" bind:checked={showAll} /> Show All
+	</label>
 	<button class="primary">New Document</button>
 {/snippet}
 
 <TopBar title="Documents" {controls} />
+
+<DocEditorModal 
+	bind:open={editorOpen} 
+	bind:title={editTitle}
+	bind:content={editContent}
+	onClose={() => editorOpen = false} 
+	onSave={handleEditorSave} 
+/>
 
 <div class="doc-container">
 	<aside id="doc-sidebar" class="doc-sidebar">
@@ -135,18 +143,6 @@
 				{/if}
 			</div>
 		</div>
-		<div class="doc-sidebar-section">
-			<div class="doc-sidebar-header">Status</div>
-			<div class="doc-sidebar-list">
-				{#each ["all", "active", "archived"] as s}
-					<button 
-						class="doc-sidebar-item" 
-						class:active={$appState.docFilterStatus === s}
-						onclick={() => setFilterStatus(s)}
-					>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
-				{/each}
-			</div>
-		</div>
 	</aside>
 	<main class="doc-main">
 		{#if $appState.docFilterProject === ""}
@@ -164,22 +160,29 @@
 				icon="📄"
 			/>
 		{:else}
-			<div class="pod-grid">
+			<div class="project-loop-list">
 				{#each sortedProjectIDs as projectID}
-					<section class="pod-group" style="width: 100%; grid-column: 1 / -1;">
-						<div class="doc-sidebar-header" style="margin-bottom: 12px;">Project: {projectID}</div>
-						<div class="pod-grid">
-							{#each groupedDocs[projectID] as doc (doc.id)}
-								<DocTile 
-									{doc}
-									onEdit={editDocument}
-									onBuild={buildDocument}
-									onArchive={archiveDocument}
-									onDelete={deleteDocument}
-								/>
-							{/each}
+					<details class="project-tile" open>
+						<summary class="collapsible-summary">
+							<span class="collapsible-label">
+								<span class="collapsible-caret">&gt;</span>
+								<span class="project-name">{projectID}</span>
+							</span>
+						</summary>
+						<div class="collapsible-body">
+							<div class="pod-grid">
+								{#each groupedDocs[projectID] as doc (doc.id)}
+									<DocTile 
+										{doc}
+										onEdit={editDocument}
+										onBuild={buildDocument}
+										onArchive={archiveDocument}
+										onDelete={deleteDocument}
+									/>
+								{/each}
+							</div>
 						</div>
-					</section>
+					</details>
 				{/each}
 			</div>
 		{/if}
@@ -194,5 +197,9 @@
 		width: 100%;
 		display: flex;
 		align-items: center;
+	}
+	.project-loop-list {
+		display: grid;
+		gap: 12px;
 	}
 </style>

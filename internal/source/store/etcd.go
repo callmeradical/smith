@@ -548,6 +548,62 @@ func (s *Store) WatchState(ctx context.Context) <-chan Event {
 	return out
 }
 
+func (s *Store) WatchDocuments(ctx context.Context) <-chan model.Document {
+	out := make(chan model.Document)
+	watchCh := s.cli.Watch(ctx, model.PrefixDocuments+"/", clientv3.WithPrefix())
+	go func() {
+		defer close(out)
+		for watchResp := range watchCh {
+			if watchResp.Err() != nil {
+				continue
+			}
+			for _, event := range watchResp.Events {
+				if event.Type != clientv3.EventTypePut || len(event.Kv.Value) == 0 {
+					continue
+				}
+				var doc model.Document
+				if err := json.Unmarshal(event.Kv.Value, &doc); err != nil {
+					continue
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case out <- doc:
+				}
+			}
+		}
+	}()
+	return out
+}
+
+func (s *Store) WatchAudit(ctx context.Context) <-chan AuditRecord {
+	out := make(chan AuditRecord)
+	watchCh := s.cli.Watch(ctx, model.PrefixAudit+"/", clientv3.WithPrefix())
+	go func() {
+		defer close(out)
+		for watchResp := range watchCh {
+			if watchResp.Err() != nil {
+				continue
+			}
+			for _, event := range watchResp.Events {
+				if event.Type != clientv3.EventTypePut || len(event.Kv.Value) == 0 {
+					continue
+				}
+				var rec AuditRecord
+				if err := json.Unmarshal(event.Kv.Value, &rec); err != nil {
+					continue
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case out <- rec:
+				}
+			}
+		}
+	}()
+	return out
+}
+
 // RecordPhase implements completion.PhaseStore
 func (s *Store) RecordPhase(ctx context.Context, record model.JournalEntry) error {
 	return s.AppendJournal(ctx, record)

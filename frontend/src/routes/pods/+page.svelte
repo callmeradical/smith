@@ -40,11 +40,7 @@
 	}
 
 	onMount(() => {
-		refreshLoops();
-		const interval = setInterval(() => {
-			if (autoRefresh) refreshLoops();
-		}, 5000);
-		return () => clearInterval(interval);
+		// Data is populated by the global stream in layout
 	});
 
 	const filteredLoops = $derived(

@@ -633,8 +633,10 @@ func main() {
 	mux.HandleFunc("/v1/chat/prd", s.handleChatPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
 	mux.HandleFunc("/v1/audit", s.handleAudit)
+	mux.HandleFunc("/v1/audit/stream", s.handleAuditStream)
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
 	mux.HandleFunc("/v1/documents", s.handleDocuments)
+	mux.HandleFunc("/v1/documents/stream", s.handleDocumentStream)
 	mux.HandleFunc("/v1/documents/", s.handleDocumentByID)
 	mux.HandleFunc("/v1/auth/codex/connect/start", s.handleCodexAuthStart)
 	mux.HandleFunc("/v1/auth/codex/connect/complete", s.handleCodexAuthComplete)
@@ -3240,3 +3242,106 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 	}	}
 	}
 	}
+
+func (s *server) handleDocumentStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	send := func(event string, payload any) error {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	_ = send("ready", map[string]string{"status": "connected"})
+
+	docs, err := s.store.ListDocuments(r.Context())
+	if err == nil {
+		for _, doc := range docs {
+			_ = send("update", doc)
+		}
+	}
+
+	events := s.store.WatchDocuments(r.Context())
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case doc, ok := <-events:
+			if !ok {
+				return
+			}
+			_ = send("update", doc)
+		}
+	}
+}
+
+func (s *server) handleAuditStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	send := func(event string, payload any) error {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	_ = send("ready", map[string]string{"status": "connected"})
+
+	events := s.store.WatchAudit(r.Context())
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case rec, ok := <-events:
+			if !ok {
+				return
+			}
+			_ = send("update", rec)
+		}
+	}
+}
