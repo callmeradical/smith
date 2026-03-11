@@ -58,6 +58,20 @@ test.describe('Modular Console', () => {
       });
     });
 
+    await page.route('**/api/v1/projects', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 'proj-1',
+            name: 'Project 1',
+            repo_url: 'https://github.com/org/repo1'
+          }
+        ]),
+      });
+    });
+
     await page.goto('/');
   });
 

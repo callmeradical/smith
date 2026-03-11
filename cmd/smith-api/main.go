@@ -78,6 +78,7 @@ type server struct {
 	store           *store.Store
 	auth            *provider.AuthManager
 	projectCred     provider.ProjectCredentialStore
+	projectStore    provider.ProjectStore
 	presets         *presetCatalog
 	skillPolicy     model.SkillPolicy
 	term            *terminalSessionStore
@@ -584,6 +585,11 @@ func main() {
 		log.Fatalf("smith-api auth store does not support project credentials")
 	}
 
+	projectStore, err := newProjectStore(ctx, cfg)
+	if err != nil {
+		log.Fatalf("smith-api project store init failed: %v", err)
+	}
+
 	authManager := provider.NewAuthManager(
 		provider.ProviderCodex,
 		tokenStore,
@@ -600,15 +606,16 @@ func main() {
 	}
 
 	s := &server{
-		cfg:         cfg,
-		store:       es,
-		auth:        authManager,
-		projectCred: projectCredStore,
-		presets:     newPresetCatalog(cfg.defaultPreset),
-		skillPolicy: cfg.skillPolicy,
-		term:        newTerminalSessionStore(),
-		runtimePods: runtimePods,
-		podExec:     podExec,
+		cfg:          cfg,
+		store:        es,
+		auth:         authManager,
+		projectCred:  projectCredStore,
+		projectStore: projectStore,
+		presets:      newPresetCatalog(cfg.defaultPreset),
+		skillPolicy:  cfg.skillPolicy,
+		term:         newTerminalSessionStore(),
+		runtimePods:  runtimePods,
+		podExec:      podExec,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -626,8 +633,10 @@ func main() {
 	mux.HandleFunc("/v1/chat/prd", s.handleChatPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
 	mux.HandleFunc("/v1/audit", s.handleAudit)
+	mux.HandleFunc("/v1/audit/stream", s.handleAuditStream)
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
 	mux.HandleFunc("/v1/documents", s.handleDocuments)
+	mux.HandleFunc("/v1/documents/stream", s.handleDocumentStream)
 	mux.HandleFunc("/v1/documents/", s.handleDocumentByID)
 	mux.HandleFunc("/v1/auth/codex/connect/start", s.handleCodexAuthStart)
 	mux.HandleFunc("/v1/auth/codex/connect/complete", s.handleCodexAuthComplete)
@@ -636,6 +645,8 @@ func main() {
 	mux.HandleFunc("/v1/auth/codex/credential", s.handleCodexAuthCredential)
 	mux.HandleFunc("/v1/auth/codex/disconnect", s.handleCodexAuthDisconnect)
 	mux.HandleFunc("/v1/projects/credentials/github", s.handleProjectGitHubCredential)
+	mux.HandleFunc("/v1/projects", s.handleProjects)
+	mux.HandleFunc("/v1/projects/", s.handleProjectByID)
 
 	addr := fmt.Sprintf(":%d", cfg.port)
 	httpServer := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
@@ -2465,6 +2476,91 @@ func (s *server) handleProjectGitHubCredential(w http.ResponseWriter, r *http.Re
 	}
 }
 
+func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		projects, err := s.projectStore.ListProjects(r.Context())
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, projects)
+	case http.MethodPost:
+		var p provider.Project
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		p.ID = strings.TrimSpace(p.ID)
+		if p.ID == "" {
+			writeErr(w, http.StatusBadRequest, "project id is required")
+			return
+		}
+		if err := s.projectStore.PutProject(r.Context(), p); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, p)
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/v1/projects/")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "project id is required")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		p, found, err := s.projectStore.GetProject(r.Context(), id)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "project not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, p)
+	case http.MethodPut:
+		var p provider.Project
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		if p.ID == "" {
+			p.ID = id
+		}
+		if p.ID != id {
+			writeErr(w, http.StatusBadRequest, "id mismatch")
+			return
+		}
+		if err := s.projectStore.PutProject(r.Context(), p); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, p)
+	case http.MethodDelete:
+		if err := s.projectStore.DeleteProject(r.Context(), id); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
 func (s *server) authorized(r *http.Request) bool {
 	token := strings.TrimSpace(s.cfg.operatorToken)
 	if token == "" {
@@ -2476,6 +2572,26 @@ func (s *server) authorized(r *http.Request) bool {
 		return false
 	}
 	return strings.TrimSpace(strings.TrimPrefix(auth, prefix)) == token
+}
+
+func newProjectStore(_ context.Context, cfg config) (provider.ProjectStore, error) {
+	backend := strings.ToLower(strings.TrimSpace(cfg.authStoreBackend))
+	switch backend {
+	case "", "file":
+		return provider.NewFileProjectStore(), nil
+	case "kubernetes", "k8s":
+		clientset, err := kubeClient()
+		if err != nil {
+			return nil, fmt.Errorf("kubernetes clientset: %w", err)
+		}
+		return provider.NewConfigMapProjectStore(
+			clientset,
+			cfg.authStoreK8sNamespace,
+			"smith-projects",
+		)
+	default:
+		return nil, fmt.Errorf("unsupported project store backend %q", cfg.authStoreBackend)
+	}
 }
 
 func newTokenStore(_ context.Context, cfg config) (provider.TokenStore, error) {
@@ -3126,3 +3242,106 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 	}	}
 	}
 	}
+
+func (s *server) handleDocumentStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	send := func(event string, payload any) error {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	_ = send("ready", map[string]string{"status": "connected"})
+
+	docs, err := s.store.ListDocuments(r.Context())
+	if err == nil {
+		for _, doc := range docs {
+			_ = send("update", doc)
+		}
+	}
+
+	events := s.store.WatchDocuments(r.Context())
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case doc, ok := <-events:
+			if !ok {
+				return
+			}
+			_ = send("update", doc)
+		}
+	}
+}
+
+func (s *server) handleAuditStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	send := func(event string, payload any) error {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	_ = send("ready", map[string]string{"status": "connected"})
+
+	events := s.store.WatchAudit(r.Context())
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case rec, ok := <-events:
+			if !ok {
+				return
+			}
+			_ = send("update", rec)
+		}
+	}
+}

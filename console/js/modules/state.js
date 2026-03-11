@@ -56,7 +56,7 @@ export const state = {
     },
   },
   documents: [],
-  docFilterProject: "all",
+  docFilterProject: "",
   docFilterStatus: "active",
   docCreateBusy: false,
   docCreateStep: 1,

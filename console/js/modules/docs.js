@@ -253,6 +253,11 @@ export function renderDocuments() {
   updateDocumentMeta(docs);
 
   docListEl.innerHTML = "";
+  if (state.docFilterProject === "") {
+    // Show nothing if nothing selected
+    return;
+  }
+
   if (filtered.length === 0) {
     docListEl.innerHTML = '<div class="status-note">No documents found.</div>';
     return;
@@ -297,13 +302,18 @@ function updateDocumentMeta(docs) {
     const uniqueProjects = Array.from(new Set(projectIDs)).sort();
     
     projectListEl.innerHTML = '<div class="doc-sidebar-item' + (state.docFilterProject === "all" ? " active" : "") + '" data-doc-filter-project="all">All Projects</div>';
-    uniqueProjects.forEach(p => {
-      const item = document.createElement("div");
-      item.className = "doc-sidebar-item" + (state.docFilterProject === p ? " active" : "");
-      item.dataset.docFilterProject = p;
-      item.textContent = p;
-      projectListEl.appendChild(item);
-    });
+    
+    if (uniqueProjects.length === 0) {
+      projectListEl.innerHTML += '<div class="doc-sidebar-item muted">📁 (Empty)</div>';
+    } else {
+      uniqueProjects.forEach(p => {
+        const item = document.createElement("div");
+        item.className = "doc-sidebar-item" + (state.docFilterProject === p ? " active" : "");
+        item.dataset.docFilterProject = p;
+        item.textContent = p;
+        projectListEl.appendChild(item);
+      });
+    }
   }
 
   const statusListEl = getDocStatusListEl();
@@ -317,9 +327,10 @@ function updateDocumentMeta(docs) {
 
   const breadcrumbEl = getDocBreadcrumbEl();
   if (breadcrumbEl) {
-    const projectLabel = state.docFilterProject === "all" ? "All Projects" : state.docFilterProject;
+    let projectLabel = state.docFilterProject === "all" ? "All Projects" : state.docFilterProject;
+    if (!projectLabel && state.docFilterProject === "") projectLabel = "None";
     const statusLabel = state.docFilterStatus === "all" ? "" : " / " + state.docFilterStatus.charAt(0).toUpperCase() + state.docFilterStatus.slice(1);
-    breadcrumbEl.innerHTML = `<span>${escapeHtml(projectLabel)}</span>${escapeHtml(statusLabel)}`;
+    breadcrumbEl.innerHTML = `<span>${escapeHtml(projectLabel || "Select Project")}</span>${escapeHtml(statusLabel)}`;
   }
 }
 

@@ -160,6 +160,15 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	  --create-namespace \
 	  --set global.rolloutId="$(shell date +%s)" \
 	  -f "$(SMITH_LOCAL_VALUES)"
+	$(MAKE) --no-print-directory rollout-local
+
+rollout-local: ## Force restart local deployments to pick up new images
+	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
+	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
+	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-core -n $(SMITH_NAMESPACE)
+	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
+	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
+	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-core -n $(SMITH_NAMESPACE)
 
 deploy-staging: ## Deploy Smith via Helm using staging values profile
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
