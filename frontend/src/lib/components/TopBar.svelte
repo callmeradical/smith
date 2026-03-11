@@ -16,6 +16,8 @@
 		{ id: 'projects', label: 'Projects', href: '/projects', icon: ArchiveOutline },
 		{ id: 'providers', label: 'Providers', href: '/providers', icon: UsersGroupOutline }
 	];
+
+  const currentPath = $derived(page.url.pathname);
 </script>
 
 <Navbar fluid class="bg-black border-b border-gray-800 px-4 py-2 sticky top-0 z-40">
@@ -39,15 +41,16 @@
 
   <NavUl class="hidden lg:flex lg:gap-1" ulClass="flex flex-row space-x-1 mt-0 bg-transparent border-0">
     {#each navItems as item}
+      {@const active = currentPath.startsWith(item.href)}
       <NavLi 
         href={item.href} 
-        active={page.url.pathname.startsWith(item.href)}
+        {active}
         activeClass="text-white border-b-2 border-[#86BC25] bg-transparent"
         nonActiveClass="text-gray-400 hover:text-[#86BC25] bg-transparent"
         class="px-4 py-3 transition-all hover:bg-transparent"
       >
         <div class="flex items-center gap-2 uppercase tracking-widest text-[10px] font-bold">
-          <item.icon size="sm" class={page.url.pathname.startsWith(item.href) ? 'text-[#86BC25]' : 'text-gray-500'} />
+          <item.icon size="sm" class={active ? 'text-[#86BC25]' : 'text-gray-500'} />
           {item.label}
         </div>
       </NavLi>

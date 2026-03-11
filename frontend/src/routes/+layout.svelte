@@ -3,13 +3,17 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import { sidebarOpen, appState, pushToast } from '$lib/stores';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { fetchJSON } from '$lib/api';
 
 	let { children } = $props();
 
+	let loopsSource: EventSource | null = null;
+	let docsSource: EventSource | null = null;
+	let auditSource: EventSource | null = null;
+
 	function normalizeLoop(item: any) {
-		const record = item.record || item.Record || item.State || {};
+		const record = item.record || item.Record || item.state || item.State || {};
 		const loopID = record.loop_id || record.LoopID || item.loop_id || item.LoopID || "unknown-loop";
 		const status = (record.state || record.State || "unknown").toLowerCase();
 		const attempt = Number(record.attempt || record.Attempt || 0);
@@ -38,7 +42,7 @@
 
 	function connectStreams() {
 		const loopsUrl = '/api/v1/loops/stream';
-		const loopsSource = new EventSource(loopsUrl);
+		loopsSource = new EventSource(loopsUrl);
 		loopsSource.addEventListener('update', (event) => {
 			try {
 				const data = JSON.parse(event.data);
@@ -57,7 +61,7 @@
 		});
 
 		const docsUrl = '/api/v1/documents/stream';
-		const docsSource = new EventSource(docsUrl);
+		docsSource = new EventSource(docsUrl);
 		docsSource.addEventListener('update', (event) => {
 			try {
 				const doc = JSON.parse(event.data);
@@ -75,7 +79,7 @@
 		});
 
 		const auditUrl = '/api/v1/audit/stream';
-		const auditSource = new EventSource(auditUrl);
+		auditSource = new EventSource(auditUrl);
 		auditSource.addEventListener('update', (event) => {
 			try {
 				const rec = JSON.parse(event.data);
@@ -87,6 +91,12 @@
 	onMount(() => {
     document.documentElement.classList.add('dark');
 		initApp();
+	});
+
+	onDestroy(() => {
+		loopsSource?.close();
+		docsSource?.close();
+		auditSource?.close();
 	});
 </script>
 

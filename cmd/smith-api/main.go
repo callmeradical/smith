@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -875,9 +877,13 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 
 	loopID := strings.TrimSpace(req.LoopID)
 	if loopID == "" {
-		loopID = deriveLoopID(req.IdempotencyKey, req.SourceType, req.SourceRef)
-	}
-	if existing, found, err := s.store.GetState(ctx, loopID); err == nil && found {
+	        projectID := req.Metadata["project_id"]
+	        if projectID == "" {
+	                projectID = req.Metadata["project"]
+	        }
+	        loopID = deriveLoopID(projectID, req.IdempotencyKey, req.SourceType, req.SourceRef)
+	        }
+	        if existing, found, err := s.store.GetState(ctx, loopID); err == nil && found {
 		stored, storedFound, _ := s.store.GetAnomaly(ctx, loopID)
 		if !storedFound {
 			stored.Environment = environment
@@ -2697,24 +2703,47 @@ func loadConfig() (config, error) {
 	}, nil
 }
 
-func deriveLoopID(idempotencyKey, sourceType, sourceRef string) string {
-	key := strings.TrimSpace(idempotencyKey)
-	if key == "" {
-		key = sourceType + ":" + sourceRef
-	}
-	key = strings.ToLower(strings.TrimSpace(key))
-	replacer := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-", ":", "-")
-	key = replacer.Replace(key)
-	key = strings.Trim(key, "-")
-	if key == "" {
-		key = fmt.Sprintf("loop-%d", time.Now().UTC().UnixNano())
-	}
-	if len(key) > 48 {
-		key = key[:48]
-	}
-	return "loop-" + key
-}
+func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) string {
+        prefix := "smi"
+        if len(projectID) >= 3 {
+                prefix = strings.ToLower(projectID[:3])
+        } else if len(projectID) > 0 {
+                prefix = strings.ToLower(projectID)
+        }
 
+        key := strings.TrimSpace(idempotencyKey)
+        if key == "" {
+                key = sourceType + ":" + sourceRef
+        }
+        key = strings.ToLower(strings.TrimSpace(key))
+        replacer := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-", ":", "-")
+        key = replacer.Replace(key)
+        key = strings.Trim(key, "-")
+
+        // Generate a stable short hash for the "xxxxx" part if we want it to look like the example
+        h := sha256.New()
+        h.Write([]byte(key))
+        hashPart := hex.EncodeToString(h.Sum(nil))[:5]
+
+        if key == "" {
+                return fmt.Sprintf("%s-%s-%d", prefix, hashPart, time.Now().UTC().UnixNano())
+        }
+
+        // Clean key for use in ID
+        key = strings.Map(func(r rune) rune {
+                if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+                        return r
+                }
+                return -1
+        }, key)
+        key = strings.Trim(key, "-")
+
+        if len(key) > 32 {
+                key = key[:32]
+        }
+
+        return fmt.Sprintf("%s-%s-%s", prefix, hashPart, key)
+}
 func ingressSummary(results []ingressResult) map[string]any {
 	created := 0
 	existing := 0
@@ -3074,77 +3103,86 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if route == "build" {
-		if r.Method != http.MethodPost {
-			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		// Build instantiates a smith loop from the document content
-		// Content is expected to be PRD JSON or Markdown
-		format := strings.ToLower(doc.Format)
-		if format == "" {
-			if strings.HasPrefix(strings.TrimSpace(doc.Content), "{") {
-				format = "json"
-			} else {
-				format = "markdown"
-			}
-		}
+	        if r.Method != http.MethodPost {
+	                writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	                return
+	        }
+	        // Build instantiates a smith loop from the document content
+	        // Content is expected to be PRD JSON or Markdown
+	        format := strings.ToLower(doc.Format)
+	        if format == "" {
+	                if strings.HasPrefix(strings.TrimSpace(doc.Content), "{") {
+	                        format = "json"
+	                } else {
+	                        format = "markdown"
+	                }
+	        }
 
-		var drafts []ingress.LoopDraft
-		var errs []ingress.ParseError
-		baseMetadata := copyStringMap(doc.Metadata)
-		if baseMetadata == nil {
-			baseMetadata = make(map[string]string)
-		}
-		baseMetadata["document_id"] = doc.ID
-		baseMetadata["project_id"] = doc.ProjectID
+	        var drafts []ingress.LoopDraft
+	        var errs []ingress.ParseError
+	        baseMetadata := copyStringMap(doc.Metadata)
+	        if baseMetadata == nil {
+	                baseMetadata = make(map[string]string)
+	        }
+	        baseMetadata["document_id"] = doc.ID
+	        baseMetadata["project_id"] = doc.ProjectID
 
-		switch format {
-		case "markdown", "md":
-			drafts, errs = ingress.ParsePRDMarkdown(doc.Content, doc.SourceRef, baseMetadata)
-		case "json":
-			var tasks []ingress.PRDTask
-			if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
-				drafts, errs = ingress.PRDTasksToDrafts(tasks, doc.SourceRef, baseMetadata)
-			} else {
-				writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
-				return
-			}
-		default:
-			writeErr(w, http.StatusBadRequest, "unsupported document format for build")
-			return
-		}
+	        sourceRef := doc.SourceRef
+	        if sourceRef == "" {
+	                sourceRef = fmt.Sprintf("doc:%s", doc.ID)
+	        }
 
-		if len(errs) > 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
-			return
-		}
+	        switch format {
+	        case "markdown", "md":
+	                drafts, errs = ingress.ParsePRDMarkdown(doc.Content, sourceRef, baseMetadata)
+	        case "json":
+	                var tasks []ingress.PRDTask
+	                if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
+	                        drafts, errs = ingress.PRDTasksToDrafts(tasks, sourceRef, baseMetadata)
+	                } else {
+	                        writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
+	                        return
+	                }
+	        default:
+	                writeErr(w, http.StatusBadRequest, "unsupported document format for build")
+	                return
+	        }
 
-		results := make([]ingressResult, 0, len(drafts))
-		for i, draft := range drafts {
-			res := s.createOneLoop(r.Context(), loopCreateRequest{
-				IdempotencyKey: draft.IdempotencyKey,
-				Title:          draft.Title,
-				Description:    draft.Description,
-				SourceType:     draft.SourceType,
-				SourceRef:      draft.SourceRef,
-				Metadata:       draft.Metadata,
-			})
-			results = append(results, ingressResult{
-				ItemIndex: i,
-				LoopID:    res.LoopID,
-				SourceRef: draft.SourceRef,
-				Status:    res.Status,
-				Created:   res.Created,
-				Message:   res.Message,
-			})
-		}
-		writeJSON(w, http.StatusOK, ingressSummary(results))
-		return
+	        if len(errs) > 0 {
+	                writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
+	                return
+	        }
+
+	        results := make([]ingressResult, 0, len(drafts))
+	        for i, draft := range drafts {
+	                title := draft.Title
+	                if doc.Title != "" {
+	                        title = fmt.Sprintf("[%s] %s", doc.Title, draft.Title)
+	                }
+	                res := s.createOneLoop(r.Context(), loopCreateRequest{
+	                        IdempotencyKey: draft.IdempotencyKey,
+	                        Title:          title,
+	                        Description:    draft.Description,
+	                        SourceType:     draft.SourceType,
+	                        SourceRef:      draft.SourceRef,
+	                        Metadata:       draft.Metadata,
+	                })
+	                results = append(results, ingressResult{
+	                        ItemIndex: i,
+	                        LoopID:    res.LoopID,
+	                        SourceRef: draft.SourceRef,
+	                        Status:    res.Status,
+	                        Created:   res.Created,
+	                        Message:   res.Message,
+	                })
+	        }
+	        writeJSON(w, http.StatusOK, ingressSummary(results))
+	        return
 	}
 
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, doc)
+	        writeJSON(w, http.StatusOK, doc)
 	case http.MethodPut:
 		var req documentRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

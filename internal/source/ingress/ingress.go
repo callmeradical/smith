@@ -178,7 +178,28 @@ func ParsePRDMarkdown(markdown, sourceRef string, baseMetadata map[string]string
 		})
 	}
 	if len(tasks) == 0 {
-		return nil, []ParseError{{ItemIndex: -1, Message: "no task list items found in markdown"}}
+		// Fallback: treat the whole document as a single task if no list items found
+		title := "Build from PRD"
+		// Try to find the first heading or the first non-empty line as title
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				if m := headingRegex.FindStringSubmatch(trimmed); len(m) == 2 {
+					title = strings.TrimSpace(m[1])
+				} else {
+					title = trimmed
+					if len(title) > 60 {
+						title = title[:57] + "..."
+					}
+				}
+				break
+			}
+		}
+		tasks = append(tasks, PRDTask{
+			Title:       title,
+			Description: markdown,
+			Section:     "General",
+		})
 	}
 	return PRDTasksToDrafts(tasks, trimmedSource, baseMetadata)
 }

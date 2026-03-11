@@ -17,6 +17,8 @@
     duration: 200,
     easing: sineIn
   };
+
+  const currentPath = $derived(page.url.pathname);
 </script>
 
 <Drawer 
@@ -45,15 +47,16 @@
     <div class="px-0 flex-1">
       <SidebarGroup>
         {#each navItems as item}
+          {@const active = currentPath.startsWith(item.href)}
           <SidebarItem 
             href={item.href} 
-            active={page.url.pathname.startsWith(item.href)}
+            {active}
             onclick={() => sidebarOpen.set(false)}
-            class="group text-gray-400 hover:text-[#86BC25] hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent {page.url.pathname.startsWith(item.href) ? 'border-[#86BC25] text-white bg-white/5' : ''}"
+            class="group text-gray-400 hover:text-[#86BC25] hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent {active ? 'border-[#86BC25] text-white bg-white/5' : ''}"
           >
             {#snippet icon()}
               <div class="flex items-center gap-3">
-                <item.icon size="sm" class="transition duration-75 group-hover:text-[#86BC25]" />
+                <item.icon size="sm" class="transition duration-75 group-hover:text-[#86BC25] {active ? 'text-[#86BC25]' : ''}" />
                 <span class="font-bold uppercase tracking-tight text-sm">{item.label}</span>
               </div>
             {/snippet}

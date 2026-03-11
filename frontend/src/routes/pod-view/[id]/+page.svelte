@@ -32,12 +32,38 @@
 	}
 
 	async function terminate() {
-		if (!confirm("Force terminate this loop?")) return;
+		if (!confirm("Force terminate this loop? (State will be set to flatline)")) return;
+		busy = true;
 		try {
-			await postJSON(`/v1/loops/${encodeURIComponent(id)}/control/terminate`, { actor: "operator" });
+			await postJSON('/v1/control/override', {
+				loop_id: id,
+				target_state: "flatline",
+				reason: "terminated via console",
+				actor: "operator",
+			});
 			pushToast("Termination requested", "ok");
 		} catch (err: any) {
 			pushToast(err.message, "err");
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function cancel() {
+		if (!confirm("Cancel this loop?")) return;
+		busy = true;
+		try {
+			await postJSON('/v1/control/override', {
+				loop_id: id,
+				target_state: "cancelled",
+				reason: "cancelled via console",
+				actor: "operator",
+			});
+			pushToast("Cancellation requested", "ok");
+		} catch (err: any) {
+			pushToast(err.message, "err");
+		} finally {
+			busy = false;
 		}
 	}
 </script>
@@ -50,7 +76,10 @@
     <ArrowLeftOutline size="xs" class="mr-1.5" />
     Back
   </Button>
-  <Button color="red" class="rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7 border-none" onclick={terminate}>
+  <Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={cancel} disabled={busy}>
+    Cancel
+  </Button>
+  <Button color="red" class="rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7 border-none" onclick={terminate} disabled={busy}>
     <TrashBinOutline size="xs" class="mr-1.5" />
     Terminate
   </Button>

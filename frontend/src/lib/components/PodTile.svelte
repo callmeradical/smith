@@ -29,7 +29,7 @@
 	class="pod-card-container group" 
   role="button"
   tabindex="0"
-	onclick={() => goto(`/pod-view/${loop.loopID}`)}
+	onclick={() => goto(`/pod-view/${encodeURIComponent(loop.loopID)}`)}
 >
   <Card class="bg-slate-900/40 border-gray-800 hover:border-cyan-500/50 transition-all cursor-pointer h-full backdrop-blur-sm p-4 {selected ? 'ring-1 ring-cyan-500 border-cyan-500' : ''}">
     <div class="flex flex-col h-full gap-3">

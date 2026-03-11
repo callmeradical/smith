@@ -42,8 +42,10 @@
 	}
 
 	let source: EventSource | null = null;
+	let reconnectTimer: any = null;
 
 	function connect() {
+		if (reconnectTimer) clearTimeout(reconnectTimer);
 		if (source) source.close();
 		if (!loopID) return;
 
@@ -63,16 +65,17 @@
 		source.onerror = () => {
 			source?.close();
 			source = null;
-			setTimeout(connect, 3000);
+			reconnectTimer = setTimeout(connect, 3000);
 		};
 	}
 
-	onMount(() => {
+  $effect(() => {
 		appState.update(s => ({ ...s, journalEntries: [], journalLastSeq: 0 }));
 		connect();
-	});
+  });
 
 	onDestroy(() => {
+		if (reconnectTimer) clearTimeout(reconnectTimer);
 		if (source) source.close();
 	});
 </script>
