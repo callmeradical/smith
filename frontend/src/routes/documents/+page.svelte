@@ -143,8 +143,18 @@
 	<label class="muted" style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
 		<input type="checkbox" bind:checked={showAll} /> Show All
 	</label>
-	<button class="primary" onclick={() => chatOpen = true} style="margin-left: 8px;">Draft with AI</button>
-	<button onclick={createNewDocument}>New Doc</button>
+	<button 
+		class="primary" 
+		onclick={() => chatOpen = true} 
+		style="margin-left: 8px;"
+		disabled={$appState.projects.length === 0}
+		title={$appState.projects.length === 0 ? "Configure a project first" : ""}
+	>Draft with AI</button>
+	<button 
+		onclick={createNewDocument}
+		disabled={$appState.projects.length === 0}
+		title={$appState.projects.length === 0 ? "Configure a project first" : ""}
+	>New Doc</button>
 {/snippet}
 
 <TopBar title="Documents" {controls} />
@@ -188,7 +198,15 @@
 		</div>
 	</aside>
 	<main class="doc-main">
-		{#if $appState.docFilterProject === ""}
+		{#if $appState.projects.length === 0}
+			<EmptyState 
+				title="Welcome to Document Explorer" 
+				description="To create and manage documents, you first need to configure a project. Projects connect your repositories and documentation."
+				buttonText="Configure Project"
+				buttonHref="/projects"
+				icon="🚀"
+			/>
+		{:else if $appState.docFilterProject === ""}
 			<EmptyState 
 				title="Document Explorer" 
 				description="Select a project from the sidebar to view associated Product Requirement Documents (PRDs) and technical specs."
