@@ -26,8 +26,10 @@ SMITH_MIN_HELM_VERSION ?= 3.13.0
 .PHONY: help \
 	doctor bootstrap \
 	cluster cluster-up cluster-down cluster-reset cluster-health \
-	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod undeploy undeploy-local \
+	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod rollout-local undeploy undeploy-local \
+	console-build-local console-load-local console-rollout-local console-deploy-local \
 	test test-unit test-frontend test-matrix test-integration test-e2e test-bdd \
+
 	test-observability-latency \
 	test-acceptance-smoke test-acceptance-bdd test-acceptance \
 	teardown \
@@ -161,6 +163,18 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	  --set global.rolloutId="$(shell date +%s)" \
 	  -f "$(SMITH_LOCAL_VALUES)"
 	$(MAKE) --no-print-directory rollout-local
+
+console-build-local: ## Build only the console local image
+	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
+
+console-load-local: ## Load only the console image into k3d
+	k3d image import "$(SMITH_LOCAL_CONSOLE_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
+
+console-rollout-local: ## Restart only the console deployment
+	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
+	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
+
+console-deploy-local: console-build-local console-load-local console-rollout-local ## Build, load, and restart only the console
 
 rollout-local: ## Force restart local deployments to pick up new images
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
