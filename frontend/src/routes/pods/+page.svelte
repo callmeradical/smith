@@ -4,13 +4,12 @@
 	import { fetchJSON } from '$lib/api';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import PodTile from '$lib/components/PodTile.svelte';
-	import PodCreateModal from '$lib/components/PodCreateModal.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+  import { Select, Input, Label, Button } from 'flowbite-svelte';
+  import { GridOutline } from 'flowbite-svelte-icons';
 
 	let stateFilter = $state('all');
 	let searchQuery = $state('');
-	let autoRefresh = $state(true);
-	let modalOpen = $state(false);
 
 	function normalizeLoop(item: any) {
 		const record = item.record || item.Record || {};
@@ -27,16 +26,6 @@
 			reason,
 			revision,
 		};
-	}
-
-	async function refreshLoops() {
-		try {
-			const raw = await fetchJSON("/v1/loops");
-			const loops = Array.isArray(raw) ? raw.map(normalizeLoop) : [];
-			appState.update(s => ({ ...s, loops }));
-		} catch (err) {
-			console.error("Failed to refresh loops", err);
-		}
 	}
 
 	onMount(() => {
@@ -65,59 +54,74 @@
 	}
 </script>
 
-{#snippet controls()}
-	<select bind:value={stateFilter} aria-label="State filter">
-		<option value="all">All States</option>
-		<option value="active">Active Only</option>
-		<option value="unresolved">Unresolved</option>
-		<option value="overwriting">Overwriting</option>
-		<option value="synced">Synced</option>
-		<option value="flatline">Flatline</option>
-		<option value="cancelled">Cancelled</option>
-	</select>
-	<input type="search" placeholder="Filter loop id" bind:value={searchQuery} />
-	<label class="muted">
-		<input type="checkbox" bind:checked={autoRefresh} /> auto-refresh
-	</label>
-	<button onclick={refreshLoops}>refresh</button>
-{/snippet}
+<TopBar title="Pods" />
 
-<TopBar title="Pods" {controls} />
+<div class="flex items-center justify-start gap-4 -mt-14 mb-8 relative z-50 px-4 ml-auto w-fit">
+  <div class="flex items-center gap-2">
+    <div class="w-32">
+      <Select bind:value={stateFilter} size="sm" class="bg-black border-gray-800 text-gray-400 text-[10px] uppercase font-bold rounded-none h-7">
+        <option value="all">All States</option>
+        <option value="active">Active Only</option>
+        <option value="unresolved">Unresolved</option>
+        <option value="overwriting">Overwriting</option>
+        <option value="synced">Synced</option>
+        <option value="flatline">Flatline</option>
+        <option value="cancelled">Cancelled</option>
+      </Select>
+    </div>
+    
+    <div class="w-48">
+      <Input 
+        type="search" 
+        placeholder="Filter ID..." 
+        bind:value={searchQuery} 
+        size="sm" 
+        class="bg-black border-gray-800 text-white text-[10px] uppercase font-bold rounded-none h-7 px-3"
+      />
+    </div>
+  </div>
+</div>
 
-<section class="stats">
-	<div class="stat"><small>Total</small><strong>{stats.total}</strong></div>
-	<div class="stat"><small>Active</small><strong>{stats.active}</strong></div>
-	<div class="stat"><small>Flatline</small><strong>{stats.flatline}</strong></div>
-	<div class="stat stat-action">
-		<small>New Loop</small>
-		<button type="button" class="stat-add-button" aria-label="Start loop" onclick={() => modalOpen = true}>+</button>
-	</div>
-</section>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 px-4">
+  <div class="bg-slate-900/20 border border-gray-900 rounded-none p-5 flex flex-col gap-1 backdrop-blur-sm">
+    <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Total Pods</span>
+    <span class="text-3xl font-bold text-white tracking-tighter">{stats.total}</span>
+  </div>
+  <div class="bg-slate-900/20 border border-gray-900 rounded-none p-5 flex flex-col gap-1 backdrop-blur-sm">
+    <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Active Loops</span>
+    <span class="text-3xl font-bold text-[#86BC25] tracking-tighter">{stats.active}</span>
+  </div>
+  <div class="bg-slate-900/20 border border-gray-900 rounded-none p-5 flex flex-col gap-1 backdrop-blur-sm">
+    <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Flatline</span>
+    <span class="text-3xl font-bold text-rose-600 tracking-tighter">{stats.flatline}</span>
+  </div>
+</div>
 
-<PodCreateModal open={modalOpen} onClose={() => modalOpen = false} />
-
-<section class="board">
-	<section class="tiles-shell">
-		<div class="pod-grid" role="list">
-			{#if $appState.projects.length === 0}
-				<EmptyState 
-					title="Welcome to SMITH" 
-					description="To get started, you'll need to configure a project. Projects connect your repositories and enable autonomous development loops."
-					buttonText="Configure Project"
-					buttonHref="/projects"
-					icon="🚀"
-				/>
-			{:else}
-				{#each filteredLoops as loop (loop.loopID)}
-					<PodTile 
-						{loop} 
-						selected={$appState.selectedLoop === loop.loopID} 
-						onSelect={selectLoop} 
-					/>
-				{:else}
-					<div class="empty">No pods found.</div>
-				{/each}
-			{/if}
-		</div>
-	</section>
+<section class="tiles-shell px-4">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" role="list">
+    {#if $appState.projects.length === 0}
+      <div class="col-span-full py-12">
+        <EmptyState 
+          title="Welcome to SMITH" 
+          description="To get started, you'll need to configure a project. Projects connect your repositories and enable autonomous development loops."
+          buttonText="Configure Project"
+          buttonHref="/projects"
+          icon="🚀"
+        />
+      </div>
+    {:else}
+      {#each filteredLoops as loop (loop.loopID)}
+        <PodTile 
+          {loop} 
+          selected={$appState.selectedLoop === loop.loopID} 
+          onSelect={selectLoop} 
+        />
+      {:else}
+        <div class="col-span-full py-20 bg-slate-900/10 border border-dashed border-gray-900 rounded-none flex flex-col items-center justify-center text-gray-600">
+          <GridOutline size="xl" class="mb-4 opacity-20" />
+          <p class="text-sm uppercase font-bold tracking-[0.2em]">No pods found matching filters.</p>
+        </div>
+      {/each}
+    {/if}
+  </div>
 </section>

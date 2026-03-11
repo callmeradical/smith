@@ -85,25 +85,25 @@
 	}
 
 	onMount(() => {
+    document.documentElement.classList.add('dark');
 		initApp();
 	});
 </script>
 
-<div id="sidebar-overlay" class="sidebar-overlay" class:open={$sidebarOpen} aria-hidden="true" onclick={() => sidebarOpen.set(false)}></div>
-<div id="provider-drawer-overlay" class="provider-drawer-overlay" aria-hidden="true"></div>
-
 <Toast />
 
-<div class="shell">
+<div class="shell min-h-screen bg-black">
 	<Sidebar />
 
-	<main class="workspace">
+	<main class="workspace max-w-screen-2xl mx-auto px-4 lg:px-8">
 		{@render children()}
 	</main>
 </div>
 
 <style>
-	.sidebar-overlay.open {
-		display: block;
-	}
+  :global(body) {
+    background-color: #000000;
+    margin: 0;
+    padding: 0;
+  }
 </style>

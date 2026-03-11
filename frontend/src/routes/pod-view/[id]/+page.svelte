@@ -6,6 +6,8 @@
 	import TopBar from '$lib/components/TopBar.svelte';
 	import Journal from '$lib/components/Journal.svelte';
 	import { goto } from '$app/navigation';
+  import { Button, Input } from 'flowbite-svelte';
+  import { ArrowLeftOutline, TrashBinOutline, TerminalOutline } from 'flowbite-svelte-icons';
 
 	const id = $derived(page.params.id);
 	
@@ -40,42 +42,45 @@
 	}
 </script>
 
-{#snippet controls()}
-	<button type="button" onclick={() => goto('/pods')}>&larr; back</button>
-	<button type="button" class="danger" onclick={terminate}>terminate</button>
-{/snippet}
+<TopBar title={`Pod: ${id}`} />
 
-<TopBar title={`Pod: ${id}`} {controls} />
+<!-- Inline Actions Header -->
+<div class="flex justify-end gap-2 -mt-14 mb-8 relative z-50 px-4">
+  <Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={() => goto('/pods')}>
+    <ArrowLeftOutline size="xs" class="mr-1.5" />
+    Back
+  </Button>
+  <Button color="red" class="rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7 border-none" onclick={terminate}>
+    <TrashBinOutline size="xs" class="mr-1.5" />
+    Terminate
+  </Button>
+</div>
 
-<Journal loopID={id}>
-	<div class="pod-command-row journal-prompt-row">
-		<span class="journal-prompt-glyph" aria-hidden="true">$</span>
-		<input
-			type="text"
-			placeholder="Run command (e.g. pwd)"
-			bind:value={command}
-			onkeydown={(e) => e.key === 'Enter' && runCommand()}
-			disabled={busy}
-			style="background: transparent; border: none; color: #fff; outline: none; font-family: var(--mono); width: 100%;"
-		/>
-		<button type="button" onclick={runCommand} disabled={busy} class="primary" style="margin-left: 12px; padding: 4px 12px;">
-			{busy ? '...' : 'run'}
-		</button>
-	</div>
-</Journal>
+<div class="px-4">
+  <Journal loopID={id}>
+    <div class="pod-command-row bg-black border border-gray-800 rounded-none p-2 flex items-center gap-3">
+      <div class="flex items-center gap-2 pl-2 text-[#86BC25]">
+        <TerminalOutline size="xs" />
+        <span class="font-mono font-bold">$</span>
+      </div>
+      <Input
+        type="text"
+        placeholder="Run command (e.g. ls -la)"
+        bind:value={command}
+        onkeydown={(e) => e.key === 'Enter' && runCommand()}
+        disabled={busy}
+        size="sm"
+        class="bg-transparent border-none text-white font-mono flex-1 focus:ring-0 rounded-none"
+      />
+      <Button size="xs" color="none" class="bg-[#86BC25] text-black font-bold uppercase px-4 rounded-none h-7 text-[10px]" onclick={runCommand} disabled={busy || !command}>
+        {busy ? '...' : 'Execute'}
+      </Button>
+    </div>
+  </Journal>
+</div>
 
 <style>
-	.pod-command-row {
-		display: flex;
-		align-items: center;
-		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 6px;
-		padding: 4px 8px;
-	}
-	.journal-prompt-glyph {
-		color: var(--accent);
-		margin-right: 8px;
-		font-weight: bold;
-	}
+  :global(.pod-command-row input) {
+    background: transparent !important;
+  }
 </style>
