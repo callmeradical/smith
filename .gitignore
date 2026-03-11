@@ -16,4 +16,7 @@ smith-core
 smith-replica
 smith-verify-completion
 smithctl
+smith-chat
+frontend/build/
+frontend/.svelte-kit/
 .gemini/

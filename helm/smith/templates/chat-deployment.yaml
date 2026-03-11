@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "smith.fullname" . }}-chat
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chat
+spec:
+  {{- if not .Values.chat.autoscaling.enabled }}
+  replicas: {{ .Values.chat.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "smith.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: chat
+  template:
+    metadata:
+      annotations:
+        rollout-id: {{ .Values.global.rolloutId | default (randAlphaNum 5) | quote }}
+      labels:
+        {{- include "smith.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: chat
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "smith.serviceAccountName" (dict "component" "chat" "root" .) }}
+      containers:
+        - name: chat
+          image: "{{ .Values.chat.image.repository }}:{{ .Values.chat.image.tag }}"
+          imagePullPolicy: {{ .Values.chat.image.pullPolicy }}
+          args:
+            - "--etcd-endpoints={{ join "," .Values.etcd.endpoints }}"
+            - "--port={{ .Values.chat.service.port }}"
+          env:
+            {{- with .Values.chat.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.chat.service.port }}
+              name: http
+          resources:
+            {{- toYaml .Values.chat.resources | nindent 12 }}
