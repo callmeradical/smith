@@ -32,6 +32,8 @@ spec:
           env:
             - name: SMITH_API_BASE_URL
               value: {{ .Values.console.apiBaseUrl | quote }}
+            - name: SMITH_CHAT_BASE_URL
+              value: {{ .Values.console.chatBaseUrl | default "/chat" | quote }}
             - name: SMITH_SHOW_COMING_SOON_PROVIDERS
               value: {{ .Values.console.showComingSoonProviders | quote }}
             {{- if $runtimeSecretName }}

@@ -112,10 +112,26 @@ export const getToastRegionEl = () => document.getElementById("toast-region");
 export const getSidebarToggleButtons = () => Array.from(document.querySelectorAll(".sidebar-toggle"));
 export const getPageLinks = () => Array.from(document.querySelectorAll("[data-page-link]"));
 
+export const getDocViewBackEl = () => document.getElementById("doc-view-back");
+export const getDocViewTitleEl = () => document.getElementById("doc-view-title");
+export const getDocViewBuildEl = () => document.getElementById("doc-view-build");
+export const getDocViewDeleteEl = () => document.getElementById("doc-view-delete");
+export const getDocChatPanelEl = () => document.getElementById("doc-chat-panel");
+export const getDocViewChatInputEl = () => document.getElementById("doc-view-chat-input");
+export const getDocViewChatSendEl = () => document.getElementById("doc-view-chat-send");
+export const getDocViewMetaEl = () => document.getElementById("doc-view-meta");
+export const getDocViewConnectEl = () => document.getElementById("doc-view-connect");
+export const getDocTerminalStatusEl = () => document.getElementById("doc-terminal-status");
+export const getDocViewContentEl = () => document.getElementById("doc-view-content");
+export const getDocViewContentPanelEl = () => document.getElementById("doc-view-content-panel");
+export const getDocViewDraftingPanelEl = () => document.getElementById("doc-view-drafting-panel");
+export const getDocViewTabs = () => Array.from(document.querySelectorAll("[data-doc-tab]"));
+
 export const getPages = () => ({
   pods: document.getElementById("page-pods"),
   podView: document.getElementById("page-pod-view"),
   documents: document.getElementById("page-documents"),
+  docView: document.getElementById("page-doc-view"),
   projects: document.getElementById("page-projects"),
   providers: document.getElementById("page-providers"),
   controls: document.getElementById("page-controls"),

@@ -19,6 +19,7 @@ SMITH_LOCAL_CORE_IMAGE ?= smith-core:local
 SMITH_LOCAL_API_IMAGE ?= smith-api:local
 SMITH_LOCAL_REPLICA_IMAGE ?= smith-replica:local
 SMITH_LOCAL_CONSOLE_IMAGE ?= smith-console:local
+SMITH_LOCAL_CHAT_IMAGE ?= smith-chat:local
 SMITH_MIN_GO_VERSION ?= 1.22.0
 SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
 SMITH_MIN_HELM_VERSION ?= 3.13.0
@@ -28,8 +29,8 @@ SMITH_MIN_HELM_VERSION ?= 3.13.0
 	cluster cluster-up cluster-down cluster-reset cluster-health \
 	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod rollout-local undeploy undeploy-local \
 	console-build-local console-load-local console-rollout-local console-deploy-local \
+	chat-build-local chat-load-local chat-deploy-local \
 	test test-unit test-frontend test-matrix test-integration test-e2e test-bdd \
-
 	test-observability-latency \
 	test-acceptance-smoke test-acceptance-bdd test-acceptance \
 	teardown \
@@ -176,10 +177,41 @@ console-rollout-local: ## Restart only the console deployment
 
 console-deploy-local: console-build-local console-load-local console-rollout-local ## Build, load, and restart only the console
 
+api-build-local: ## Build only the smith-api local image
+	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
+
+api-load-local: ## Load only the smith-api image into k3d
+	k3d image import "$(SMITH_LOCAL_API_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
+
+api-rollout-local: ## Restart only the smith-api deployment
+	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
+	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
+
+api-deploy-local: api-build-local api-load-local api-rollout-local ## Build, load, and restart only the smith-api
+
+replica-build-local: ## Build only the smith-replica local image
+	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
+
+replica-load-local: ## Load only the smith-replica image into k3d
+	k3d image import "$(SMITH_LOCAL_REPLICA_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
+
+replica-deploy-local: replica-build-local replica-load-local ## Build and load only the smith-replica (no rollout needed as it runs as Jobs)
+
+chat-build-local: ## Build only the smith-chat local image
+	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
+
+chat-load-local: ## Load only the smith-chat image into k3d
+	k3d image import "$(SMITH_LOCAL_CHAT_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
+
+chat-deploy-local: chat-build-local chat-load-local ## Build and load only the smith-chat
+
+console-api-deploy-local: console-build-local console-load-local api-build-local api-load-local rollout-local ## Build, load, and restart console + api
+
 rollout-local: ## Force restart local deployments to pick up new images
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-core -n $(SMITH_NAMESPACE)
+	-kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-chat -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-core -n $(SMITH_NAMESPACE)
@@ -253,11 +285,12 @@ build: ## Build all Go binaries
 	go build ./...
 
 build-local: ## Build local binaries for deploy-local workflow
-	go build ./cmd/smith ./cmd/smith-core ./cmd/smith-api ./cmd/smith-replica ./cmd/smithctl
+	go build ./cmd/smith ./cmd/smith-core ./cmd/smith-api ./cmd/smith-replica ./cmd/smithctl ./cmd/smith-chat
 	docker build -f docker/core.Dockerfile -t "$(SMITH_LOCAL_CORE_IMAGE)" .
 	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
 	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
 	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
+	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
 	@set -euo pipefail; \
 	if k3d cluster list | awk 'NR>1 {print $$1}' | grep -q "^$(SMITH_K3D_CLUSTER_NAME)$$"; then \
 	  echo "build-local: importing local images into k3d cluster $(SMITH_K3D_CLUSTER_NAME)"; \
@@ -266,6 +299,7 @@ build-local: ## Build local binaries for deploy-local workflow
 	    "$(SMITH_LOCAL_API_IMAGE)" \
 	    "$(SMITH_LOCAL_REPLICA_IMAGE)" \
 	    "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
+	    "$(SMITH_LOCAL_CHAT_IMAGE)" \
 	    -c "$(SMITH_K3D_CLUSTER_NAME)"; \
 	else \
 	  echo "build-local: k3d cluster $(SMITH_K3D_CLUSTER_NAME) not found; skipped k3d image import"; \
@@ -276,13 +310,15 @@ image-build-local: ## Build local Smith container images with deploy-local tags
 	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
 	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
 	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
+	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
 
 image-load-local: ## Import local Smith container images into the k3d cluster
 	k3d image import -c "$(SMITH_K3D_CLUSTER_NAME)" \
 	  "$(SMITH_LOCAL_CORE_IMAGE)" \
 	  "$(SMITH_LOCAL_API_IMAGE)" \
 	  "$(SMITH_LOCAL_REPLICA_IMAGE)" \
-	  "$(SMITH_LOCAL_CONSOLE_IMAGE)"
+	  "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
+	  "$(SMITH_LOCAL_CHAT_IMAGE)"
 
 images-local: image-build-local image-load-local ## Build and load local Smith images for deploy-local
 

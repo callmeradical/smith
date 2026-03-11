@@ -95,6 +95,7 @@ console:
   replicaCount: 1
   enabled: true
   apiBaseUrl: /api
+  chatBaseUrl: /chat
   showComingSoonProviders: false
   autoscaling:
     enabled: false
@@ -111,6 +112,30 @@ console:
   service:
     type: ClusterIP
     port: 3000
+  serviceAccount:
+    create: true
+    name: ""
+  resources: {}
+  env: []
+
+chat:
+  replicaCount: 1
+  enabled: true
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300
+  image:
+    repository: ghcr.io/smith/chat
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8081
   serviceAccount:
     create: true
     name: ""

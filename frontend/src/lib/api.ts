@@ -1,6 +1,10 @@
 import { appState } from './stores';
 import { get } from 'svelte/store';
 
+const config = (typeof window !== 'undefined' ? (window as any).__SMITH_CONFIG__ : {}) || {};
+export const apiBaseUrl = (config.apiBaseUrl || "/api").replace(/\/+$/, "");
+export const chatBaseUrl = (config.chatBaseUrl || "/chat").replace(/\/+$/, "");
+
 export async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 20000, label?: string) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -17,7 +21,7 @@ export async function fetchWithTimeout(url: string, options: any = {}, timeoutMs
 }
 
 export async function fetchJSON(path: string) {
-  const res = await fetchWithTimeout(`/api${path}`, {
+  const res = await fetchWithTimeout(`${apiBaseUrl}${path}`, {
     headers: { Accept: "application/json" }
   });
   if (!res.ok) {
@@ -39,7 +43,7 @@ export async function deleteJSON(path: string) {
 }
 
 export async function requestJSON(path: string, method: string, payload?: any) {
-  const res = await fetchWithTimeout(`/api${path}`, {
+  const res = await fetchWithTimeout(`${apiBaseUrl}${path}`, {
     method,
     headers: {
       Accept: "application/json",

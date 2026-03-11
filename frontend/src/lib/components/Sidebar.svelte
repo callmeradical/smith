@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { sidebarOpen } from '$lib/stores';
+	import { sidebarOpen, chatOpen } from '$lib/stores';
 	import { page } from '$app/state';
   import { Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, Drawer } from 'flowbite-svelte';
-  import { GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, CloseOutline } from 'flowbite-svelte-icons';
+  import { GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, CloseOutline, MessagesOutline } from 'flowbite-svelte-icons';
   import { sineIn } from 'svelte/easing';
 
 	const navItems = [
@@ -62,6 +62,18 @@
             {/snippet}
           </SidebarItem>
         {/each}
+
+        <SidebarItem 
+          onclick={() => { chatOpen.update(v => !v); sidebarOpen.set(false); }}
+          class="group text-gray-400 hover:text-blue-500 hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent"
+        >
+          {#snippet icon()}
+            <div class="flex items-center gap-3">
+              <MessagesOutline size="sm" class="transition duration-75 group-hover:text-blue-500" />
+              <span class="font-bold uppercase tracking-tight text-sm">Operator Chat</span>
+            </div>
+          {/snippet}
+        </SidebarItem>
       </SidebarGroup>
     </div>
 

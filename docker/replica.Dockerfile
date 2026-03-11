@@ -20,7 +20,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith ./cmd/smith
 
 FROM node:22-alpine
-RUN apk add --no-cache git bash ca-certificates && npm install -g @openai/codex
+RUN apk add --no-cache git bash ca-certificates curl bzip2 && \
+    npm install -g @openai/codex
+RUN curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
+ENV PATH="/root/.local/bin:${PATH}"
 COPY --from=builder /out/smith-replica /bin/smith-replica
 COPY --from=builder /out/smith /bin/smith
 WORKDIR /workspace

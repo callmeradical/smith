@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { sidebarOpen } from '$lib/stores';
+	import { sidebarOpen, chatOpen } from '$lib/stores';
   import { page } from '$app/state';
   import { Button, Navbar, NavBrand, NavUl, NavLi } from 'flowbite-svelte';
-  import { BarsOutline, GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline } from 'flowbite-svelte-icons';
+  import { BarsOutline, GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, MessagesOutline } from 'flowbite-svelte-icons';
 
 	interface Props {
 		title: string;
@@ -29,6 +29,15 @@
   </NavBrand>
 
   <div class="flex items-center gap-2 lg:order-2">
+    <Button
+      color="none"
+      class="p-2 text-blue-500 hover:bg-white/5 transition-colors hidden lg:flex items-center gap-2"
+      onclick={() => chatOpen.update(v => !v)}
+      aria-label="Toggle Chat"
+    >
+      <MessagesOutline size="md" />
+      <span class="uppercase tracking-widest text-[10px] font-bold">Chat</span>
+    </Button>
     <Button
       color="none"
       class="p-2 text-[#86BC25] hover:bg-white/5 transition-colors lg:hidden"
