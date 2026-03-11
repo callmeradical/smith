@@ -97,15 +97,16 @@ type overrideRequest struct {
 }
 
 type costSummary struct {
-	LoopID         string  `json:"loop_id"`
-	EntryCount     int     `json:"entry_count"`
-	TotalTokens    int64   `json:"total_tokens"`
-	PromptTokens   int64   `json:"prompt_tokens"`
-	OutputTokens   int64   `json:"output_tokens"`
-	TotalCostUSD   float64 `json:"total_cost_usd"`
-	LastActivityAt string  `json:"last_activity_at,omitempty"`
+        LoopID         string  `json:"loop_id"`
+        ProviderID     string  `json:"provider_id,omitempty"`
+        Model          string  `json:"model,omitempty"`
+        EntryCount     int     `json:"entry_count"`
+        TotalTokens    int64   `json:"total_tokens"`
+        PromptTokens   int64   `json:"prompt_tokens"`
+        OutputTokens   int64   `json:"output_tokens"`
+        TotalCostUSD   float64 `json:"total_cost_usd"`
+        LastActivityAt string  `json:"last_activity_at,omitempty"`
 }
-
 type authStartRequest struct {
 	Actor string `json:"actor"`
 }
@@ -2240,22 +2241,34 @@ func (s *server) handleOverride(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleCost(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	loopID := strings.TrimSpace(r.URL.Query().Get("loop_id"))
-	if loopID == "" {
-		writeErr(w, http.StatusBadRequest, "loop_id is required")
-		return
-	}
-	entries, err := s.store.ListJournal(r.Context(), loopID, 0)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	out := costSummary{LoopID: loopID, EntryCount: len(entries)}
-	for _, entry := range entries {
+        if r.Method != http.MethodGet {
+                writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+                return
+        }
+        loopID := strings.TrimSpace(r.URL.Query().Get("loop_id"))
+        if loopID == "" {
+                writeErr(w, http.StatusBadRequest, "loop_id is required")
+                return
+        }
+
+        anomaly, found, err := s.store.GetAnomaly(r.Context(), loopID)
+        if err != nil {
+                writeErr(w, http.StatusInternalServerError, err.Error())
+                return
+        }
+
+        entries, err := s.store.ListJournal(r.Context(), loopID, 0)
+        if err != nil {
+                writeErr(w, http.StatusInternalServerError, err.Error())
+                return
+        }
+        out := costSummary{LoopID: loopID, EntryCount: len(entries)}
+        if found {
+                out.ProviderID = anomaly.ProviderID
+                out.Model = anomaly.Model
+        }
+        for _, entry := range entries {
+
 		if entry.Timestamp.After(parseRFC3339(out.LastActivityAt)) {
 			out.LastActivityAt = entry.Timestamp.UTC().Format(time.RFC3339)
 		}
