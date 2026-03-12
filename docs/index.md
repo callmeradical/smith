@@ -1,13 +1,21 @@
 # Smith Documentation
 
-Smith is an etcd-backed, Kubernetes-native autonomous orchestration platform.
+**A Distributed Runtime for Autonomous Software Development**
+
+Smith is a distributed runtime designed to execute autonomous development loops across a cluster of machines. By combining Product Requirement Documents (PRDs), GitHub Issues, and automated validation workflows, Smith enables software systems to continuously build themselves.
+
+## Core Concepts
+
+- **Ralph Loops:** Structured feedback loops that externalize state into the repository, enabling long-running autonomous progress.
+- **Choreography:** A decentralized approach to development where PRDs define goals and agents react to repository state.
+- **Continuous Implementation:** A shift from traditional CI/CD pipelines to an autonomous `plan -> implement -> validate -> iterate` loop.
 
 ## Philosophy
 
-- Smith intentionally avoids anthropomorphized agent personas.
-- Workers are homogeneous and omnicapable, designed for uniform replication.
-- The platform extends beyond a local file-system execution model by using etcd + Kubernetes for distributed orchestration and traceable state.
-- The design is influenced by [Ralph](https://github.com/snarktank/ralph), [marcus/sidecar](https://github.com/marcus/sidecar), [marcus/td](https://github.com/marcus/td), and related work, while targeting scale beyond a single developer machine.
+- **No Personified Agents:** Execution units are homogeneous, omnicapable, and designed for uniform horizontal replication.
+- **Scale Beyond the Local Machine:** Using etcd + Kubernetes as the control substrate allows development activity to scale across distributed compute while preserving deterministic state and traceability.
+- **Repository-Based Coordination:** The repository is the shared coordination layer where autonomous loops cooperate.
+- **Inspiration:** The design is influenced by [Ralph](https://github.com/snarktank/ralph), [marcus/sidecar](https://github.com/marcus/sidecar), [marcus/td](https://github.com/marcus/td), and related work.
 
 ## Getting Started
 

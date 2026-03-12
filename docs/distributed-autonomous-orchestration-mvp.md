@@ -2,23 +2,31 @@
 
 ## Intent
 
-Deliver Smith as an etcd-backed, Kubernetes-native autonomous orchestration platform where:
-- etcd is the authoritative state machine.
-- Agent Core drives execution by watching unresolved loop state.
-- Replica workers execute in Kubernetes Jobs.
-- Operator API and CLI provide ingress, control, visibility, and audited intervention.
+Deliver Smith as a **Distributed Runtime for Autonomous Software Development** where:
+- **Product Requirements** are turned into running software through autonomous development loops.
+- **Ralph Loops** are distributed across infrastructure, reading PRDs and contributing improvements to the codebase.
+- **etcd** serves as the authoritative state machine for these distributed loops.
+- **Kubernetes Jobs** execute the replica workers, scaling development activity horizontally.
+- **Operator API and CLI** provide ingress, control, and visibility.
 
 ## Philosophy
 
-Smith does not use persona-specific agents.
+### Choreography, Not Orchestration
 
+Smith uses choreography to coordinate development work. There is no central controller dictating every step. Instead, PRDs define goals, GitHub issues define tasks, and tests define correctness. Agents react to the shared repository state.
+
+### Distributed, Not Local
+
+Smith moves beyond a single-machine local file-system model. By using etcd + Kubernetes as a distributed control substrate, development loops can scale across broad compute while preserving deterministic state, auditability, and resumability.
+
+### Homogeneous Workers, Not Personas
+
+Smith intentionally does not personify agents.
 - Execution units are intentionally homogeneous and omnicapable.
-- Anthropomorphic "agent personalities" are treated as constraints that reduce scheduling flexibility and system-level throughput.
-- Scale comes from replicating the same worker contract many times, not from assigning different identities or personas.
-- Orchestration is built from neutral primitives: state transitions, leases/locks, jobs, journals, and handoffs.
-- The implementation is influenced by [Ralph](https://github.com/snarktank/ralph), [marcus/sidecar](https://github.com/marcus/sidecar), [marcus/td](https://github.com/marcus/td), and similar projects, with an explicit goal of operating beyond single-machine constraints.
+- Scale comes from replicating the same worker contract many times.
+- The system design favors neutral orchestration primitives (state transitions, leases/locks, jobs, journals, and handoffs) over persona-specific behavior.
 
-Smith also intentionally moves beyond a single-machine local file-system model. etcd + Kubernetes provide a distributed control substrate so loops can run across broad compute while preserving deterministic state, auditability, and resumability.
+The implementation is influenced by [Ralph](https://github.com/snarktank/ralph), [marcus/sidecar](https://github.com/marcus/sidecar), [marcus/td](https://github.com/marcus/td), and similar projects.
 
 ## Architecture
 
