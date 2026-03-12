@@ -11,6 +11,9 @@ WORKFLOWS=(
   "build-ctl.yml"
   "build-verify-completion.yml"
   "build-console.yml"
+  "platform-gate.yml"
+  "helm-publish.yml"
+  "images-build-publish.yml"
 )
 
 MISSING=0
