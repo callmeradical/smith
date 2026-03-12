@@ -1,6 +1,6 @@
 # Implementation Plan: Implement per-component GitHub Action build pipelines and container image/Helm chart storage
 
-## Phase 1: Foundation and Image Infrastructure
+## Phase 1: Foundation and Image Infrastructure [checkpoint: c139a75]
 - [x] Task: Create per-component build/test workflows for backend services (Go)
     - [x] Create workflow for `smith-api`
     - [x] Create workflow for `smith-core`
@@ -11,7 +11,7 @@
 - [x] Task: Configure Docker builds and GHCR push for all services
     - [x] Setup multi-arch build support (if needed)
     - [x] Configure authentication for GHCR in workflows
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Foundation and Image Infrastructure' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Foundation and Image Infrastructure' (Protocol in workflow.md)
 
 ## Phase 2: Helm and Global Coordination
 - [ ] Task: Implement Helm chart packaging and GitHub Packages push
