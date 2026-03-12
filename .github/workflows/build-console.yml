@@ -1,0 +1,39 @@
+name: Build Smith Console
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'console/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-console.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run frontend tests
+        run: npm run test:frontend
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install --silent
+          npm run build

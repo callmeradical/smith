@@ -23,6 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: api
+            dockerfile: docker/api.Dockerfile
+          - image: chat
+            dockerfile: docker/chat.Dockerfile
           - image: core
             dockerfile: docker/core.Dockerfile
           - image: replica

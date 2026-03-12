@@ -1,0 +1,32 @@
+name: Build Smith Core
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/smith-core/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/build-core.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run smith-core tests
+        run: go test -v ./cmd/smith-core/...
+
+      - name: Run internal unit tests
+        run: go test -v ./internal/...
+
+      - name: Build smith-core
+        run: go build -o bin/smith-core ./cmd/smith-core
