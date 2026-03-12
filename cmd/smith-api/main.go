@@ -86,9 +86,7 @@ type server struct {
 	kube            kubernetes.Interface
 	restConfig      *rest.Config
 	upgrader        websocket.Upgrader
-
 }
-
 type overrideRequest struct {
 	LoopID      string          `json:"loop_id"`
 	TargetState model.LoopState `json:"target_state"`
@@ -97,15 +95,15 @@ type overrideRequest struct {
 }
 
 type costSummary struct {
-        LoopID         string  `json:"loop_id"`
-        ProviderID     string  `json:"provider_id,omitempty"`
-        Model          string  `json:"model,omitempty"`
-        EntryCount     int     `json:"entry_count"`
-        TotalTokens    int64   `json:"total_tokens"`
-        PromptTokens   int64   `json:"prompt_tokens"`
-        OutputTokens   int64   `json:"output_tokens"`
-        TotalCostUSD   float64 `json:"total_cost_usd"`
-        LastActivityAt string  `json:"last_activity_at,omitempty"`
+	LoopID         string  `json:"loop_id"`
+	ProviderID     string  `json:"provider_id,omitempty"`
+	Model          string  `json:"model,omitempty"`
+	EntryCount     int     `json:"entry_count"`
+	TotalTokens    int64   `json:"total_tokens"`
+	PromptTokens   int64   `json:"prompt_tokens"`
+	OutputTokens   int64   `json:"output_tokens"`
+	TotalCostUSD   float64 `json:"total_cost_usd"`
+	LastActivityAt string  `json:"last_activity_at,omitempty"`
 }
 type authStartRequest struct {
 	Actor string `json:"actor"`
@@ -869,13 +867,13 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 
 	loopID := strings.TrimSpace(req.LoopID)
 	if loopID == "" {
-	        projectID := req.Metadata["project_id"]
-	        if projectID == "" {
-	                projectID = req.Metadata["project"]
-	        }
-	        loopID = deriveLoopID(projectID, req.IdempotencyKey, req.SourceType, req.SourceRef)
-	        }
-	        if existing, found, err := s.store.GetState(ctx, loopID); err == nil && found {
+		projectID := req.Metadata["project_id"]
+		if projectID == "" {
+			projectID = req.Metadata["project"]
+		}
+		loopID = deriveLoopID(projectID, req.IdempotencyKey, req.SourceType, req.SourceRef)
+	}
+	if existing, found, err := s.store.GetState(ctx, loopID); err == nil && found {
 		stored, storedFound, _ := s.store.GetAnomaly(ctx, loopID)
 		if !storedFound {
 			stored.Environment = environment
@@ -1349,7 +1347,7 @@ func (s *server) handleChatPRD(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agentImage := "smith-replica:local"
-	
+
 	// Goose provider mapping
 	gooseProvider := "openai"
 	switch providerID {
@@ -1380,7 +1378,7 @@ func (s *server) handleChatPRD(w http.ResponseWriter, r *http.Request) {
 		{Name: "ANTHROPIC_API_KEY", Value: s.cfg.operatorToken},
 	}
 
-	_ , err = s.createDraftingPod(ctx, namespace, podName, agentImage, envVars)
+	_, err = s.createDraftingPod(ctx, namespace, podName, agentImage, envVars)
 	if err != nil {
 		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to create drafting pod: " + err.Error()})
 		return
@@ -1528,28 +1526,28 @@ func (s *server) handleChatPRD(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) createDraftingPod(ctx context.Context, namespace, name, image string, env []corev1.EnvVar) (*corev1.Pod, error) {
-        pod := &corev1.Pod{
-                ObjectMeta: metav1.ObjectMeta{
-                        Name:      name,
-                        Namespace: namespace,
-                        Labels: map[string]string{
-                                "smith.io/component": "drafter",
-                        },
-                },
-                Spec: corev1.PodSpec{
-                        RestartPolicy: corev1.RestartPolicyNever,
-                        Containers: []corev1.Container{
-                                {
-                                        Name:            "agent",
-                                        Image:           image,
-                                        ImagePullPolicy: corev1.PullNever,
-                                        Command:         []string{"/bin/sh", "-c", "sleep 3600"}, // Keep alive for exec
-                                        Env:             env,
-                                },
-                        },
-                },
-        }
-        return s.kube.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"smith.io/component": "drafter",
+			},
+		},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			Containers: []corev1.Container{
+				{
+					Name:            "agent",
+					Image:           image,
+					ImagePullPolicy: corev1.PullNever,
+					Command:         []string{"/bin/sh", "-c", "sleep 3600"}, // Keep alive for exec
+					Env:             env,
+				},
+			},
+		},
+	}
+	return s.kube.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
 }
 func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID string) {
 	if r.Method != http.MethodPost {
@@ -2241,33 +2239,33 @@ func (s *server) handleOverride(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleCost(w http.ResponseWriter, r *http.Request) {
-        if r.Method != http.MethodGet {
-                writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-                return
-        }
-        loopID := strings.TrimSpace(r.URL.Query().Get("loop_id"))
-        if loopID == "" {
-                writeErr(w, http.StatusBadRequest, "loop_id is required")
-                return
-        }
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	loopID := strings.TrimSpace(r.URL.Query().Get("loop_id"))
+	if loopID == "" {
+		writeErr(w, http.StatusBadRequest, "loop_id is required")
+		return
+	}
 
-        anomaly, found, err := s.store.GetAnomaly(r.Context(), loopID)
-        if err != nil {
-                writeErr(w, http.StatusInternalServerError, err.Error())
-                return
-        }
+	anomaly, found, err := s.store.GetAnomaly(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-        entries, err := s.store.ListJournal(r.Context(), loopID, 0)
-        if err != nil {
-                writeErr(w, http.StatusInternalServerError, err.Error())
-                return
-        }
-        out := costSummary{LoopID: loopID, EntryCount: len(entries)}
-        if found {
-                out.ProviderID = anomaly.ProviderID
-                out.Model = anomaly.Model
-        }
-        for _, entry := range entries {
+	entries, err := s.store.ListJournal(r.Context(), loopID, 0)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out := costSummary{LoopID: loopID, EntryCount: len(entries)}
+	if found {
+		out.ProviderID = anomaly.ProviderID
+		out.Model = anomaly.Model
+	}
+	for _, entry := range entries {
 
 		if entry.Timestamp.After(parseRFC3339(out.LastActivityAt)) {
 			out.LastActivityAt = entry.Timestamp.UTC().Format(time.RFC3339)
@@ -2777,45 +2775,45 @@ func loadConfig() (config, error) {
 }
 
 func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) string {
-        prefix := "smi"
-        if len(projectID) >= 3 {
-                prefix = strings.ToLower(projectID[:3])
-        } else if len(projectID) > 0 {
-                prefix = strings.ToLower(projectID)
-        }
+	prefix := "smi"
+	if len(projectID) >= 3 {
+		prefix = strings.ToLower(projectID[:3])
+	} else if len(projectID) > 0 {
+		prefix = strings.ToLower(projectID)
+	}
 
-        key := strings.TrimSpace(idempotencyKey)
-        if key == "" {
-                key = sourceType + ":" + sourceRef
-        }
-        key = strings.ToLower(strings.TrimSpace(key))
-        replacer := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-", ":", "-")
-        key = replacer.Replace(key)
-        key = strings.Trim(key, "-")
+	key := strings.TrimSpace(idempotencyKey)
+	if key == "" {
+		key = sourceType + ":" + sourceRef
+	}
+	key = strings.ToLower(strings.TrimSpace(key))
+	replacer := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-", ":", "-")
+	key = replacer.Replace(key)
+	key = strings.Trim(key, "-")
 
-        // Generate a stable short hash for the "xxxxx" part if we want it to look like the example
-        h := sha256.New()
-        h.Write([]byte(key))
-        hashPart := hex.EncodeToString(h.Sum(nil))[:5]
+	// Generate a stable short hash for the "xxxxx" part if we want it to look like the example
+	h := sha256.New()
+	h.Write([]byte(key))
+	hashPart := hex.EncodeToString(h.Sum(nil))[:5]
 
-        if key == "" {
-                return fmt.Sprintf("%s-%s-%d", prefix, hashPart, time.Now().UTC().UnixNano())
-        }
+	if key == "" {
+		return fmt.Sprintf("%s-%s-%d", prefix, hashPart, time.Now().UTC().UnixNano())
+	}
 
-        // Clean key for use in ID
-        key = strings.Map(func(r rune) rune {
-                if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-                        return r
-                }
-                return -1
-        }, key)
-        key = strings.Trim(key, "-")
+	// Clean key for use in ID
+	key = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		return -1
+	}, key)
+	key = strings.Trim(key, "-")
 
-        if len(key) > 32 {
-                key = key[:32]
-        }
+	if len(key) > 32 {
+		key = key[:32]
+	}
 
-        return fmt.Sprintf("%s-%s-%s", prefix, hashPart, key)
+	return fmt.Sprintf("%s-%s-%s", prefix, hashPart, key)
 }
 func ingressSummary(results []ingressResult) map[string]any {
 	created := 0
@@ -3176,86 +3174,86 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if route == "build" {
-	        if r.Method != http.MethodPost {
-	                writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-	                return
-	        }
-	        // Build instantiates a smith loop from the document content
-	        // Content is expected to be PRD JSON or Markdown
-	        format := strings.ToLower(doc.Format)
-	        if format == "" {
-	                if strings.HasPrefix(strings.TrimSpace(doc.Content), "{") {
-	                        format = "json"
-	                } else {
-	                        format = "markdown"
-	                }
-	        }
+		if r.Method != http.MethodPost {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		// Build instantiates a smith loop from the document content
+		// Content is expected to be PRD JSON or Markdown
+		format := strings.ToLower(doc.Format)
+		if format == "" {
+			if strings.HasPrefix(strings.TrimSpace(doc.Content), "{") {
+				format = "json"
+			} else {
+				format = "markdown"
+			}
+		}
 
-	        var drafts []ingress.LoopDraft
-	        var errs []ingress.ParseError
-	        baseMetadata := copyStringMap(doc.Metadata)
-	        if baseMetadata == nil {
-	                baseMetadata = make(map[string]string)
-	        }
-	        baseMetadata["document_id"] = doc.ID
-	        baseMetadata["project_id"] = doc.ProjectID
+		var drafts []ingress.LoopDraft
+		var errs []ingress.ParseError
+		baseMetadata := copyStringMap(doc.Metadata)
+		if baseMetadata == nil {
+			baseMetadata = make(map[string]string)
+		}
+		baseMetadata["document_id"] = doc.ID
+		baseMetadata["project_id"] = doc.ProjectID
 
-	        sourceRef := doc.SourceRef
-	        if sourceRef == "" {
-	                sourceRef = fmt.Sprintf("doc:%s", doc.ID)
-	        }
+		sourceRef := doc.SourceRef
+		if sourceRef == "" {
+			sourceRef = fmt.Sprintf("doc:%s", doc.ID)
+		}
 
-	        switch format {
-	        case "markdown", "md":
-	                drafts, errs = ingress.ParsePRDMarkdown(doc.Content, sourceRef, baseMetadata)
-	        case "json":
-	                var tasks []ingress.PRDTask
-	                if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
-	                        drafts, errs = ingress.PRDTasksToDrafts(tasks, sourceRef, baseMetadata)
-	                } else {
-	                        writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
-	                        return
-	                }
-	        default:
-	                writeErr(w, http.StatusBadRequest, "unsupported document format for build")
-	                return
-	        }
+		switch format {
+		case "markdown", "md":
+			drafts, errs = ingress.ParsePRDMarkdown(doc.Content, sourceRef, baseMetadata)
+		case "json":
+			var tasks []ingress.PRDTask
+			if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
+				drafts, errs = ingress.PRDTasksToDrafts(tasks, sourceRef, baseMetadata)
+			} else {
+				writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
+				return
+			}
+		default:
+			writeErr(w, http.StatusBadRequest, "unsupported document format for build")
+			return
+		}
 
-	        if len(errs) > 0 {
-	                writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
-	                return
-	        }
+		if len(errs) > 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
+			return
+		}
 
-	        results := make([]ingressResult, 0, len(drafts))
-	        for i, draft := range drafts {
-	                title := draft.Title
-	                if doc.Title != "" {
-	                        title = fmt.Sprintf("[%s] %s", doc.Title, draft.Title)
-	                }
-	                res := s.createOneLoop(r.Context(), loopCreateRequest{
-	                        IdempotencyKey: draft.IdempotencyKey,
-	                        Title:          title,
-	                        Description:    draft.Description,
-	                        SourceType:     draft.SourceType,
-	                        SourceRef:      draft.SourceRef,
-	                        Metadata:       draft.Metadata,
-	                })
-	                results = append(results, ingressResult{
-	                        ItemIndex: i,
-	                        LoopID:    res.LoopID,
-	                        SourceRef: draft.SourceRef,
-	                        Status:    res.Status,
-	                        Created:   res.Created,
-	                        Message:   res.Message,
-	                })
-	        }
-	        writeJSON(w, http.StatusOK, ingressSummary(results))
-	        return
+		results := make([]ingressResult, 0, len(drafts))
+		for i, draft := range drafts {
+			title := draft.Title
+			if doc.Title != "" {
+				title = fmt.Sprintf("[%s] %s", doc.Title, draft.Title)
+			}
+			res := s.createOneLoop(r.Context(), loopCreateRequest{
+				IdempotencyKey: draft.IdempotencyKey,
+				Title:          title,
+				Description:    draft.Description,
+				SourceType:     draft.SourceType,
+				SourceRef:      draft.SourceRef,
+				Metadata:       draft.Metadata,
+			})
+			results = append(results, ingressResult{
+				ItemIndex: i,
+				LoopID:    res.LoopID,
+				SourceRef: draft.SourceRef,
+				Status:    res.Status,
+				Created:   res.Created,
+				Message:   res.Message,
+			})
+		}
+		writeJSON(w, http.StatusOK, ingressSummary(results))
+		return
 	}
 
 	switch r.Method {
 	case http.MethodGet:
-	        writeJSON(w, http.StatusOK, doc)
+		writeJSON(w, http.StatusOK, doc)
 	case http.MethodPut:
 		var req documentRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -3283,25 +3281,25 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, doc)
 	case http.MethodDelete:
-	        if err := s.store.DeleteDocument(r.Context(), docID); err != nil {
-	                writeErr(w, http.StatusInternalServerError, err.Error())
-	                return
-	        }
-	        writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		if err := s.store.DeleteDocument(r.Context(), docID); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	default:
-	        writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
-	}
+}
 
-	func (s *server) handleLoopStream(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleLoopStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-	writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-	return
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-	writeErr(w, http.StatusInternalServerError, "streaming unsupported")
-	return
+		writeErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -3311,18 +3309,18 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	send := func(event string, payload any) error {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-	return err
-	}
-	if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
-	return err
-	}
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
-	return err
-	}
-	flusher.Flush()
-	return nil
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
 	}
 
 	_ = send("ready", map[string]string{"status": "connected"})
@@ -3330,29 +3328,30 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 	// Emit initial states
 	states, err := s.store.ListStates(r.Context())
 	if err == nil {
-	for _, loop := range states {
-	_ = send("update", loop)
-	}
+		for _, loop := range states {
+			_ = send("update", loop)
+		}
 	}
 
 	// Watch for updates
 	events := s.store.WatchState(r.Context())
 	for {
-	select {
-	case <-r.Context().Done():
-	return
-	case ev, ok := <-events:
-	if !ok {
-	return
+		select {
+		case <-r.Context().Done():
+			return
+		case ev, ok := <-events:
+			if !ok {
+				return
+			}
+			if ev.HasState {
+				_ = send("update", store.LoopWithRevision{
+					Record:   ev.State,
+					Revision: ev.Revision,
+				})
+			}
+		}
 	}
-	if ev.HasState {
-		_ = send("update", store.LoopWithRevision{
-			Record:   ev.State,
-			Revision: ev.Revision,
-		})
-	}	}
-	}
-	}
+}
 
 func (s *server) handleDocumentStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
