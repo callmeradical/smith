@@ -1,0 +1,32 @@
+name: Build Smith CTL
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/smithctl/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/build-ctl.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run smithctl tests
+        run: go test -v ./cmd/smithctl/...
+
+      - name: Run internal unit tests
+        run: go test -v ./internal/...
+
+      - name: Build smithctl
+        run: go build -o bin/smithctl ./cmd/smithctl

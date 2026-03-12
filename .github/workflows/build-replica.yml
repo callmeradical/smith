@@ -1,0 +1,32 @@
+name: Build Smith Replica
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/smith-replica/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/build-replica.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run smith-replica tests
+        run: go test -v ./cmd/smith-replica/...
+
+      - name: Run internal unit tests
+        run: go test -v ./internal/...
+
+      - name: Build smith-replica
+        run: go build -o bin/smith-replica ./cmd/smith-replica
