@@ -261,13 +261,13 @@ func runLoop(client *apiClient, output string, args []string, stdout, stderr io.
 	case "create":
 		return cmdLoopCreate(client, output, args[1:], stdout, stderr)
 	case "logs":
-	        return cmdLoopLogs(client, output, args[1:], stdout, stderr)
+		return cmdLoopLogs(client, output, args[1:], stdout, stderr)
 	case "runtime":
-	        return cmdLoopRuntime(client, output, args[1:], stdout, stderr)
+		return cmdLoopRuntime(client, output, args[1:], stdout, stderr)
 	case "cost":
-	        return cmdLoopCost(client, output, args[1:], stdout, stderr)
+		return cmdLoopCost(client, output, args[1:], stdout, stderr)
 	case "attach":
-	        return cmdLoopAttach(client, output, args[1:], stdout, stderr)
+		return cmdLoopAttach(client, output, args[1:], stdout, stderr)
 
 	case "detach":
 		return cmdLoopDetach(client, output, args[1:], stdout, stderr)
@@ -510,57 +510,57 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 		return 2
 	}
 	if strings.TrimSpace(fromGitHub) != "" {
-	        var payload any
-	        // Try to treat it as a file first
-	        if _, err := os.Stat(fromGitHub); err == nil {
-	                payload, err = readJSONFileAny(fromGitHub)
-	                if err != nil {
-	                        fmt.Fprintf(stderr, "read github payload failed: %v\n", err)
-	                        return 1
-	                }
-	                if _, ok := payload.([]any); ok {
-	                        payload = map[string]any{"issues": payload}
-	                }
-	        } else {
-	                // Treat as issue ID or repo#ID
-	                issueRef := strings.TrimSpace(fromGitHub)
-	                repo := ""
-	                numberStr := issueRef
-	                if idx := strings.Index(issueRef, "#"); idx != -1 {
-	                        repo = issueRef[:idx]
-	                        numberStr = issueRef[idx+1:]
-	                }
-	                if repo == "" {
-	                        // Try to infer repo from current git context
-	                        repo = inferCurrentRepo()
-	                }
-	                if repo == "" {
-	                        fmt.Fprintln(stderr, "repository could not be inferred; use 'repo#number' format for --from-github")
-	                        return 1
-	                }
-	                num, err := strconv.Atoi(numberStr)
-	                if err != nil {
-	                        fmt.Fprintf(stderr, "invalid github issue number %q: %v\n", numberStr, err)
-	                        return 1
-	                }
-	                payload = map[string]any{
-	                        "issues": []any{
-	                                map[string]any{
-	                                        "repository": repo,
-	                                        "number":     num,
-	                                        "title":      fmt.Sprintf("Issue from %s#%d", repo, num),
-	                                },
-	                        },
-	                }
-	        }
+		var payload any
+		// Try to treat it as a file first
+		if _, err := os.Stat(fromGitHub); err == nil {
+			payload, err = readJSONFileAny(fromGitHub)
+			if err != nil {
+				fmt.Fprintf(stderr, "read github payload failed: %v\n", err)
+				return 1
+			}
+			if _, ok := payload.([]any); ok {
+				payload = map[string]any{"issues": payload}
+			}
+		} else {
+			// Treat as issue ID or repo#ID
+			issueRef := strings.TrimSpace(fromGitHub)
+			repo := ""
+			numberStr := issueRef
+			if idx := strings.Index(issueRef, "#"); idx != -1 {
+				repo = issueRef[:idx]
+				numberStr = issueRef[idx+1:]
+			}
+			if repo == "" {
+				// Try to infer repo from current git context
+				repo = inferCurrentRepo()
+			}
+			if repo == "" {
+				fmt.Fprintln(stderr, "repository could not be inferred; use 'repo#number' format for --from-github")
+				return 1
+			}
+			num, err := strconv.Atoi(numberStr)
+			if err != nil {
+				fmt.Fprintf(stderr, "invalid github issue number %q: %v\n", numberStr, err)
+				return 1
+			}
+			payload = map[string]any{
+				"issues": []any{
+					map[string]any{
+						"repository": repo,
+						"number":     num,
+						"title":      fmt.Sprintf("Issue from %s#%d", repo, num),
+					},
+				},
+			}
+		}
 
-	        var out any
-	        if err := client.doJSON(http.MethodPost, "/v1/ingress/github/issues", payload, &out); err != nil {
-	                fmt.Fprintf(stderr, "loop create failed: %v\n", err)
-	                return 1
-	        }
-	        printOutput(stdout, output, out)
-	        return 0
+		var out any
+		if err := client.doJSON(http.MethodPost, "/v1/ingress/github/issues", payload, &out); err != nil {
+			fmt.Fprintf(stderr, "loop create failed: %v\n", err)
+			return 1
+		}
+		printOutput(stdout, output, out)
+		return 0
 	}
 
 	if strings.TrimSpace(fromPRD) != "" {
@@ -1552,134 +1552,134 @@ func printHelp(w io.Writer) {
 }
 
 func printLoopHelp(w io.Writer) {
-        fmt.Fprintln(w, "Usage: smithctl loop <command>")
-        fmt.Fprintln(w, "Commands: list, get, trace, create, logs, runtime, cost, attach, detach, command, cancel, ingest-github")
+	fmt.Fprintln(w, "Usage: smithctl loop <command>")
+	fmt.Fprintln(w, "Commands: list, get, trace, create, logs, runtime, cost, attach, detach, command, cancel, ingest-github")
 }
 
 func cmdLoopRuntime(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
-        fs := flag.NewFlagSet("loop runtime", flag.ContinueOnError)
-        fs.SetOutput(io.Discard)
-        var filePath string
-        fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
-        fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
-        if err := fs.Parse(args); err != nil {
-                fmt.Fprintln(stderr, err.Error())
-                return 2
-        }
-        loopIDs, err := collectLoopIDs(filePath, fs.Args())
-        if err != nil {
-                fmt.Fprintf(stderr, "loop runtime failed: %v\n", err)
-                return 1
-        }
-        if len(loopIDs) == 0 {
-                fmt.Fprintln(stderr, "usage: smithctl loop runtime <loop-id> [<loop-id>...] [--file ids.json]")
-                return 2
-        }
-        results := make([]map[string]any, 0, len(loopIDs))
-        failed := false
-        for _, loopID := range loopIDs {
-                var runtime any
-                path := "/v1/loops/" + loopID + "/runtime"
-                if err := client.doJSON(http.MethodGet, path, nil, &runtime); err != nil {
-                        results = append(results, map[string]any{
-                                "loop_id": loopID,
-                                "status":  "error",
-                                "error":   err.Error(),
-                        })
-                        failed = true
-                        continue
-                }
-                results = append(results, map[string]any{
-                        "loop_id": loopID,
-                        "status":  "ok",
-                        "runtime": runtime,
-                })
-        }
-        if len(loopIDs) == 1 && !failed {
-                printOutput(stdout, output, results[0]["runtime"])
-                return 0
-        }
-        printOutput(stdout, output, map[string]any{"results": results})
-        if failed {
-                return 1
-        }
-        return 0
+	fs := flag.NewFlagSet("loop runtime", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var filePath string
+	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	loopIDs, err := collectLoopIDs(filePath, fs.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "loop runtime failed: %v\n", err)
+		return 1
+	}
+	if len(loopIDs) == 0 {
+		fmt.Fprintln(stderr, "usage: smithctl loop runtime <loop-id> [<loop-id>...] [--file ids.json]")
+		return 2
+	}
+	results := make([]map[string]any, 0, len(loopIDs))
+	failed := false
+	for _, loopID := range loopIDs {
+		var runtime any
+		path := "/v1/loops/" + loopID + "/runtime"
+		if err := client.doJSON(http.MethodGet, path, nil, &runtime); err != nil {
+			results = append(results, map[string]any{
+				"loop_id": loopID,
+				"status":  "error",
+				"error":   err.Error(),
+			})
+			failed = true
+			continue
+		}
+		results = append(results, map[string]any{
+			"loop_id": loopID,
+			"status":  "ok",
+			"runtime": runtime,
+		})
+	}
+	if len(loopIDs) == 1 && !failed {
+		printOutput(stdout, output, results[0]["runtime"])
+		return 0
+	}
+	printOutput(stdout, output, map[string]any{"results": results})
+	if failed {
+		return 1
+	}
+	return 0
 }
 
 func cmdLoopCost(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
-        fs := flag.NewFlagSet("loop cost", flag.ContinueOnError)
-        fs.SetOutput(io.Discard)
-        var filePath string
-        fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
-        fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
-        if err := fs.Parse(args); err != nil {
-                fmt.Fprintln(stderr, err.Error())
-                return 2
-        }
-        loopIDs, err := collectLoopIDs(filePath, fs.Args())
-        if err != nil {
-                fmt.Fprintf(stderr, "loop cost failed: %v\n", err)
-                return 1
-        }
-        if len(loopIDs) == 0 {
-                fmt.Fprintln(stderr, "usage: smithctl loop cost <loop-id> [<loop-id>...] [--file ids.json]")
-                return 2
-        }
-        results := make([]map[string]any, 0, len(loopIDs))
-        failed := false
-        for _, loopID := range loopIDs {
-                var cost any
-                path := "/v1/reporting/cost?loop_id=" + loopID
-                if err := client.doJSON(http.MethodGet, path, nil, &cost); err != nil {
-                        results = append(results, map[string]any{
-                                "loop_id": loopID,
-                                "status":  "error",
-                                "error":   err.Error(),
-                        })
-                        failed = true
-                        continue
-                }
-                results = append(results, map[string]any{
-                        "loop_id": loopID,
-                        "status":  "ok",
-                        "cost":    cost,
-                })
-        }
-        if len(loopIDs) == 1 && !failed {
-                printOutput(stdout, output, results[0]["cost"])
-                return 0
-        }
-        printOutput(stdout, output, map[string]any{"results": results})
-        if failed {
-                return 1
-        }
-        return 0
+	fs := flag.NewFlagSet("loop cost", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var filePath string
+	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
+	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	loopIDs, err := collectLoopIDs(filePath, fs.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "loop cost failed: %v\n", err)
+		return 1
+	}
+	if len(loopIDs) == 0 {
+		fmt.Fprintln(stderr, "usage: smithctl loop cost <loop-id> [<loop-id>...] [--file ids.json]")
+		return 2
+	}
+	results := make([]map[string]any, 0, len(loopIDs))
+	failed := false
+	for _, loopID := range loopIDs {
+		var cost any
+		path := "/v1/reporting/cost?loop_id=" + loopID
+		if err := client.doJSON(http.MethodGet, path, nil, &cost); err != nil {
+			results = append(results, map[string]any{
+				"loop_id": loopID,
+				"status":  "error",
+				"error":   err.Error(),
+			})
+			failed = true
+			continue
+		}
+		results = append(results, map[string]any{
+			"loop_id": loopID,
+			"status":  "ok",
+			"cost":    cost,
+		})
+	}
+	if len(loopIDs) == 1 && !failed {
+		printOutput(stdout, output, results[0]["cost"])
+		return 0
+	}
+	printOutput(stdout, output, map[string]any{"results": results})
+	if failed {
+		return 1
+	}
+	return 0
 }
 
 func inferCurrentRepo() string {
-        out, err := runExternalCommand("git", "config", "--get", "remote.origin.url")
-        if err != nil || strings.TrimSpace(out) == "" {
-                return ""
-        }
-        repoURL := strings.TrimSpace(out)
-        repoURL = strings.TrimSuffix(repoURL, ".git")
-        if strings.HasPrefix(repoURL, "git@github.com:") {
-                return strings.TrimPrefix(repoURL, "git@github.com:")
-        }
-        if strings.HasPrefix(repoURL, "https://github.com/") {
-                return strings.TrimPrefix(repoURL, "https://github.com/")
-        }
-        return ""
+	out, err := runExternalCommand("git", "config", "--get", "remote.origin.url")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return ""
+	}
+	repoURL := strings.TrimSpace(out)
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+	if strings.HasPrefix(repoURL, "git@github.com:") {
+		return strings.TrimPrefix(repoURL, "git@github.com:")
+	}
+	if strings.HasPrefix(repoURL, "https://github.com/") {
+		return strings.TrimPrefix(repoURL, "https://github.com/")
+	}
+	return ""
 }
 
 func runExternalCommand(name string, args ...string) (string, error) {
-        cmd := exec.Command(name, args...)
-        var out bytes.Buffer
-        cmd.Stdout = &out
-        if err := cmd.Run(); err != nil {
-                return "", err
-        }
-        return out.String(), nil
+	cmd := exec.Command(name, args...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return out.String(), nil
 }
 func printPRDHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: smithctl prd <command>")
