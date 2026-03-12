@@ -1,0 +1,50 @@
+name: Platform Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  all-components-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run all Go unit tests
+        run: go test -v ./...
+
+      - name: Run all frontend tests
+        run: npm run test:frontend
+
+      - name: Helm Lint
+        run: helm lint helm/smith
+
+      - name: Run test matrix (unit + e2e)
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts
+          SMITH_FIXTURE_DIR: /tmp/smith-test-repo
+          SMITH_ENABLE_CLUSTER_TESTS: "false"
+        run: ./scripts/test/run-matrix.sh
