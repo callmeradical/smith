@@ -19,6 +19,8 @@
 - **Kubernetes:** The primary execution and orchestration substrate.
 - **Helm:** For packaging and deploying the Smith control plane.
 - **Docker:** For building service and replica images.
+- **GitHub Actions:** CI/CD platform providing per-component build pipelines and a global platform gate.
+- **GitHub Container Registry (GHCR):** OCI-compliant registry for service images and Helm charts.
 
 ## Testing and Verification
 - **Playwright:** End-to-end testing for the frontend and UI workflows.
