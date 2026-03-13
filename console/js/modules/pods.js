@@ -32,13 +32,13 @@ import {
 export function normalizeLoop(item) {
   const record = item.record || item.Record || {};
   const loopID = record.loop_id || record.LoopID || item.loop_id || "unknown-loop";
-  const status = (record.state || record.State || "unknown").toLowerCase();
-  const attempt = Number(record.attempt || record.Attempt || 0);
-  const reason = record.reason || record.Reason || "";
+  const status = (item.status || record.state || record.status || record.State || "unknown").toLowerCase();
+  const attempt = Number(record.attempt || record.Attempt || item.attempt || 0);
+  const reason = record.reason || record.Reason || item.reason || "";
   const revision = Number(item.revision || item.Revision || record.observed_revision || 0);
   return {
     loopID,
-    project: record.project_id || record.project || record.project_name || "default",
+    project: record.project_id || record.project || record.project_name || item.project || "alpha",
     status,
     attempt,
     reason,
@@ -72,7 +72,10 @@ export function renderGrid() {
     const tile = document.createElement("article");
     tile.className = "pod-tile" + (state.selectedLoop === loop.loopID ? " selected" : "");
     tile.innerHTML = `
-      <div class="tile-head"><div class="tile-title loop-id">${escapeHtml(loop.loopID)}</div></div>
+      <div class="tile-head">
+        <div class="tile-title loop-id">${escapeHtml(loop.loopID)}</div>
+        <button type="button" class="tile-attach-button" data-tile-attach="${escapeHtml(loop.loopID)}" title="Quick attach to pod detail">attach</button>
+      </div>
       <div class="tile-loop">${escapeHtml(loop.project)}</div>
       <div class="tile-reason">${escapeHtml(loop.reason || "no recent update")}</div>
       <div class="tile-footer">
@@ -80,7 +83,25 @@ export function renderGrid() {
         <div class="tile-meta"><span>ATT ${loop.attempt}</span><span>REV ${loop.revision}</span></div>
       </div>
     `;
-    tile.onclick = () => selectLoop(loop.loopID);
+    tile.onclick = (e) => {
+      const attachBtn = e.target.closest("[data-tile-attach]");
+      if (attachBtn) {
+        e.stopPropagation();
+        const id = loop.loopID;
+        state.selectedLoop = id;
+        setActivePage("podView", true);
+        renderSelectedLoop();
+        // Trigger immediate attach
+        import("./terminal.js").then((m) => {
+          m.setTerminalUIState("attaching", "");
+          state.terminalAttachedLoopID = id;
+          m.setTerminalUIState("idle", "");
+          pushToast("Attached to " + id, "ok");
+        });
+        return;
+      }
+      selectLoop(loop.loopID);
+    };
     gridEl.appendChild(tile);
   });
   
@@ -113,6 +134,11 @@ export function selectLoop(loopID) {
 export function renderSelectedLoop() {
   const titleEl = getPodViewTitleEl();
   if (titleEl) titleEl.textContent = state.selectedLoop ? "Pod: " + state.selectedLoop : "Pod Detail";
+
+  const journalTitleEl = document.getElementById("journal-title");
+  if (journalTitleEl) {
+    journalTitleEl.textContent = state.selectedLoop ? "Journal: " + state.selectedLoop : "Pod Detail Journal";
+  }
   
   import("./journal.js").then(m => {
     m.clearJournal("attaching to stream...");
@@ -122,6 +148,8 @@ export function renderSelectedLoop() {
   });
   
   if (state.selectedLoop) {
+    state.runtimeByLoopID[state.selectedLoop] = null;
+    import("./terminal.js").then(m => m.syncPodViewActions());
     void loadLoopRuntime(state.selectedLoop, true);
   }
 }
@@ -456,6 +484,7 @@ export async function refreshLoops() {
     const raw = await fetchJSON("/v1/loops");
     state.loops = Array.isArray(raw) ? raw.map(normalizeLoop) : [];
     renderGrid();
+    renderStats();
     const dot = getApiDotEl();
     if (dot) dot.className = "dot ok";
   } catch (_) {

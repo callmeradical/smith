@@ -73,6 +73,58 @@ export function setProjectEditorOpen(open) {
   if (addBtn) addBtn.classList.toggle("hidden", isOpen);
 }
 
+export async function refreshProjects() {
+  try {
+    const raw = await fetchJSON("/v1/projects");
+    state.projects = Array.isArray(raw) ? raw : [];
+    renderProjects();
+  } catch (err) {
+    console.error("Error refreshing projects:", err);
+  }
+}
+
+export function openAddProjectForm() {
+  state.editingProjectID = "";
+  const nameEl = document.getElementById("project-name");
+  const repoEl = document.getElementById("project-repo-url");
+  const userEl = document.getElementById("project-github-user");
+  const credEl = document.getElementById("project-github-credential");
+  if (nameEl) nameEl.value = "";
+  if (repoEl) repoEl.value = "";
+  if (userEl) userEl.value = "";
+  if (credEl) credEl.value = "";
+  const statusEl = getProjectFormStatusEl();
+  if (statusEl) statusEl.textContent = "";
+  setProjectEditorOpen(true);
+}
+
+export async function saveProject() {
+  const nameEl = document.getElementById("project-name");
+  const repoEl = document.getElementById("project-repo-url");
+  const userEl = document.getElementById("project-github-user");
+  const credEl = document.getElementById("project-github-credential");
+  const name = nameEl ? nameEl.value.trim() : "";
+  const repoUrl = repoEl ? repoEl.value.trim() : "";
+  if (!name || !repoUrl) {
+    const statusEl = getProjectFormStatusEl();
+    if (statusEl) statusEl.textContent = "name and repository URL required";
+    return;
+  }
+  try {
+    await postJSON("/v1/projects", {
+      name,
+      repo_url: repoUrl,
+      github_user: userEl ? userEl.value.trim() : "",
+      github_credential: credEl ? credEl.value.trim() : "",
+    });
+    setProjectEditorOpen(false);
+    await refreshProjects();
+  } catch (err) {
+    const statusEl = getProjectFormStatusEl();
+    if (statusEl) statusEl.textContent = "save failed: " + err.message;
+  }
+}
+
 export function renderProjects() {
   const listEl = getProjectListEl();
   if (!listEl) return;

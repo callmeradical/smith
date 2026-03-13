@@ -6,13 +6,12 @@
   <title>SMITH</title>
   <script src="/runtime-config.js"></script>
   <link rel="stylesheet" href="/css/stylesheet.css" />
-
-
 </head>
 <body>
   <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
   <div id="provider-drawer-overlay" class="provider-drawer-overlay" aria-hidden="true"></div>
   <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+  
   <div class="shell">
     <aside class="sidebar" aria-label="Console sidebar">
       <section class="brand">
@@ -33,6 +32,7 @@
     </aside>
 
     <main class="workspace">
+      <!-- PODS LIST PAGE -->
       <section id="page-pods" class="page active">
         <header class="topbar">
           <div class="topbar-left">
@@ -54,101 +54,6 @@
             <button id="refresh">refresh</button>
           </div>
         </header>
-
-        <aside id="pod-create-panel" class="pod-create-modal" aria-hidden="true">
-          <div class="provider-drawer-head">
-            <div class="provider-drawer-title">New Loop</div>
-            <button id="pod-create-close" type="button" class="provider-drawer-close" aria-label="Close loop creation">&times;</button>
-          </div>
-          <section class="panel">
-            <div class="pod-create-step-indicators" aria-hidden="true">
-              <div id="pod-create-step-chip-1" class="pod-create-step-chip active">
-                <span class="pod-create-step-node">1</span>
-                <span class="pod-create-step-label">Method</span>
-              </div>
-              <div id="pod-create-step-chip-2" class="pod-create-step-chip">
-                <span class="pod-create-step-node">2</span>
-                <span class="pod-create-step-label">Source</span>
-              </div>
-              <div id="pod-create-step-chip-3" class="pod-create-step-chip">
-                <span class="pod-create-step-node">3</span>
-                <span class="pod-create-step-label">Details</span>
-              </div>
-              <div id="pod-create-step-chip-4" class="pod-create-step-chip hidden">
-                <span class="pod-create-step-node">4</span>
-                <span class="pod-create-step-label">Chat</span>
-              </div>
-            </div>
-
-            <section id="pod-create-step-1" class="pod-create-step-panel" data-pod-create-step="1">
-              <div class="status-note">How should this loop start?</div>
-              <div class="pod-create-method-options">
-                <button type="button" class="pod-create-method-button selected" data-pod-create-method="issue">
-                  <strong>Create from Issue</strong>
-                  <span>Select a GitHub issue from a project and create a loop.</span>
-                </button>
-                <button type="button" class="pod-create-method-button" data-pod-create-method="generate_prd">
-                  <strong>Generate a PRD</strong>
-                  <span>Build a PRD before loop creation.</span>
-                </button>
-                <button type="button" class="pod-create-method-button" data-pod-create-method="load_prd">
-                  <strong>Load a PRD</strong>
-                  <span>Use an existing PRD as loop source.</span>
-                </button>
-              </div>
-            </section>
-
-            <section id="pod-create-step-2" class="pod-create-step-panel hidden" data-pod-create-step="2">
-              <select id="pod-create-project" aria-label="Project">
-                <option value="">Select project</option>
-              </select>
-
-              <div id="pod-create-method-issue" data-pod-create-method-panel="issue">
-                <input id="pod-create-issue-filter" type="search" placeholder="Filter issue (number/title)">
-                <select id="pod-create-issue" aria-label="Issue" disabled>
-                  <option value="">Select issue</option>
-                </select>
-                <div id="pod-create-issue-preview" class="status-note">Select a project to load issues.</div>
-              </div>
-              <div id="pod-create-method-generate-prd" class="status-note hidden" data-pod-create-method-panel="generate_prd">
-                Select a project, then provide an initial prompt in step 3. You will refine the PRD in chat in step 4.
-              </div>
-              <div id="pod-create-method-load-prd" class="status-note hidden" data-pod-create-method-panel="load_prd">
-                Select a project, then paste or upload PRD JSON in step 3.
-              </div>
-            </section>
-
-            <section id="pod-create-step-3" class="pod-create-step-panel hidden" data-pod-create-step="3">
-              <input id="pod-create-loop-name" type="text" placeholder="loop name (optional)">
-              <input id="pod-create-branch" type="text" placeholder="branch name (default: project-issue-#)">
-              <input id="pod-create-source-branch" type="text" placeholder="source branch (default: main)">
-              <select id="pod-create-provider" aria-label="Provider">
-                <option value="">Select provider</option>
-              </select>
-              <textarea id="pod-create-prompt" rows="6" placeholder="optional prompt or PRD JSON"></textarea>
-              <input id="pod-create-prd-file" type="file" accept=".json,application/json">
-            </section>
-
-            <section id="pod-create-step-4" class="pod-create-step-panel hidden" data-pod-create-step="4">
-              <div class="chat-shell" style="height: 300px; margin-top: 12px;">
-                <div id="pod-create-chat-panel" class="chat-panel"></div>
-                <div class="chat-composer">
-                  <input id="pod-create-chat-input" type="text" placeholder="Type to refine PRD..." autocomplete="off">
-                  <button id="pod-create-chat-send" type="button" class="primary">send</button>
-                </div>
-              </div>
-              <div id="pod-create-chat-status" class="status-note">Chat with agent to finalize PRD.</div>
-            </section>
-
-            <div class="pod-create-footer">
-              <button id="pod-create-back" type="button">back</button>
-              <button id="pod-create-next" type="button" class="primary">next</button>
-              <button id="pod-create-submit" type="button" class="primary hidden">create loop</button>
-              <button id="pod-create-cancel" type="button">cancel</button>
-            </div>
-            <div id="pod-create-status" class="status-note"></div>
-          </section>
-        </aside>
 
         <section class="stats">
           <div class="stat"><small>Total</small><strong id="stat-total">0</strong></div>
@@ -173,9 +78,10 @@
             <div id="grid" class="pod-grid" role="list" aria-label="Pods grouped by project"></div>
           </section>
         </section>
+      </section>
 
-        <section id="page-pod-view" class="page">
-
+      <!-- POD DETAIL PAGE -->
+      <section id="page-pod-view" class="page">
         <header class="topbar">
           <div class="topbar-left">
             <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
@@ -185,7 +91,7 @@
           <div class="controls">
             <button id="pod-view-cancel" type="button">cancel</button>
             <button id="pod-view-terminate" type="button" class="danger">terminate</button>
-            <button id="pod-view-delete" type="button" class="danger">delete loop</button>
+            <button id="pod-view-delete" type="button" class="danger">delete</button>
           </div>
         </header>
         <section id="pod-view-journal-shell" class="journal">
@@ -193,17 +99,10 @@
             <strong id="journal-title">Pod Detail Journal</strong>
             <span id="journal-latency" class="muted" style="margin-left: 12px;">p95 --</span>
           </div>
-          <pre id="terminal" class="terminal">[journal] select a pod tile to open pod detail view
-</pre>
+          <pre id="terminal" class="terminal">[journal] select a pod tile to open pod detail view</pre>
           <div class="pod-command-row journal-prompt-row">
             <span class="journal-prompt-glyph" aria-hidden="true">$</span>
-            <input
-              id="pod-view-command"
-              type="text"
-              placeholder="Attach to run commands"
-              autocomplete="off"
-              spellcheck="false"
-            >
+            <input id="pod-view-command" type="text" placeholder="Attach to run commands" autocomplete="off" spellcheck="false">
             <button id="pod-view-run" type="button">run</button>
           </div>
         </section>
@@ -219,6 +118,103 @@
         </section>
       </section>
 
+      <!-- DOCUMENTS PAGE -->
+      <section id="page-documents" class="page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Documents</div>
+            <div id="doc-breadcrumb" class="doc-breadcrumb"><span>All Projects</span></div>
+          </div>
+          <div class="controls">
+            <input id="doc-search" type="search" placeholder="Filter documents">
+            <button id="doc-create-toggle" class="primary">New Document</button>
+          </div>
+        </header>
+        <div class="doc-container">
+          <aside id="doc-sidebar" class="doc-sidebar">
+            <div class="doc-sidebar-section">
+              <div class="doc-sidebar-header">Projects</div>
+              <div id="doc-project-list" class="doc-sidebar-list">
+                <div class="doc-sidebar-item active" data-doc-filter-project="all">All Projects</div>
+              </div>
+            </div>
+            <div class="doc-sidebar-section">
+              <div class="doc-sidebar-header">Status</div>
+              <div id="doc-status-list" class="doc-sidebar-list">
+                <div class="doc-sidebar-item" data-doc-filter-status="all">All</div>
+                <div class="doc-sidebar-item" data-doc-filter-status="active">Active</div>
+                <div class="doc-sidebar-item" data-doc-filter-status="archived">Archived</div>
+              </div>
+            </div>
+          </aside>
+          <main class="doc-main">
+            <section id="doc-list" class="pod-grid"></section>
+          </main>
+        </div>
+      </section>
+
+      <!-- DOCUMENT DETAIL PAGE -->
+      <section id="page-doc-view" class="page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <button id="doc-view-back" type="button" aria-label="Back to documents">&larr;</button>
+            <div id="doc-view-title" class="topbar-title">Document Detail</div>
+          </div>
+          <div class="controls">
+            <button id="doc-view-build" type="button" class="primary">build loop</button>
+            <button id="doc-view-delete" type="button" class="danger">delete</button>
+          </div>
+        </header>
+        <div class="doc-view-tabs" role="tablist">
+          <button type="button" class="doc-view-tab active" data-doc-tab="content">Content</button>
+          <button type="button" class="doc-view-tab" data-doc-tab="drafting">Drafting Agent</button>
+        </div>
+        <section id="doc-view-content-panel" class="doc-view-panel">
+          <textarea id="doc-view-content" class="terminal" readonly></textarea>
+        </section>
+        <section id="doc-view-drafting-panel" class="doc-view-panel hidden">
+          <section id="doc-view-terminal-shell" class="journal">
+            <div class="journal-header">
+              <strong id="doc-terminal-title">Drafting Agent Terminal</strong>
+              <span id="doc-terminal-status" class="muted" style="margin-left: 12px;">idle</span>
+            </div>
+            <div id="doc-chat-panel" class="chat-panel terminal">
+              <div class="chat-bubble agent">Hello! I'm your drafting agent. Type below to start drafting or refining your document.</div>
+            </div>
+            <div class="pod-command-row journal-prompt-row">
+              <span class="journal-prompt-glyph" aria-hidden="true">$</span>
+              <input id="doc-view-chat-input" type="text" placeholder="Type to draft or refine..." autocomplete="off" spellcheck="false">
+              <button id="doc-view-chat-send" type="button">send</button>
+            </div>
+          </section>
+          <section class="pod-control-panel" aria-label="Drafting controls" style="margin-top: 12px;">
+            <div class="pod-control-row">
+              <strong id="doc-view-meta" class="pod-runtime-summary">document: --</strong>
+              <button id="doc-view-connect" type="button">connect agent</button>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <!-- PROJECTS PAGE -->
+      <section id="page-projects" class="page config-page">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+            <div class="topbar-title">Projects</div>
+          </div>
+          <button id="project-add" type="button" class="icon-button" aria-label="Add project">+</button>
+        </header>
+        <section id="project-list-panel">
+          <div id="project-list" class="project-list"></div>
+          <div id="project-action-status" class="status-note"></div>
+          <div id="project-empty" class="status-note">No projects configured yet.</div>
+        </section>
+      </section>
+
+      <!-- PROVIDERS PAGE -->
       <section id="page-providers" class="page config-page">
         <header class="topbar">
           <div class="topbar-left">
@@ -231,37 +227,9 @@
           <div id="provider-catalog-status" class="status-note"></div>
           <div id="provider-empty" class="status-note hidden">No providers available.</div>
         </section>
-        <aside id="provider-config-panel" class="provider-drawer" aria-hidden="true">
-          <div class="provider-drawer-head">
-            <div id="provider-config-title" class="provider-drawer-title">Provider Configuration</div>
-            <button id="provider-back" type="button" class="provider-drawer-close" aria-label="Close provider configuration">&times;</button>
-          </div>
-          <section id="provider-codex-panel" class="panel hidden">
-          <div class="panel-title">
-            <span>Codex Authentication</span>
-          </div>
-          <div class="status-note">Provide an API key and optional label for Codex.</div>
-          <div id="auth-api-key-panel" class="provider-api-key">
-            <div class="input-with-icon">
-              <input id="auth-api-key" type="password" placeholder="OpenAI API key">
-              <button
-                id="auth-reveal-api-key"
-                class="field-icon-button"
-                type="button"
-                aria-label="Reveal API key"
-                title="Reveal API key"
-              ></button>
-            </div>
-            <input id="auth-account-id" type="text" placeholder="account label (optional)">
-          </div>
-          <div class="provider-actions">
-            <button id="auth-save-api-key" class="primary">Save</button>
-            <button id="auth-disconnect">delete</button>
-          </div>
-          </section>
-        </aside>
       </section>
 
+      <!-- MANUAL CONTROLS PAGE -->
       <section id="page-controls" class="page config-page">
         <header class="topbar">
           <div class="topbar-left">
@@ -290,221 +258,134 @@
           </div>
         </section>
       </section>
-
-      <section id="page-projects" class="page config-page">
-        <header class="topbar">
-          <div class="topbar-left">
-            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
-            <div class="topbar-title">Projects</div>
-          </div>
-          <button id="project-add" type="button" class="icon-button" aria-label="Add project">+</button>
-        </header>
-        <section id="project-list-panel">
-          <div id="project-list" class="project-list"></div>
-          <div id="project-action-status" class="status-note"></div>
-          <div id="project-empty" class="status-note">
-            No projects configured yet.
-          </div>
-        </section>
-        <aside id="project-config-panel" class="provider-drawer" aria-hidden="true">
-          <div class="provider-drawer-head">
-            <div class="provider-drawer-title">Project Configuration</div>
-            <button id="project-back" type="button" class="provider-drawer-close" aria-label="Close project configuration">&times;</button>
-          </div>
-          <section class="panel">
-            <input id="project-name" type="text" placeholder="project name">
-            <input id="project-repo-url" type="url" placeholder="repository URL (https://github.com/org/repo.git)">
-            <input id="project-github-user" type="text" placeholder="GitHub username or app/bot name">
-            <input id="project-github-credential" type="password" placeholder="GitHub credential (PAT or token)">
-            <input id="project-runtime-image" type="text" placeholder="runtime image (optional, e.g. smith-replica:local)">
-            <select id="project-runtime-pull-policy" aria-label="Runtime image pull policy">
-              <option value="IfNotPresent">Runtime pull policy: IfNotPresent</option>
-              <option value="Always">Runtime pull policy: Always</option>
-              <option value="Never">Runtime pull policy: Never</option>
-            </select>
-            <input id="project-skills-image" type="text" placeholder="skills/seed image (optional, image with /seed content)">
-            <select id="project-skills-pull-policy" aria-label="Skills seed image pull policy">
-              <option value="IfNotPresent">Skills image pull policy: IfNotPresent</option>
-              <option value="Always">Skills image pull policy: Always</option>
-              <option value="Never">Skills image pull policy: Never</option>
-            </select>
-            <div class="status-note">
-              Credential is saved to backend secret storage.
-            </div>
-            <div class="project-actions">
-              <button id="project-save" class="primary">save project</button>
-              <button id="project-delete-credential" class="danger hidden" type="button">delete credential</button>
-            </div>
-            <div id="project-form-status" class="status-note"></div>
-          </section>
-          <button id="project-delete" class="danger drawer-delete-action hidden" type="button">delete project</button>
-        </aside>
-      </section>
-
-      <section id="page-documents" class="page">
-        <header class="topbar">
-          <div class="topbar-left">
-            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
-            <div class="topbar-title">Documents</div>
-            <div id="doc-breadcrumb" class="doc-breadcrumb"><span>All Projects</span></div>
-          </div>
-          <div class="controls">
-            <input id="doc-search" type="search" placeholder="Filter documents">
-            <button id="doc-create-toggle" class="primary">New Document</button>
-          </div>
-        </header>
-
-        <aside id="doc-create-panel" class="pod-create-modal" aria-hidden="true">
-          <div class="provider-drawer-head">
-            <div class="provider-drawer-title">New Document</div>
-            <button id="doc-create-close" type="button" class="provider-drawer-close" aria-label="Close document creation">&times;</button>
-          </div>
-          <section class="panel">
-            <div class="pod-create-step-indicators" aria-hidden="true">
-              <div id="doc-create-step-chip-1" class="doc-create-step-chip active">
-                <span class="pod-create-step-node">1</span>
-                <span class="pod-create-step-label">Method</span>
-              </div>
-              <div id="doc-create-step-chip-2" class="doc-create-step-chip">
-                <span class="pod-create-step-node">2</span>
-                <span class="pod-create-step-label">Details</span>
-              </div>
-            </div>
-
-            <section id="doc-create-step-1" class="pod-create-step-panel" data-doc-create-step="1">
-              <div class="status-note">How should this document be created?</div>
-              <div class="pod-create-method-options">
-                <button type="button" class="doc-create-method-button selected" data-doc-create-method="issue">
-                  <strong>From GitHub Issue</strong>
-                  <span>Import a document from a project issue.</span>
-                </button>
-                <button type="button" class="doc-create-method-button" data-doc-create-method="generate">
-                  <strong>Generate</strong>
-                  <span>Interactively generate a PRD document.</span>
-                </button>
-                <button type="button" class="doc-create-method-button" data-doc-create-method="upload">
-                  <strong>Upload</strong>
-                  <span>Upload a JSON or YAML document.</span>
-                </button>
-              </div>
-            </section>
-
-            <section id="doc-create-step-2" class="pod-create-step-panel hidden" data-doc-create-step="2">
-              <select id="doc-create-project" aria-label="Project">
-                <option value="">Select project</option>
-              </select>
-
-              <div id="doc-create-method-issue-panel" data-doc-create-method-panel="issue">
-                <input id="doc-create-issue-filter" type="search" placeholder="Filter issue (number/title)">
-                <select id="doc-create-issue" aria-label="Issue" disabled>
-                  <option value="">Select issue</option>
-                </select>
-              </div>
-
-              <div id="doc-create-method-generate-panel" class="hidden" data-doc-create-method-panel="generate">
-                <textarea id="doc-create-prompt" rows="4" placeholder="Describe what you want to generate..."></textarea>
-              </div>
-
-              <div id="doc-create-method-upload-panel" class="hidden" data-doc-create-method-panel="upload">
-                <input id="doc-create-file" type="file" accept=".json,.yaml,.yml">
-                <textarea id="doc-create-content" rows="6" placeholder="Or paste JSON/YAML here..."></textarea>
-              </div>
-
-              <input id="doc-create-title" type="text" placeholder="Document Title (optional)">
-            </section>
-
-            <div class="pod-create-footer">
-              <button id="doc-create-back" type="button">back</button>
-              <button id="doc-create-next" type="button" class="primary">next</button>
-              <button id="doc-create-submit" type="button" class="primary hidden">create document</button>
-              <button id="doc-create-cancel" type="button">cancel</button>
-            </div>
-            <div id="doc-create-status" class="status-note"></div>
-          </section>
-        </aside>
-
-        <div class="doc-container">
-          <aside id="doc-sidebar" class="doc-sidebar">
-            <div class="doc-sidebar-section">
-              <div class="doc-sidebar-header">Projects</div>
-              <div id="doc-project-list" class="doc-sidebar-list">
-                <div class="doc-sidebar-item active" data-doc-filter-project="all">All Projects</div>
-              </div>
-            </div>
-            <div class="doc-sidebar-section">
-              <div class="doc-sidebar-header">Status</div>
-              <div id="doc-status-list" class="doc-sidebar-list">
-                <div class="doc-sidebar-item" data-doc-filter-status="all">All</div>
-                <div class="doc-sidebar-item" data-doc-filter-status="active">Active</div>
-                <div class="doc-sidebar-item" data-doc-filter-status="archived">Archived</div>
-              </div>
-            </div>
-          </aside>
-          <main class="doc-main">
-            <section id="doc-list" class="pod-grid">
-              <!-- Grouped documents will be rendered here -->
-            </section>
-          </main>
-        </div>
-      </section>
-
-      <section id="page-doc-view" class="page">
-        <header class="topbar">
-          <div class="topbar-left">
-            <button type="button" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
-            <button id="doc-view-back" type="button" aria-label="Back to documents">&larr;</button>
-            <div id="doc-view-title" class="topbar-title">Document Detail</div>
-          </div>
-          <div class="controls">
-            <button id="doc-view-build" type="button" class="primary">build loop</button>
-            <button id="doc-view-delete" type="button" class="danger">delete</button>
-          </div>
-        </header>
-        
-        <div class="doc-view-tabs" role="tablist">
-          <button type="button" class="doc-view-tab active" data-doc-tab="content">Content</button>
-          <button type="button" class="doc-view-tab" data-doc-tab="drafting">Drafting Agent</button>
-        </div>
-
-        <section id="doc-view-content-panel" class="doc-view-panel">
-          <textarea id="doc-view-content" class="terminal" style="width: 100%; height: calc(72vh - 80px); background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; color: var(--text); font-family: var(--mono); font-size: 0.9rem; line-height: 1.5;" readonly></textarea>
-        </section>
-
-        <section id="doc-view-drafting-panel" class="doc-view-panel hidden">
-          <section id="doc-view-terminal-shell" class="journal">
-            <div class="journal-header">
-              <strong id="doc-terminal-title">Drafting Agent Terminal</strong>
-              <span id="doc-terminal-status" class="muted" style="margin-left: 12px;">idle</span>
-            </div>
-            <div id="doc-chat-panel" class="chat-panel terminal" style="background: rgba(0,0,0,0.4); height: calc(72vh - 160px);">
-              <div class="chat-bubble agent">
-                Hello! I'm your drafting agent. Type below to start drafting or refining your document.
-              </div>
-            </div>
-            <div class="pod-command-row journal-prompt-row">
-              <span class="journal-prompt-glyph" aria-hidden="true">$</span>
-              <input
-                id="doc-view-chat-input"
-                type="text"
-                placeholder="Type to draft or refine..."
-                autocomplete="off"
-                spellcheck="false"
-              >
-              <button id="doc-view-chat-send" type="button">send</button>
-            </div>
-          </section>
-          <section class="pod-control-panel" aria-label="Drafting controls" style="margin-top: 12px;">
-            <div class="pod-control-row">
-              <strong id="doc-view-meta" class="pod-runtime-summary">document: --</strong>
-              <button id="doc-view-connect" type="button">connect agent</button>
-            </div>
-          </section>
-        </section>
-      </section>
     </main>
   </div>
 
-  <script type="module" src="/js/app.js"></script>
+  <!-- MODALS & DRAWERS -->
+  
+  <!-- Pod Create Modal -->
+  <aside id="pod-create-panel" class="pod-create-modal" aria-hidden="true">
+    <div class="provider-drawer-head">
+      <div class="provider-drawer-title">New Loop</div>
+      <button id="pod-create-close" type="button" class="provider-drawer-close" aria-label="Close loop creation">&times;</button>
+    </div>
+    <section class="panel">
+      <div class="pod-create-step-indicators" aria-hidden="true">
+        <div id="pod-create-step-chip-1" class="pod-create-step-chip active"><span class="pod-create-step-node">1</span><span class="pod-create-step-label">Method</span></div>
+        <div id="pod-create-step-chip-2" class="pod-create-step-chip"><span class="pod-create-step-node">2</span><span class="pod-create-step-label">Source</span></div>
+        <div id="pod-create-step-chip-3" class="pod-create-step-chip"><span class="pod-create-step-node">3</span><span class="pod-create-step-label">Details</span></div>
+        <div id="pod-create-step-chip-4" class="pod-create-step-chip hidden"><span class="pod-create-step-node">4</span><span class="pod-create-step-label">Chat</span></div>
+      </div>
+      <section id="pod-create-step-1" class="pod-create-step-panel" data-pod-create-step="1">
+        <div class="pod-create-method-options">
+          <button type="button" class="pod-create-method-button selected" data-pod-create-method="issue"><strong>Create from Issue</strong></button>
+          <button type="button" class="pod-create-method-button" data-pod-create-method="generate_prd"><strong>Generate a PRD</strong></button>
+          <button type="button" class="pod-create-method-button" data-pod-create-method="load_prd"><strong>Load a PRD</strong></button>
+        </div>
+      </section>
+      <section id="pod-create-step-2" class="pod-create-step-panel hidden" data-pod-create-step="2">
+        <select id="pod-create-project"><option value="">Select project</option></select>
+        <div id="pod-create-method-issue" data-pod-create-method-panel="issue">
+          <input id="pod-create-issue-filter" type="search" placeholder="Filter issue">
+          <select id="pod-create-issue" disabled><option value="">Select issue</option></select>
+        </div>
+      </section>
+      <section id="pod-create-step-3" class="pod-create-step-panel hidden" data-pod-create-step="3">
+        <input id="pod-create-loop-name" type="text" placeholder="loop name">
+        <input id="pod-create-branch" type="text" placeholder="branch name">
+        <select id="pod-create-provider"><option value="">Select provider</option></select>
+        <textarea id="pod-create-prompt" rows="6" placeholder="prompt or PRD JSON"></textarea>
+      </section>
+      <section id="pod-create-step-4" class="pod-create-step-panel hidden" data-pod-create-step="4">
+        <div id="pod-create-chat-panel" class="chat-panel"></div>
+        <input id="pod-create-chat-input" type="text" placeholder="Type to refine...">
+        <button id="pod-create-chat-send" type="button">send</button>
+      </section>
+      <div class="pod-create-footer">
+        <button id="pod-create-back" type="button">back</button>
+        <button id="pod-create-next" type="button" class="primary">next</button>
+        <button id="pod-create-submit" type="button" class="primary hidden">create loop</button>
+        <button id="pod-create-cancel" type="button">cancel</button>
+      </div>
+      <div id="pod-create-status" class="status-note"></div>
+    </section>
+  </aside>
 
+  <!-- Project Config Drawer -->
+  <aside id="project-config-panel" class="provider-drawer" aria-hidden="true">
+    <div class="provider-drawer-head">
+      <div class="provider-drawer-title">Project Configuration</div>
+      <button id="project-back" type="button" class="provider-drawer-close">&times;</button>
+    </div>
+    <section class="panel">
+      <input id="project-name" type="text" placeholder="project name">
+      <input id="project-repo-url" type="url" placeholder="repository URL">
+      <input id="project-github-user" type="text" placeholder="GitHub username">
+      <input id="project-github-credential" type="password" placeholder="GitHub credential">
+      <div class="project-actions">
+        <button id="project-save" class="primary">save project</button>
+        <button id="project-delete-credential" class="danger hidden">delete credential</button>
+      </div>
+      <div id="project-form-status" class="status-note"></div>
+    </section>
+    <button id="project-delete" class="danger drawer-delete-action hidden">delete project</button>
+  </aside>
+
+  <!-- Provider Config Drawer -->
+  <aside id="provider-config-panel" class="provider-drawer" aria-hidden="true">
+    <div class="provider-drawer-head">
+      <div id="provider-config-title" class="provider-drawer-title">Provider Configuration</div>
+      <button id="provider-back" type="button" class="provider-drawer-close">&times;</button>
+    </div>
+    <section id="provider-codex-panel" class="panel hidden">
+      <div class="panel-title"><span>Codex Authentication</span></div>
+      <input id="auth-api-key" type="password" placeholder="OpenAI API key">
+      <input id="auth-account-id" type="text" placeholder="account label (optional)">
+      <div class="provider-actions">
+        <button id="auth-save-api-key" class="primary">Save</button>
+        <button id="auth-disconnect">delete</button>
+      </div>
+    </section>
+  </aside>
+
+  <!-- Document Create Modal -->
+  <aside id="doc-create-panel" class="pod-create-modal" aria-hidden="true">
+    <div class="provider-drawer-head">
+      <div class="provider-drawer-title">New Document</div>
+      <button id="doc-create-close" type="button" class="provider-drawer-close">&times;</button>
+    </div>
+    <section class="panel">
+      <div class="pod-create-step-indicators" aria-hidden="true">
+        <div id="doc-create-step-chip-1" class="doc-create-step-chip active"><span class="pod-create-step-node">1</span><span class="pod-create-step-label">Method</span></div>
+        <div id="doc-create-step-chip-2" class="doc-create-step-chip"><span class="pod-create-step-node">2</span><span class="pod-create-step-label">Details</span></div>
+      </div>
+      <section id="doc-create-step-1" class="pod-create-step-panel" data-doc-create-step="1">
+        <div class="pod-create-method-options">
+          <button type="button" class="doc-create-method-button selected" data-doc-create-method="issue"><strong>From GitHub Issue</strong></button>
+          <button type="button" class="doc-create-method-button" data-doc-create-method="generate"><strong>Generate</strong></button>
+          <button type="button" class="doc-create-method-button" data-doc-create-method="upload"><strong>Upload</strong></button>
+        </div>
+      </section>
+      <section id="doc-create-step-2" class="pod-create-step-panel hidden" data-doc-create-step="2">
+        <select id="doc-create-project"><option value="">Select project</option></select>
+        <div id="doc-create-method-issue-panel" data-doc-create-method-panel="issue">
+          <select id="doc-create-issue" disabled><option value="">Select issue</option></select>
+        </div>
+        <div id="doc-create-method-generate-panel" class="hidden" data-doc-create-method-panel="generate">
+          <textarea id="doc-create-prompt" rows="4" placeholder="Describe..."></textarea>
+        </div>
+        <input id="doc-create-title" type="text" placeholder="Document Title">
+      </section>
+      <div class="pod-create-footer">
+        <button id="doc-create-back" type="button">back</button>
+        <button id="doc-create-next" type="button" class="primary">next</button>
+        <button id="doc-create-submit" type="button" class="primary hidden">create document</button>
+        <button id="doc-create-cancel" type="button">cancel</button>
+      </div>
+      <div id="doc-create-status" class="status-note"></div>
+    </section>
+  </aside>
+
+  <script type="module" src="/js/app.js"></script>
 </body>
 </html>

@@ -27,7 +27,7 @@ export function attachStream(loopID) {
   disconnectStream();
   if (!loopID) return;
 
-  const url = `/api/v1/loops/${encodeURIComponent(loopID)}/journal/stream`;
+  const url = `/v1/loops/${encodeURIComponent(loopID)}/journal/stream`;
   const source = new EventSource(url);
   state.journalSource = source;
 

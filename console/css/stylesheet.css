@@ -1172,7 +1172,9 @@
     }
 
     .tile-head {
-      display: block;
+      display: flex;
+      align-items: center;
+      gap: 8px;
       min-width: 0;
     }
 
@@ -1204,6 +1206,17 @@
       color: #f1f6ff;
       min-width: 0;
       flex: 1 1 auto;
+    }
+
+    .tile-attach-button {
+      background: var(--primary);
+      color: #fff;
+      border: 0;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      flex: 0 0 auto;
     }
 
     .tile-loop {
