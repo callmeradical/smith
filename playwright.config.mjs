@@ -25,7 +25,7 @@ export default defineConfig({
   },
   webServer: useLocalWebServer
     ? {
-        command: 'cd frontend && npm run preview -- --port 4173 --host 0.0.0.0',
+        command: 'cd frontend && npx vite preview --port 4173 --host 0.0.0.0',
         url: 'http://127.0.0.1:4173',
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
