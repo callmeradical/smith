@@ -5,8 +5,14 @@ if [[ "${SKIP_GIT_HOOKS:-}" == "1" ]]; then
   exit 0
 fi
 
-if [[ "${SMITH_HOOKS_IN_DOCKER:-0}" == "1" ]]; then
+if [[ "${SMITH_HOOKS_IN_DOCKER:-1}" == "1" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "ERROR: docker is required for git hooks but was not found." >&2
+    echo "Please install Docker to run containerized validation." >&2
+    exit 1
+  fi
   "$(dirname "$0")/run-in-docker.sh" hooks-run-pre-push
 else
+  # Host execution is discouraged but kept for emergency override
   make hooks-run-pre-push
 fi

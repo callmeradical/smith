@@ -239,111 +239,39 @@ test: test-matrix ## Run default local test workflow (non-cluster matrix)
 test-unit: ## Run full Go test suite
 	go test ./...
 
-test-frontend: ## Run Playwright frontend/component tests for console
+test-frontend: ## Run Playwright frontend/component tests for console (auto-delegates to Docker)
+	@if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then \
+		$(MAKE) hooks-run-test-frontend; \
+	else \
+		./.githooks/run-in-docker.sh test-frontend; \
+	fi
+
+hooks-run-test-frontend: ## Internal: Run frontend tests inside container
 	@if [ ! -d node_modules ]; then npm install; fi
 	@if [ ! -d frontend/node_modules ]; then cd frontend && npm install; fi
 	@if [ ! -d frontend/.svelte-kit ]; then cd frontend && npx svelte-kit sync; fi
 	cd frontend && npm run build
 	npm run test:frontend
 
-test-matrix: ## Run script-based local matrix (fixture + e2e + verification)
-	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" \
-	SMITH_FIXTURE_DIR="$(SMITH_FIXTURE_DIR)" \
-	./scripts/test/run-matrix.sh
-	@echo "artifacts: $(SMITH_TEST_ARTIFACTS_DIR)"
-
-test-integration: ## Run vcluster-backed integration workflow
-	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" \
-	./scripts/integration/run-tests.sh
-	@echo "artifacts: $(SMITH_TEST_ARTIFACTS_DIR)"
-
-test-observability-latency: ## Measure end-to-end journal propagation latency to console stream
-	./scripts/integration/measure-observability-latency.sh
-
-test-e2e: ## Run local e2e scripts directly
-	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-single-loop.sh
-	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-concurrent-loops.sh
-	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-ingress-modes.sh
-	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-environment-modes.sh
-	SMITH_TEST_ARTIFACTS_DIR="$(SMITH_TEST_ARTIFACTS_DIR)" ./scripts/test/e2e-skill-mounts.sh
-	@echo "artifacts: $(SMITH_TEST_ARTIFACTS_DIR)"
-
-test-bdd: ## Run godog-based BDD acceptance suite
-	go test ./test/acceptance -run TestFeatures -count=1
-
-test-acceptance-smoke: ## Run acceptance smoke suite with JSON artifact output
-	@set -euo pipefail; \
-	mkdir -p "$(SMITH_TEST_ARTIFACTS_DIR)"; \
-	go test ./test/acceptance -run TestHarnessSmoke -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-smoke.jsonl"
-
-test-acceptance-bdd: ## Run acceptance BDD suite with JSON artifact output
-	@set -euo pipefail; \
-	mkdir -p "$(SMITH_TEST_ARTIFACTS_DIR)"; \
-	go test ./test/acceptance -run TestFeatures -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-bdd.jsonl"
-
-test-acceptance: test-acceptance-smoke test-acceptance-bdd ## Run all Go-native acceptance harness suites
-
-teardown: undeploy cluster-down ## Teardown local deploy and cluster environment
-
-build: ## Build all Go binaries
-	go build ./...
-
-build-local: ## Build local binaries for deploy-local workflow
-	go build ./cmd/smith ./cmd/smith-core ./cmd/smith-api ./cmd/smith-replica ./cmd/smithctl ./cmd/smith-chat
-	docker build -f docker/core.Dockerfile -t "$(SMITH_LOCAL_CORE_IMAGE)" .
-	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
-	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
-	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
-	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
-	@set -euo pipefail; \
-	if k3d cluster list | awk 'NR>1 {print $$1}' | grep -q "^$(SMITH_K3D_CLUSTER_NAME)$$"; then \
-	  echo "build-local: importing local images into k3d cluster $(SMITH_K3D_CLUSTER_NAME)"; \
-	  k3d image import \
-	    "$(SMITH_LOCAL_CORE_IMAGE)" \
-	    "$(SMITH_LOCAL_API_IMAGE)" \
-	    "$(SMITH_LOCAL_REPLICA_IMAGE)" \
-	    "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
-	    "$(SMITH_LOCAL_CHAT_IMAGE)" \
-	    -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+trivy-scan-local: ## Run local vulnerability scans on all Smith images (auto-delegates to Docker)
+	@if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then \
+		echo "[trivy] scanning images for critical vulnerabilities..."; \
+		vulnerabilities=0; \
+		for img in core api replica console chat; do \
+		  echo "Scanning smith-$$img:local..."; \
+		  if ! trivy image --severity CRITICAL --exit-code 1 "smith-$$img:local" > /tmp/trivy-$$img.log 2>&1; then \
+		    cat /tmp/trivy-$$img.log; \
+		    vulnerabilities=$$((vulnerabilities + 1)); \
+		  else \
+		    cat /tmp/trivy-$$img.log; \
+		  fi; \
+		done; \
+		if [ $$vulnerabilities -gt 0 ]; then \
+		  echo "[trivy] Found CRITICAL vulnerabilities in $$vulnerabilities images. Fails build."; \
+		  exit 1; \
+		fi; \
 	else \
-	  echo "build-local: k3d cluster $(SMITH_K3D_CLUSTER_NAME) not found; skipped k3d image import"; \
-	fi
-
-image-build-local: ## Build local Smith container images with deploy-local tags
-	docker build -f docker/core.Dockerfile -t "$(SMITH_LOCAL_CORE_IMAGE)" .
-	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
-	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
-	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
-	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
-
-image-load-local: ## Import local Smith container images into the k3d cluster
-	k3d image import -c "$(SMITH_K3D_CLUSTER_NAME)" \
-	  "$(SMITH_LOCAL_CORE_IMAGE)" \
-	  "$(SMITH_LOCAL_API_IMAGE)" \
-	  "$(SMITH_LOCAL_REPLICA_IMAGE)" \
-	  "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
-	  "$(SMITH_LOCAL_CHAT_IMAGE)"
-
-images-local: image-build-local image-load-local hooks-image-build ## Build and load local Smith images for deploy-local
-
-hooks-image-build: ## Build the containerized hook image
-	docker build -f docker/hooks.Dockerfile -t "smith-hooks:local" .
-
-trivy-scan-local: ## Run local vulnerability scans on all Smith images
-	@echo "[trivy] scanning images for critical vulnerabilities..."
-	@vulnerabilities=0; \
-	for img in core api replica console chat; do \
-	  echo "Scanning smith-$$img:local..."; \
-	  if ! trivy image --severity CRITICAL --exit-code 1 "smith-$$img:local" > /tmp/trivy-$$img.log 2>&1; then \
-	    cat /tmp/trivy-$$img.log; \
-	    vulnerabilities=$$((vulnerabilities + 1)); \
-	  else \
-	    cat /tmp/trivy-$$img.log; \
-	  fi; \
-	done; \
-	if [ $$vulnerabilities -gt 0 ]; then \
-	  echo "[trivy] Found CRITICAL vulnerabilities in $$vulnerabilities images. Fails build."; \
-	  exit 1; \
+		./.githooks/run-in-docker.sh trivy-scan-local; \
 	fi
 
 docs-check: ## Run docs quality checks
