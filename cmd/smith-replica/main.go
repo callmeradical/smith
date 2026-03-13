@@ -356,7 +356,7 @@ func loopExecutionMetadata(cfg loopExecutionConfig) map[string]string {
 
 func runLoopIterations(
 	ctx context.Context,
-	storeClient *store.Store,
+	storeClient store.StateStore,
 	loopID, correlationID string,
 	cfg loopExecutionConfig,
 	anomaly model.Anomaly,
@@ -369,7 +369,7 @@ func runLoopIterations(
 	return runIterativeLoop(ctx, storeClient, loopID, correlationID, cfg)
 }
 
-func runIterativeLoop(ctx context.Context, storeClient *store.Store, loopID, correlationID string, cfg loopExecutionConfig) (model.LoopState, string, error) {
+func runIterativeLoop(ctx context.Context, storeClient store.StateStore, loopID, correlationID string, cfg loopExecutionConfig) (model.LoopState, string, error) {
 	for iteration := 1; iteration <= cfg.MaxIterations; iteration++ {
 		state, found, err := storeClient.GetState(ctx, loopID)
 		if err != nil {
@@ -475,7 +475,7 @@ func shouldRunIssueWorkflow(cfg loopExecutionConfig, anomaly model.Anomaly) bool
 
 func runIssueWorkflow(
 	ctx context.Context,
-	storeClient *store.Store,
+	storeClient store.StateStore,
 	loopID, correlationID string,
 	cfg loopExecutionConfig,
 	anomaly model.Anomaly,
@@ -636,7 +636,7 @@ type prdProgress struct {
 
 func runIssueBuildIterations(
 	ctx context.Context,
-	storeClient *store.Store,
+	storeClient store.StateStore,
 	loopID, correlationID string,
 	cfg loopExecutionConfig,
 	anomaly model.Anomaly,
@@ -711,7 +711,7 @@ func runIssueBuildIterations(
 
 func waitForInteractivePRD(
 	ctx context.Context,
-	storeClient *store.Store,
+	storeClient store.StateStore,
 	loopID, correlationID string,
 	cfg loopExecutionConfig,
 	prdPath string,
@@ -912,7 +912,7 @@ func materializePRDFromMetadata(prdPath string, metadata map[string]string) (boo
 
 func ensurePRDStoryCount(
 	ctx context.Context,
-	storeClient *store.Store,
+	storeClient store.StateStore,
 	loopID, correlationID, prdPath string,
 	expected int,
 ) error {
@@ -1021,7 +1021,7 @@ func parsePositiveInt(raw string) (int, bool) {
 	return parsed, true
 }
 
-func loopTerminalDecision(ctx context.Context, storeClient *store.Store, loopID string) (model.LoopState, string, bool, error) {
+func loopTerminalDecision(ctx context.Context, storeClient store.StateStore, loopID string) (model.LoopState, string, bool, error) {
 	state, found, err := storeClient.GetState(ctx, loopID)
 	if err != nil {
 		return model.LoopStateFlatline, "state-read-failed", false, err
@@ -1047,7 +1047,7 @@ func runCodexStep(
 	ctx context.Context,
 	runner execRunner,
 	workspace, codexCommand, step, prompt, loopID, correlationID string,
-	storeClient *store.Store,
+	storeClient store.StateStore,
 ) error {
 	codexCommand = strings.TrimSpace(codexCommand)
 	if codexCommand == "" {
@@ -1334,7 +1334,7 @@ func defaultLoopProfileForMethod(method string) (int, time.Duration) {
 	}
 }
 
-func finalizeLoopState(ctx context.Context, storeClient *store.Store, loopID string, desired model.LoopState, reason string) (model.LoopState, error) {
+func finalizeLoopState(ctx context.Context, storeClient store.StateStore, loopID string, desired model.LoopState, reason string) (model.LoopState, error) {
 	updated, err := storeClient.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
 		if isTerminalState(current.State) {
 			current.LockHolder = ""
@@ -1489,7 +1489,7 @@ func readHandoffFile(path string) (*handoffFile, error) {
 	return &parsed, nil
 }
 
-func loadStartupContext(ctx context.Context, storeClient *store.Store, loopID string) (startupContext, error) {
+func loadStartupContext(ctx context.Context, storeClient store.StateStore, loopID string) (startupContext, error) {
 	anomaly, found, err := storeClient.GetAnomaly(ctx, loopID)
 	if err != nil {
 		return startupContext{}, err
@@ -1508,7 +1508,7 @@ func loadStartupContext(ctx context.Context, storeClient *store.Store, loopID st
 	return startup, nil
 }
 
-func recordStartupFailure(ctx context.Context, storeClient *store.Store, loopID, correlationID string, startupErr error) {
+func recordStartupFailure(ctx context.Context, storeClient store.StateStore, loopID, correlationID string, startupErr error) {
 	_ = storeClient.AppendJournal(ctx, model.JournalEntry{
 		LoopID:        loopID,
 		Phase:         "startup",
@@ -1531,7 +1531,7 @@ func recordStartupFailure(ctx context.Context, storeClient *store.Store, loopID,
 	})
 }
 
-func recordRuntimeFailure(ctx context.Context, storeClient *store.Store, loopID, correlationID string, runtimeErr error) {
+func recordRuntimeFailure(ctx context.Context, storeClient store.StateStore, loopID, correlationID string, runtimeErr error) {
 	_ = storeClient.AppendJournal(ctx, model.JournalEntry{
 		LoopID:        loopID,
 		Phase:         "replica",

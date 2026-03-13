@@ -73,7 +73,7 @@ type executionImageSelection struct {
 }
 
 type orchestrator struct {
-	store      *store.Store
+	store      store.StateStore
 	locks      *locking.Manager
 	kube       kubernetes.Interface
 	cfg        config
@@ -162,7 +162,7 @@ func main() {
 }
 
 type coreStateSource struct {
-	store *store.Store
+	store store.StateStore
 }
 
 func (s coreStateSource) ListStates(ctx context.Context) ([]core.StateSnapshot, error) {

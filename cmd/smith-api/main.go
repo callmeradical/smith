@@ -28,7 +28,6 @@ import (
 	"smith/internal/source/store"
 
 	"github.com/gorilla/websocket"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -75,7 +74,7 @@ type config struct {
 
 type server struct {
 	cfg             config
-	store           *store.Store
+	store           store.StateStore
 	auth            *provider.AuthManager
 	projectCred     provider.ProjectCredentialStore
 	projectStore    provider.ProjectStore
@@ -87,10 +86,7 @@ type server struct {
 	kube            kubernetes.Interface
 	restConfig      *rest.Config
 	upgrader        websocket.Upgrader
-	getStateFn      func(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error)
 
-	appendAuditFn   func(ctx context.Context, rec store.AuditRecord) error
-	appendJournalFn func(ctx context.Context, entry model.JournalEntry) error
 }
 
 type overrideRequest struct {
@@ -537,32 +533,20 @@ func terminalRejectedMetadata(metadata map[string]string, reason, errorCode stri
 }
 
 func (s *server) getState(ctx context.Context, loopID string) (store.LoopWithRevision, bool, error) {
-	if s.getStateFn != nil {
-		return s.getStateFn(ctx, loopID)
-	}
 	return s.store.GetState(ctx, loopID)
 }
-
 func (s *server) appendAudit(ctx context.Context, rec store.AuditRecord) error {
-	if s.appendAuditFn != nil {
-		return s.appendAuditFn(ctx, rec)
-	}
 	if s.store == nil {
 		return nil
 	}
 	return s.store.AppendAudit(ctx, rec)
 }
-
 func (s *server) appendJournal(ctx context.Context, entry model.JournalEntry) error {
-	if s.appendJournalFn != nil {
-		return s.appendJournalFn(ctx, entry)
-	}
 	if s.store == nil {
 		return nil
 	}
 	return s.store.AppendJournal(ctx, entry)
 }
-
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -2113,7 +2097,7 @@ func (s *server) handleJournalStream(w http.ResponseWriter, r *http.Request, loo
 		return nil
 	}
 	_ = send("ready", map[string]any{"loop_id": loopID, "since_seq": sinceSeq})
-	initial, rev, err := s.listJournalSinceWithRevision(r.Context(), loopID, sinceSeq)
+	initial, rev, err := s.store.ListJournalSinceWithRevision(r.Context(), loopID, sinceSeq)
 	if err != nil {
 		_ = send("error", map[string]string{"error": err.Error()})
 		return
@@ -2128,12 +2112,7 @@ func (s *server) handleJournalStream(w http.ResponseWriter, r *http.Request, loo
 		sinceSeq = entry.Sequence
 	}
 
-	watchCh := s.store.Client().Watch(
-		r.Context(),
-		model.JournalPrefix(loopID)+"/",
-		clientv3.WithPrefix(),
-		clientv3.WithRev(rev+1),
-	)
+	watchCh := s.store.WatchJournalWithRev(r.Context(), loopID, rev+1)
 
 	keepAlive := time.NewTicker(15 * time.Second)
 	defer keepAlive.Stop()
@@ -2147,59 +2126,22 @@ func (s *server) handleJournalStream(w http.ResponseWriter, r *http.Request, loo
 				return
 			}
 			flusher.Flush()
-		case resp, ok := <-watchCh:
+		case entry, ok := <-watchCh:
 			if !ok {
 				return
 			}
-			if err := resp.Err(); err != nil {
-				_ = send("error", map[string]string{"error": err.Error()})
+			if entry.Sequence <= sinceSeq {
+				continue
+			}
+			if err := send("entry", map[string]any{
+				"entry":      entry,
+				"emitted_at": time.Now().UTC().Format(time.RFC3339Nano),
+			}); err != nil {
 				return
 			}
-			for _, event := range resp.Events {
-				if event.Type != clientv3.EventTypePut || len(event.Kv.Value) == 0 {
-					continue
-				}
-				var entry model.JournalEntry
-				if err := json.Unmarshal(event.Kv.Value, &entry); err != nil {
-					continue
-				}
-				if entry.Sequence <= sinceSeq {
-					continue
-				}
-				if err := send("entry", map[string]any{
-					"entry":      entry,
-					"emitted_at": time.Now().UTC().Format(time.RFC3339Nano),
-				}); err != nil {
-					return
-				}
-				sinceSeq = entry.Sequence
-			}
+			sinceSeq = entry.Sequence
 		}
 	}
-}
-
-func (s *server) listJournalSinceWithRevision(ctx context.Context, loopID string, sinceSeq int64) ([]model.JournalEntry, int64, error) {
-	resp, err := s.store.Client().Get(
-		ctx,
-		model.JournalPrefix(loopID)+"/",
-		clientv3.WithPrefix(),
-		clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend),
-	)
-	if err != nil {
-		return nil, 0, err
-	}
-	entries := make([]model.JournalEntry, 0, len(resp.Kvs))
-	for _, kv := range resp.Kvs {
-		var entry model.JournalEntry
-		if err := json.Unmarshal(kv.Value, &entry); err != nil {
-			continue
-		}
-		if entry.Sequence <= sinceSeq {
-			continue
-		}
-		entries = append(entries, entry)
-	}
-	return entries, resp.Header.Revision, nil
 }
 
 func (s *server) handleOverride(w http.ResponseWriter, r *http.Request) {
