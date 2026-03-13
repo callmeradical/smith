@@ -8,10 +8,10 @@ import (
 )
 
 type EtcdBridge struct {
-	store *store.Store
+	store store.StateStore
 }
 
-func NewEtcdBridge(s *store.Store) *EtcdBridge {
+func NewEtcdBridge(s store.StateStore) *EtcdBridge {
 	return &EtcdBridge{store: s}
 }
 

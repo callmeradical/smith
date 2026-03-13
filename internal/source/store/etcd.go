@@ -12,36 +12,9 @@ import (
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 
+	"smith/internal/source/locking"
 	"smith/internal/source/model"
 )
-
-var ErrRevisionMismatch = errors.New("etcd revision mismatch")
-
-type Event struct {
-	LoopID   string
-	State    model.StateRecord
-	Revision int64
-	HasState bool
-	RawKey   string
-	RawValue []byte
-}
-
-type AuditRecord struct {
-	EventID       string            `json:"event_id"`
-	Timestamp     time.Time         `json:"timestamp"`
-	Actor         string            `json:"actor"`
-	Action        string            `json:"action"`
-	TargetLoopID  string            `json:"target_loop_id"`
-	Reason        string            `json:"reason,omitempty"`
-	CorrelationID string            `json:"correlation_id,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
-	SchemaVersion string            `json:"schema_version"`
-}
-
-type LoopWithRevision struct {
-	Record   model.StateRecord
-	Revision int64
-}
 
 type Store struct {
 	cli *clientv3.Client
@@ -484,10 +457,42 @@ func (s *Store) ListAudit(ctx context.Context, loopID string, limit int64) ([]Au
 	return records, nil
 }
 
+func (s *Store) ListJournalSinceWithRevision(ctx context.Context, loopID string, sinceSeq int64) ([]model.JournalEntry, int64, error) {
+	resp, err := s.cli.Get(
+		ctx,
+		model.JournalPrefix(loopID)+"/",
+		clientv3.WithPrefix(),
+		clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend),
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	entries := make([]model.JournalEntry, 0, len(resp.Kvs))
+	for _, kv := range resp.Kvs {
+		var entry model.JournalEntry
+		if err := json.Unmarshal(kv.Value, &entry); err != nil {
+			continue
+		}
+		if entry.Sequence <= sinceSeq {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	return entries, resp.Header.Revision, nil
+}
+
 func (s *Store) WatchJournal(ctx context.Context, loopID string) <-chan model.JournalEntry {
+	return s.WatchJournalWithRev(ctx, loopID, 0)
+}
+
+func (s *Store) WatchJournalWithRev(ctx context.Context, loopID string, rev int64) <-chan model.JournalEntry {
 	out := make(chan model.JournalEntry)
 	prefix := model.JournalPrefix(loopID) + "/"
-	watchCh := s.cli.Watch(ctx, prefix, clientv3.WithPrefix())
+	opts := []clientv3.OpOption{clientv3.WithPrefix()}
+	if rev > 0 {
+		opts = append(opts, clientv3.WithRev(rev))
+	}
+	watchCh := s.cli.Watch(ctx, prefix, opts...)
 	go func() {
 		defer close(out)
 		for watchResp := range watchCh {
@@ -627,4 +632,53 @@ func (s *Store) SetStateUnresolved(ctx context.Context, loopID string, reason st
 		return current, nil
 	})
 	return err
+}
+
+func (s *Store) ReadLock(ctx context.Context, loopID string) (locking.Record, error) {
+	key := model.LockKey(loopID)
+	resp, err := s.cli.Get(ctx, key)
+	if err != nil {
+		return locking.Record{}, err
+	}
+	if len(resp.Kvs) == 0 {
+		return locking.Record{Found: false}, nil
+	}
+
+	var lock model.LeaseLock
+	if err := json.Unmarshal(resp.Kvs[0].Value, &lock); err != nil {
+		return locking.Record{}, err
+	}
+	return locking.Record{Lock: lock, Revision: resp.Kvs[0].ModRevision, Found: true}, nil
+}
+
+func (s *Store) PutLockIfRevision(ctx context.Context, lock model.LeaseLock, expectedRevision int64) (bool, error) {
+	payload, err := json.Marshal(lock)
+	if err != nil {
+		return false, err
+	}
+	key := model.LockKey(lock.LoopID)
+	cmp := clientv3.Compare(clientv3.ModRevision(key), "=", expectedRevision)
+	if expectedRevision == 0 {
+		cmp = clientv3.Compare(clientv3.Version(key), "=", 0)
+	}
+	resp, err := s.cli.Txn(ctx).
+		If(cmp).
+		Then(clientv3.OpPut(key, string(payload))).
+		Commit()
+	if err != nil {
+		return false, err
+	}
+	return resp.Succeeded, nil
+}
+
+func (s *Store) DeleteLockIfRevision(ctx context.Context, loopID string, expectedRevision int64) (bool, error) {
+	key := model.LockKey(loopID)
+	resp, err := s.cli.Txn(ctx).
+		If(clientv3.Compare(clientv3.ModRevision(key), "=", expectedRevision)).
+		Then(clientv3.OpDelete(key)).
+		Commit()
+	if err != nil {
+		return false, err
+	}
+	return resp.Succeeded, nil
 }
