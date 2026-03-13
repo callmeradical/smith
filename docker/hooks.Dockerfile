@@ -1,9 +1,10 @@
 # docker/hooks.Dockerfile
-# Combined environment for git hooks (Go, Node, Helm, Playwright, Python)
+# Combined environment for git hooks (Go, Node, Helm, Playwright, Python, Trivy)
 
 FROM golang:1.25-bookworm AS go-bin
 FROM alpine/helm:3.16.4 AS helm-bin
 FROM python:3.12-slim-bookworm AS python-bin
+FROM aquasec/trivy:0.56.1 AS trivy-bin
 
 FROM mcr.microsoft.com/playwright:v1.50.1-noble
 
@@ -31,5 +32,8 @@ ENV PATH="/usr/local/bin:${PATH}"
 
 # Now we should have pip
 RUN pip3 install zensical --break-system-packages
+
+# Copy trivy
+COPY --from=trivy-bin /usr/local/bin/trivy /usr/local/bin/trivy
 
 WORKDIR /workspace

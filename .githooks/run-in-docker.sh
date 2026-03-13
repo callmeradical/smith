@@ -19,6 +19,7 @@ gomodcache="${GOMODCACHE:-${GOPATH:-$HOME/go}/pkg/mod}"
 
 container_id="$(docker create \
   --workdir /workspace \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v "${gomodcache}:/go/pkg/mod" \
   --env HOME=/tmp \
   --env GOMODCACHE=/go/pkg/mod \

@@ -10,7 +10,11 @@ COPY frontend/ ./
 RUN npm run build
 
 # Final stage
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.27-alpine3.20
+
+USER root
+RUN apk upgrade --no-cache libcrypto3 libssl3 libxml2
+USER 101
 
 COPY frontend/deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /src/frontend/build /usr/share/nginx/html
