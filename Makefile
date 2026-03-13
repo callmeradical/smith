@@ -1,6 +1,5 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
-
 SMITH_NAMESPACE ?= smith-system
 SMITH_RELEASE ?= smith
 SMITH_VALUES ?= helm/smith/values/local.yaml
@@ -23,22 +22,18 @@ SMITH_LOCAL_CHAT_IMAGE ?= smith-chat:local
 SMITH_MIN_GO_VERSION ?= 1.22.0
 SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
 SMITH_MIN_HELM_VERSION ?= 3.13.0
-
 .PHONY: help \
 	doctor bootstrap \
 	cluster cluster-up cluster-down cluster-reset cluster-health \
 	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod rollout-local undeploy undeploy-local \
 	console-build-local console-load-local console-rollout-local console-deploy-local \
 	chat-build-local chat-load-local chat-deploy-local \
-	test test-unit test-frontend test-matrix test-integration test-e2e test-bdd \
-	test-observability-latency \
-	test-acceptance-smoke test-acceptance-bdd test-acceptance \
+	test test-unit test-frontend \
+	\
 	teardown \
 	build docs-check ci-local hooks-install hooks-run-pre-commit hooks-run-pre-push
-
 help: ## Show available make targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Smith local developer workflow\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-
 doctor: ## Validate local prerequisites for make-first workflow
 	@set -euo pipefail; \
 	missing=0; \
@@ -75,7 +70,6 @@ doctor: ## Validate local prerequisites for make-first workflow
 	  exit 1; \
 	fi; \
 	echo "doctor passed: required local tools found"
-
 bootstrap: ## Install missing k3d/vcluster prerequisites
 	@set -euo pipefail; \
 	./scripts/integration/prereqs.sh; \
@@ -86,15 +80,11 @@ bootstrap: ## Install missing k3d/vcluster prerequisites
 	else \
 	  echo "bootstrap: preserved existing $$HOME/.smith/config.json"; \
 	fi
-
 cluster: cluster-up ## Alias for cluster-up
-
 cluster-up: ## Provision local k3d + vcluster + etcd environment
 	./scripts/integration/env-up.sh
-
 cluster-down: ## Delete local k3d + vcluster + etcd environment
 	./scripts/integration/env-down.sh
-
 cluster-reset: ## Reset local k3d + vcluster + etcd (down then up)
 	@set -euo pipefail; \
 	echo "[cluster-reset] tearing down existing local environment"; \
@@ -102,7 +92,6 @@ cluster-reset: ## Reset local k3d + vcluster + etcd (down then up)
 	echo "[cluster-reset] bringing local environment back up"; \
 	$(MAKE) --no-print-directory cluster-up; \
 	echo "[cluster-reset] completed"
-
 cluster-health: ## Verify local cluster/vcluster/etcd readiness with actionable failures
 	@set -euo pipefail; \
 	echo "[cluster-health] checking Kubernetes API reachability"; \
@@ -141,21 +130,12 @@ cluster-health: ## Verify local cluster/vcluster/etcd readiness with actionable 
 	    exit 1; \
 	  fi; \
 	fi; \
-	echo "[cluster-health] checking vcluster namespace"; \
-	VCLUSTER_NS="$${SMITH_VCLUSTER_NAMESPACE:-smith-vcluster}"; \
-	if ! kubectl get namespace "$${VCLUSTER_NS}" >/dev/null 2>&1; then \
-	  echo "[cluster-health] ERROR: vcluster namespace '$${VCLUSTER_NS}' not found"; \
-	  echo "[cluster-health] HINT: run 'make cluster-up'"; \
-	  exit 1; \
-	fi; \
 	echo "[cluster-health] ready"
-
 deploy: ## Deploy Smith with Helm using SMITH_VALUES profile
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
 	  -f "$(SMITH_VALUES)"
-
 deploy-local: ## Deploy Smith via Helm using local values profile
 	$(MAKE) --no-print-directory images-local
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
@@ -164,49 +144,33 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	  --set global.rolloutId="$(shell date +%s)" \
 	  -f "$(SMITH_LOCAL_VALUES)"
 	$(MAKE) --no-print-directory rollout-local
-
 console-build-local: ## Build only the console local image
 	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
-
 console-load-local: ## Load only the console image into k3d
 	k3d image import "$(SMITH_LOCAL_CONSOLE_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
-
 console-rollout-local: ## Restart only the console deployment
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
-
 console-deploy-local: console-build-local console-load-local console-rollout-local ## Build, load, and restart only the console
-
 api-build-local: ## Build only the smith-api local image
 	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
-
 api-load-local: ## Load only the smith-api image into k3d
 	k3d image import "$(SMITH_LOCAL_API_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
-
 api-rollout-local: ## Restart only the smith-api deployment
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
-
 api-deploy-local: api-build-local api-load-local api-rollout-local ## Build, load, and restart only the smith-api
-
 replica-build-local: ## Build only the smith-replica local image
 	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
-
 replica-load-local: ## Load only the smith-replica image into k3d
 	k3d image import "$(SMITH_LOCAL_REPLICA_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
-
 replica-deploy-local: replica-build-local replica-load-local ## Build and load only the smith-replica (no rollout needed as it runs as Jobs)
-
 chat-build-local: ## Build only the smith-chat local image
 	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
-
 chat-load-local: ## Load only the smith-chat image into k3d
 	k3d image import "$(SMITH_LOCAL_CHAT_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
-
 chat-deploy-local: chat-build-local chat-load-local ## Build and load only the smith-chat
-
 console-api-deploy-local: console-build-local console-load-local api-build-local api-load-local rollout-local ## Build, load, and restart console + api
-
 rollout-local: ## Force restart local deployments to pick up new images
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
@@ -215,44 +179,41 @@ rollout-local: ## Force restart local deployments to pick up new images
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-core -n $(SMITH_NAMESPACE)
-
 deploy-staging: ## Deploy Smith via Helm using staging values profile
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
 	  -f "$(SMITH_STAGING_VALUES)"
-
 deploy-prod: ## Deploy Smith via Helm using production values profile
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
 	  -f "$(SMITH_PROD_VALUES)"
-
 undeploy: ## Remove Helm release from cluster
 	-helm uninstall "$(SMITH_RELEASE)" -n "$(SMITH_NAMESPACE)"
-
 undeploy-local: ## Remove local Helm deployment
 	-helm uninstall "$(SMITH_RELEASE)" -n "$(SMITH_NAMESPACE)"
 
-test: test-matrix ## Run default local test workflow (non-cluster matrix)
+test: test-unit test-frontend test-acceptance ## Run default local test workflow (non-cluster matrix)
 
 test-unit: ## Run full Go test suite
 	go test ./...
 
+test-acceptance: ## Run acceptance tests
+	go test ./test/acceptance/...
+
 test-frontend: ## Run Playwright frontend/component tests for console (auto-delegates to Docker)
-	@if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then \
+	@if [ -f /.dockerenv ] || [ -f /run/.containerenv ] || [ "$$SMITH_HOOKS_IN_DOCKER" = "0" ]; then \
 		$(MAKE) hooks-run-test-frontend; \
 	else \
 		./.githooks/run-in-docker.sh test-frontend; \
 	fi
-
 hooks-run-test-frontend: ## Internal: Run frontend tests inside container
 	@if [ ! -d node_modules ]; then npm install; fi
 	@if [ ! -d frontend/node_modules ]; then cd frontend && npm install; fi
 	@if [ ! -d frontend/.svelte-kit ]; then cd frontend && npx svelte-kit sync; fi
 	cd frontend && npm run build
 	npm run test:frontend
-
 trivy-scan-local: ## Run local vulnerability scans on all Smith images (auto-delegates to Docker)
 	@if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then \
 		echo "[trivy] scanning images for critical vulnerabilities..."; \
@@ -273,16 +234,13 @@ trivy-scan-local: ## Run local vulnerability scans on all Smith images (auto-del
 	else \
 		./.githooks/run-in-docker.sh trivy-scan-local; \
 	fi
-
 docs-check: ## Run docs quality checks
 	./scripts/docs/quality-check.sh
-
 ci-local: ## Run local CI-equivalent checks
 	$(MAKE) build
 	$(MAKE) test-unit
 	$(MAKE) test-acceptance
 	$(MAKE) docs-check
-
 ci-local-act: ## Run core CI jobs locally using 'act' (requires 'act' and Docker)
 	@if ! command -v act >/dev/null 2>&1; then \
 		echo "ERROR: 'act' is not installed."; \
@@ -292,19 +250,16 @@ ci-local-act: ## Run core CI jobs locally using 'act' (requires 'act' and Docker
 	@echo "[act] running lint-and-check and unit-tests jobs..."
 	act -j lint-and-check
 	act -j unit-tests
-
 hooks-install: ## Install repository git hooks from .githooks
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit .githooks/pre-push .githooks/run-in-docker.sh
 	@echo "Installed git hooks from .githooks"
-
 hooks-run-pre-commit: ## Run pre-commit checks manually
 	@echo "[pre-commit] running quick checks..."
 	go vet ./...
 	go build ./...
 	@if command -v helm >/dev/null 2>&1; then helm lint helm/smith; fi
 	@if command -v npm >/dev/null 2>&1; then cd frontend && npm install --silent && npm run check; fi
-
 hooks-run-pre-push: ## Run pre-push checks manually
 	@echo "[pre-push] running build and full tests..."
 	$(MAKE) build
@@ -319,3 +274,5 @@ hooks-run-pre-push: ## Run pre-push checks manually
 	./scripts/fixtures/verify-smith-test-repo.sh /tmp/smith-test-repo
 	$(MAKE) trivy-scan-local
 	$(MAKE) docs-check
+hooks-image-build: ## Build the smith-hooks docker image for running hooks
+	docker build -f docker/hooks.Dockerfile -t smith-hooks:local .
