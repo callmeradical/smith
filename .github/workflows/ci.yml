@@ -135,7 +135,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smith-test-artifacts
-          path: /tmp/smith-test-artifacts
+          path: |
+            /tmp/smith-test-artifacts
+            output/playwright/report
+            output/playwright/test-results
 
   # ─── Stage 2b: Acceptance harness (parallel with unit-tests) ────
   acceptance-tests:
