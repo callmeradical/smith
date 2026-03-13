@@ -1,0 +1,575 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - acceptance-tests
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  # ─── Stage 1: Lint and check ────────────────────────────────────
+  lint-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm install --silent
+
+      - name: Svelte check
+        run: cd frontend && npm run check
+
+      - name: Helm Lint
+        run: helm lint helm/smith
+
+      - name: Validate fixtures
+        run: |
+          ./scripts/fixtures/provision-smith-test-repo.sh /tmp/smith-test-repo
+          ./scripts/fixtures/verify-smith-test-repo.sh /tmp/smith-test-repo
+          ./test/fixtures/smith-repo/scripts/reset.sh /tmp/smith-test-repo
+
+  # ─── Stage 2: Unit tests ────────────────────────────────────────
+  unit-tests:
+    runs-on: ubuntu-latest
+    needs: lint-and-check
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Go unit tests
+        run: go test -v ./...
+
+      - name: Run frontend Playwright tests
+        run: npm run test:frontend
+
+      - name: Run test matrix (unit + e2e)
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts
+          SMITH_FIXTURE_DIR: /tmp/smith-test-repo
+          SMITH_ENABLE_CLUSTER_TESTS: "false"
+        run: ./scripts/test/run-matrix.sh
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-test-artifacts
+          path: /tmp/smith-test-artifacts
+
+  # ─── Stage 2b: Acceptance harness (parallel with unit-tests) ────
+  acceptance-tests:
+    runs-on: ubuntu-latest
+    needs: lint-and-check
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run acceptance smoke stage
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts/acceptance-harness
+        run: make test-acceptance-smoke
+
+      - name: Run acceptance BDD stage
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts/acceptance-harness
+        run: make test-acceptance-bdd
+
+      - name: Upload acceptance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-acceptance-artifacts
+          path: /tmp/smith-test-artifacts/acceptance-harness
+
+  # ─── Stage 2c: E2E loop scenarios (parallel with unit-tests) ────
+  e2e-loop-scenarios:
+    runs-on: ubuntu-latest
+    needs: lint-and-check
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - id: single-loop
+            script: ./scripts/test/e2e-single-loop.sh
+          - id: multi-loop
+            script: ./scripts/test/e2e-concurrent-loops.sh
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run loop e2e scenario (${{ matrix.scenario.id }})
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-e2e-artifacts/${{ matrix.scenario.id }}
+          SMITH_FIXTURE_DIR: /tmp/smith-test-repo-${{ matrix.scenario.id }}
+          SMITH_ENABLE_CLUSTER_TESTS: "false"
+        run: ${{ matrix.scenario.script }}
+
+      - name: Upload scenario artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-e2e-${{ matrix.scenario.id }}-artifacts
+          path: /tmp/smith-e2e-artifacts/${{ matrix.scenario.id }}
+
+  # ─── Stage 2d: E2E ingress/environment/skill scenarios ──────────
+  e2e-ingress-environment:
+    runs-on: ubuntu-latest
+    needs: lint-and-check
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run ingress and environment mode e2e
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-e2e-artifacts/ingress
+          SMITH_ENABLE_CLUSTER_TESTS: "false"
+        run: |
+          ./scripts/test/e2e-ingress-modes.sh
+          ./scripts/test/e2e-environment-modes.sh
+          ./scripts/test/e2e-skill-mounts.sh
+
+      - name: Upload ingress/environment e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-e2e-ingress-environment-artifacts
+          path: /tmp/smith-e2e-artifacts/ingress
+
+  # ─── Stage 2e: E2E summary ───────────────────────────────────────
+  e2e-summary:
+    runs-on: ubuntu-latest
+    needs:
+      - e2e-loop-scenarios
+      - e2e-ingress-environment
+    if: always()
+    steps:
+      - name: Publish scenario trace summary
+        run: |
+          {
+            echo "## Smith E2E Scenario Matrix"
+            echo ""
+            echo "- Single-loop scenario: artifact \`smith-e2e-single-loop-artifacts\`"
+            echo "- Multi-loop scenario: artifact \`smith-e2e-multi-loop-artifacts\`"
+            echo "- Ingress + environment scenarios: artifact \`smith-e2e-ingress-environment-artifacts\`"
+            echo ""
+            echo "Trace evidence files:"
+            echo "- \`e2e-single-loop-report.json\`"
+            echo "- \`e2e-concurrent-summary.txt\`"
+            echo "- \`e2e-ingress-summary.txt\`"
+            echo "- \`e2e-environment-summary.txt\`"
+            echo "- \`e2e-skill-mounts-summary.txt\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─── Stage 3: Build images ─────────────────────────────────────
+  build-images:
+    runs-on: ubuntu-latest
+    needs:
+      - unit-tests
+      - acceptance-tests
+      - e2e-loop-scenarios
+      - e2e-ingress-environment
+    env:
+      IMAGE_PLATFORMS: linux/amd64,linux/arm64
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            dockerfile: docker/api.Dockerfile
+          - image: chat
+            dockerfile: docker/chat.Dockerfile
+          - image: core
+            dockerfile: docker/core.Dockerfile
+          - image: replica
+            dockerfile: docker/replica.Dockerfile
+          - image: console
+            dockerfile: docker/console.Dockerfile
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/smith-${{ matrix.image }}
+          tags: |
+            type=sha,format=short,prefix=sha-
+            type=ref,event=branch,prefix=branch-
+            type=semver,pattern={{version}}
+
+      - name: Build image (local)
+        id: build-local
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          load: true
+          tags: smith-${{ matrix.image }}:ci
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: smith-${{ matrix.image }}:ci
+          output-file: sbom-${{ matrix.image }}.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.image }}
+          path: sbom-${{ matrix.image }}.spdx.json
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: smith-${{ matrix.image }}:ci
+          format: table
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Build and publish image
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ env.IMAGE_PLATFORMS }}
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # ─── Stage 4: Integration (vCluster) ────────────────────────────
+  integration:
+    runs-on: ubuntu-latest
+    needs: build-images
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install integration prerequisites
+        run: ./scripts/integration/prereqs.sh
+
+      - name: Provision ephemeral k3d + vCluster + etcd
+        timeout-minutes: 15
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+          SMITH_ETCD_MODE: simple
+          SMITH_VCLUSTER_CONNECT: "true"
+        run: ./scripts/integration/env-up.sh
+
+      - name: Run vCluster watch/reconcile integration tests
+        timeout-minutes: 10
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+        run: ./scripts/integration/test-watch-reconcile.sh
+
+      - name: Run cluster-enabled test matrix
+        timeout-minutes: 10
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts
+          SMITH_FIXTURE_DIR: /tmp/smith-test-repo
+          SMITH_ENABLE_CLUSTER_TESTS: "true"
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+        run: ./scripts/test/run-matrix.sh
+
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p /tmp/smith-ci-diag
+          kubectl get nodes -o wide > /tmp/smith-ci-diag/nodes.txt || true
+          kubectl get pods -A -o wide > /tmp/smith-ci-diag/pods.txt || true
+          kubectl get events -A --sort-by=.lastTimestamp > /tmp/smith-ci-diag/events.txt || true
+
+      - name: Upload diagnostics and artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-integration-artifacts
+          path: |
+            /tmp/smith-ci-diag
+            /tmp/smith-test-artifacts
+
+      - name: Tear down ephemeral environment
+        if: always()
+        timeout-minutes: 10
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_VCLUSTER_NAME: smith-ci-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
+          SMITH_ETCD_NAMESPACE: smith-ci-system
+          SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
+        run: ./scripts/integration/env-down.sh
+
+  # ─── Stage 5: Publish (images + Helm chart) ─────────────────────
+  publish:
+    runs-on: ubuntu-latest
+    needs: integration
+    if: github.event_name == 'push'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package and Push Helm Chart
+        run: |
+          helm lint helm/smith
+          helm package helm/smith
+          CHART_VERSION=$(grep '^version:' helm/smith/Chart.yaml | awk '{print $2}')
+          echo "Pushing smith-$CHART_VERSION.tgz to GHCR"
+          helm push "smith-$CHART_VERSION.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
+
+  # ─── Pre-release gates (main/tags only) ─────────────────────────
+  vcluster-system-gate:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: github.event_name == 'push'
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install integration prerequisites
+        run: ./scripts/integration/prereqs.sh
+
+      - name: Provision k3d + vCluster + etcd
+        timeout-minutes: 20
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_VCLUSTER_NAME: smith-pre-release-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
+          SMITH_ETCD_NAMESPACE: smith-pre-release-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
+          SMITH_ETCD_MODE: simple
+          SMITH_VCLUSTER_CONNECT: "true"
+        run: ./scripts/integration/env-up.sh
+
+      - name: Run vCluster pre-release gate
+        timeout-minutes: 20
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/vcluster
+          SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/vcluster
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_VCLUSTER_NAME: smith-pre-release-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
+          SMITH_ETCD_NAMESPACE: smith-pre-release-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
+        run: ./scripts/release/pre-release-system-gate.sh vcluster
+
+      - name: Upload vCluster gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-pre-release-vcluster-artifacts
+          path: /tmp/smith-pre-release-artifacts/vcluster
+
+      - name: Tear down pre-release environment
+        if: always()
+        timeout-minutes: 15
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_VCLUSTER_NAME: smith-pre-release-vc
+          SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
+          SMITH_ETCD_NAMESPACE: smith-pre-release-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
+        run: ./scripts/integration/env-down.sh
+
+  non-vcluster-parity-gate:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: github.event_name == 'push'
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run non-vCluster parity pre-release gate
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/parity
+          SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/parity
+        run: ./scripts/release/pre-release-system-gate.sh parity
+
+      - name: Upload parity gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-pre-release-parity-artifacts
+          path: /tmp/smith-pre-release-artifacts/parity
+
+  non-vcluster-k3s-direct-gate:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: github.event_name == 'push'
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install integration prerequisites
+        run: ./scripts/integration/prereqs.sh
+
+      - name: Provision k3d + etcd (direct namespace, no vCluster)
+        timeout-minutes: 20
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release-direct
+          SMITH_USE_VCLUSTER: "false"
+          SMITH_ETCD_NAMESPACE: smith-pre-release-direct-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-direct-etcd
+          SMITH_ETCD_MODE: simple
+        run: ./scripts/integration/env-up.sh
+
+      - name: Run direct k3s non-vCluster parity gate
+        timeout-minutes: 20
+        env:
+          SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/parity-direct-k3s
+          SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/parity-direct-k3s
+          SMITH_ENABLE_CLUSTER_TESTS: "true"
+        run: ./scripts/release/pre-release-system-gate.sh parity
+
+      - name: Upload direct k3s parity artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smith-pre-release-parity-direct-k3s-artifacts
+          path: /tmp/smith-pre-release-artifacts/parity-direct-k3s
+
+      - name: Tear down direct k3s environment
+        if: always()
+        timeout-minutes: 15
+        env:
+          SMITH_K3D_CLUSTER_NAME: smith-pre-release-direct
+          SMITH_USE_VCLUSTER: "false"
+          SMITH_ETCD_NAMESPACE: smith-pre-release-direct-system
+          SMITH_ETCD_RELEASE_NAME: smith-pre-release-direct-etcd
+        run: ./scripts/integration/env-down.sh

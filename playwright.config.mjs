@@ -25,7 +25,7 @@ export default defineConfig({
   },
   webServer: useLocalWebServer
     ? {
-        command: 'python3 -m http.server 4173 --bind 127.0.0.1 --directory console',
+        command: 'cd frontend && npm run build && npm run preview -- --port 4173 --host 127.0.0.1',
         url: 'http://127.0.0.1:4173',
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
