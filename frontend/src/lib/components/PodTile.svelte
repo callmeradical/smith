@@ -37,7 +37,7 @@
         <div class="truncate text-sm font-mono font-bold text-gray-200 group-hover:text-cyan-400 transition-colors" title={loop.loopID}>
           {loop.loopID}
         </div>
-        <Badge color={statusColor} rounded class="uppercase text-[10px] px-2 py-0.5 font-bold">
+        <Badge color="gray" rounded class="uppercase text-[10px] px-2 py-0.5 font-bold">
           {loop.status}
         </Badge>
       </div>

@@ -7,6 +7,11 @@ FROM python:3.12-slim-bookworm AS python-bin
 
 FROM mcr.microsoft.com/playwright:v1.50.1-noble
 
+# WORKAROUND: We copy binaries (Go, Helm, Make, Python) from stable base images 
+# instead of using apt-get because the official repositories frequently 
+# experience GPG signature issues during local Docker builds.
+# TODO: Move to a more robust image build process (e.g. custom base image) once stable.
+
 # Copy Go
 COPY --from=go-bin /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:${PATH}"

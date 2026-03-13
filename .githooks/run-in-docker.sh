@@ -25,7 +25,11 @@ container_id="$(docker create \
   --env SKIP_GIT_HOOKS=1 \
   --env GOFLAGS=-buildvcs=false \
   "${image}" \
-  /bin/bash -lc "export PATH=/usr/local/go/bin:\$PATH; find . -name '._*' -delete; make ${target}")"
+  /bin/bash -lc "export PATH=/usr/local/go/bin:\$PATH; \
+    # WORKAROUND: Delete macOS metadata files that can cause Playwright syntax errors in Linux containers
+    # TODO: Refine tar/cp logic to prevent these from ever entering the container
+    find . -name '._*' -delete; \
+    make ${target}")"
 
 cleanup() {
   docker rm -f "${container_id}" >/dev/null 2>&1 || true

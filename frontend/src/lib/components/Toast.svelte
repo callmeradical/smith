@@ -9,7 +9,7 @@
 	{#each $toastMessages as toast (toast.id)}
     {#if toast.show}
       <div transition:fly={{ x: 200, duration: 200 }} class="pointer-events-auto">
-        <Toast color={toast.level === 'ok' ? 'green' : toast.level === 'err' ? 'red' : 'dark'} class="bg-black border border-gray-800 shadow-2xl rounded-none">
+        <Toast color={toast.level === 'ok' ? 'green' : toast.level === 'err' ? 'red' : 'blue'} class="bg-black border border-gray-800 shadow-2xl rounded-none">
           {#snippet icon()}
             {#if toast.level === 'ok'}
               <CheckCircleOutline size="md" class="text-[#86BC25]" />

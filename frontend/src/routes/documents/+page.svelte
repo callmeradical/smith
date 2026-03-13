@@ -146,7 +146,7 @@
     Draft with AI
   </Button>
   
-  <Button color="none" class="bg-[#86BC25] text-black rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={createNew}>
+  <Button color="alternative" class="bg-[#86BC25] text-black rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={createNew}>
     <PlusOutline size="xs" class="mr-1.5" />
     New Doc
   </Button>
@@ -202,7 +202,7 @@
                 </Select>
               </div>
               <div class="flex gap-2">
-                <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-[9px] px-4 py-1 h-7 rounded-none" onclick={saveDocument}>
+                <Button color="alternative" class="bg-[#86BC25] text-black font-bold uppercase text-[9px] px-4 py-1 h-7 rounded-none" onclick={saveDocument}>
                   <CloudArrowUpOutline size="xs" class="mr-1.5" />
                   Save
                 </Button>
@@ -223,7 +223,7 @@
                   <EditOutline size="xs" class="mr-1.5" />
                   EDIT
                 </Button>
-                <Button color="none" class="bg-[#86BC25] text-black font-bold rounded-none text-[9px] tracking-widest px-3 h-7" onclick={buildDoc} title="Build">
+                <Button color="alternative" class="bg-[#86BC25] text-black font-bold rounded-none text-[9px] tracking-widest px-3 h-7" onclick={buildDoc} title="Build">
                   <RocketOutline size="xs" class="mr-1.5" />
                   BUILD
                 </Button>
@@ -250,7 +250,7 @@
                   placeholder="Start writing in Markdown..." 
                   class="bg-black border-none text-gray-300 font-mono text-lg focus:ring-0 resize-none h-full w-full rounded-none px-8 py-6"
                 >
-                  <Toolbar slot="header" embedded class="bg-black border-b border-gray-900 rounded-none px-8">
+                <Toolbar slot="header" embedded class="bg-black border-b border-gray-900 rounded-none px-8">
                     <ToolbarGroup>
                       <ToolbarButton name="Bold" class="text-gray-400 hover:text-white" onclick={() => editContent += '**bold**'}><span class="font-bold text-xs">B</span></ToolbarButton>
                       <ToolbarButton name="Italic" class="text-gray-400 hover:text-white" onclick={() => editContent += '_italic_'}><span class="italic text-xs">I</span></ToolbarButton>

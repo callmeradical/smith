@@ -22,12 +22,10 @@
 </script>
 
 <Drawer 
-  transitionType="fly" 
-  {transitionParams} 
   bind:open={$sidebarOpen} 
   id="sidebar-drawer" 
-  width="w-64" 
-  class="bg-black border-r border-gray-800 p-0 z-50"
+  width="default" 
+  class="bg-black border-r border-gray-800 p-0 z-50 w-64"
 >
   <SidebarWrapper class="bg-black h-full flex flex-col">
     <div class="px-6 py-8 flex items-center justify-between">

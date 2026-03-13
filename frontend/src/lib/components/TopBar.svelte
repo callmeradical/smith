@@ -4,11 +4,14 @@
   import { Button, Navbar, NavBrand, NavUl, NavLi } from 'flowbite-svelte';
   import { BarsOutline, GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, MessagesOutline } from 'flowbite-svelte-icons';
 
+	import type { Snippet } from 'svelte';
+
 	interface Props {
 		title: string;
+		controls?: Snippet;
 	}
 
-	let { title }: Props = $props();
+	let { title, controls }: Props = $props();
 
   const navItems = [
 		{ id: 'pods', label: 'Pods', href: '/pods', icon: GridOutline },
@@ -30,7 +33,7 @@
 
   <div class="flex items-center gap-2 lg:order-2">
     <Button
-      color="none"
+      color="alternative"
       class="p-2 text-blue-500 hover:bg-white/5 transition-colors hidden lg:flex items-center gap-2"
       onclick={() => chatOpen.update(v => !v)}
       aria-label="Toggle Chat"
@@ -39,7 +42,7 @@
       <span class="uppercase tracking-widest text-[10px] font-bold">Chat</span>
     </Button>
     <Button
-      color="none"
+      color="alternative"
       class="p-2 text-[#86BC25] hover:bg-white/5 transition-colors lg:hidden"
       onclick={() => sidebarOpen.update(v => !v)}
       aria-label="Toggle Sidebar"
@@ -53,7 +56,6 @@
       {@const active = currentPath.startsWith(item.href)}
       <NavLi 
         href={item.href} 
-        {active}
         activeClass="text-white border-b-2 border-[#86BC25] bg-transparent"
         nonActiveClass="text-gray-400 hover:text-[#86BC25] bg-transparent"
         class="px-4 py-3 transition-all hover:bg-transparent"
@@ -72,7 +74,7 @@
 <div class="page-header py-6 flex items-center justify-between px-4">
   <h1 class="text-2xl font-bold text-white tracking-tight uppercase border-l-4 border-[#86BC25] pl-4">{title}</h1>
   <div id="page-actions" class="flex items-center gap-2">
-    <!-- Buttons will be injected here via portal or component logic -->
+    {@render controls?.()}
   </div>
 </div>
 

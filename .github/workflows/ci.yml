@@ -46,7 +46,7 @@ jobs:
         run: cd frontend && npm install --silent
 
       - name: Svelte check
-        run: cd frontend && npm run check
+        run: cd frontend && npx svelte-kit sync && npm run check
 
       - name: Helm Lint
         run: helm lint helm/smith

@@ -27,7 +27,7 @@
   <p class="text-gray-500 max-w-sm mb-8 leading-relaxed font-medium">{description}</p>
   
   {#if buttonText && buttonHref}
-    <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-xs px-8 py-3 rounded-none transition-all" href={buttonHref}>
+    <Button color="alternative" class="bg-[#86BC25] text-black font-bold uppercase text-xs px-8 py-3 rounded-none transition-all" href={buttonHref}>
       {buttonText}
       <ArrowRightOutline size="sm" class="ml-2" />
     </Button>

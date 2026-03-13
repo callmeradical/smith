@@ -344,10 +344,20 @@ hooks-run-pre-commit: ## Run pre-commit checks manually
 	go vet ./...
 	go build ./...
 	@if command -v helm >/dev/null 2>&1; then helm lint helm/smith; fi
-	@if command -v npm >/dev/null 2>&1 && [ -d frontend/node_modules ]; then cd frontend && npm run build; fi
+	@if command -v npm >/dev/null 2>&1; then cd frontend && npm install --silent && npm run check; fi
 
 hooks-run-pre-push: ## Run pre-push checks manually
 	@echo "[pre-push] running build and full tests..."
 	$(MAKE) build
 	$(MAKE) test-unit
-	@if command -v npm >/dev/null 2>&1; then $(MAKE) test-frontend; else echo "[pre-push] skipping frontend tests (npm not available)"; fi
+	$(MAKE) test-acceptance
+	@if command -v npm >/dev/null 2>&1; then \
+		npm install --silent && \
+		cd frontend && npm install --silent && npm run build && cd .. && \
+		$(MAKE) test-frontend; \
+	else \
+		echo "[pre-push] skipping frontend tests (npm not available)"; \
+	fi
+	./scripts/fixtures/provision-smith-test-repo.sh /tmp/smith-test-repo
+	./scripts/fixtures/verify-smith-test-repo.sh /tmp/smith-test-repo
+	$(MAKE) docs-check
