@@ -15,8 +15,8 @@
 - [x] **Task: Conductor - User Manual Verification 'Remediation' (Protocol in workflow.md)**
 
 #### Phase 3: Final Verification
-- [ ] **Task: Run security scan**
-    - [ ] Run `make trivy-scan-local` and verify that `smith-replica:local` no longer reports CRITICAL vulnerabilities.
-- [ ] **Task: Run functional smoke tests**
-    - [ ] Run `make test-acceptance-smoke` to ensure the replica remains functional after the base image change.
+- [x] **Task: Run security scan**
+    - [x] Run `make trivy-scan-local` and verify that `smith-replica:local` no longer reports CRITICAL vulnerabilities.
+- [x] **Task: Run functional smoke tests**
+    - [x] Run `make test-acceptance-smoke` to ensure the replica remains functional after the base image change.
 - [ ] **Task: Conductor - User Manual Verification 'Final Verification' (Protocol in workflow.md)**
