@@ -15,23 +15,13 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-# Ensure hooks image is built if using the default
-if [[ "$image" == "smith-hooks:local" ]] && ! docker image inspect "$image" >/dev/null 2>&1; then
-  echo "building hooks image $image..." >&2
-  docker build -f docker/hooks.Dockerfile -t "$image" "$repo_root" >&2
-fi
-
 gomodcache="${GOMODCACHE:-${GOPATH:-$HOME/go}/pkg/mod}"
-npmcache="${HOME}/.npm"
-mkdir -p "$npmcache"
 
 container_id="$(docker create \
   --workdir /workspace \
   -v "${gomodcache}:/go/pkg/mod" \
-  -v "${npmcache}:/tmp/.npm" \
   --env HOME=/tmp \
   --env GOMODCACHE=/go/pkg/mod \
-  --env npm_config_cache=/tmp/.npm \
   --env SKIP_GIT_HOOKS=1 \
   --env GOFLAGS=-buildvcs=false \
   "${image}" \
