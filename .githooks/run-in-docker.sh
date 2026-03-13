@@ -15,9 +15,13 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
+gomodcache="${GOMODCACHE:-${GOPATH:-$HOME/go}/pkg/mod}"
+
 container_id="$(docker create \
   --workdir /workspace \
+  -v "${gomodcache}:/go/pkg/mod" \
   --env HOME=/tmp \
+  --env GOMODCACHE=/go/pkg/mod \
   --env SKIP_GIT_HOOKS=1 \
   --env GOFLAGS=-buildvcs=false \
   "${image}" \

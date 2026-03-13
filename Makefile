@@ -347,4 +347,4 @@ hooks-run-pre-push: ## Run pre-push checks manually
 	@echo "[pre-push] running build and full tests..."
 	$(MAKE) build
 	$(MAKE) test-unit
-	$(MAKE) test-frontend
+	@if command -v npm >/dev/null 2>&1; then $(MAKE) test-frontend; else echo "[pre-push] skipping frontend tests (npm not available)"; fi
