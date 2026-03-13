@@ -331,10 +331,20 @@ hooks-image-build: ## Build the containerized hook image
 
 trivy-scan-local: ## Run local vulnerability scans on all Smith images
 	@echo "[trivy] scanning images for critical vulnerabilities..."
-	@for img in core api replica console chat; do \
+	@vulnerabilities=0; \
+	for img in core api replica console chat; do \
 	  echo "Scanning smith-$$img:local..."; \
-	  trivy image --severity CRITICAL --exit-code 0 "smith-$$img:local"; \
-	done
+	  if ! trivy image --severity CRITICAL --exit-code 1 "smith-$$img:local" > /tmp/trivy-$$img.log 2>&1; then \
+	    cat /tmp/trivy-$$img.log; \
+	    vulnerabilities=$$((vulnerabilities + 1)); \
+	  else \
+	    cat /tmp/trivy-$$img.log; \
+	  fi; \
+	done; \
+	if [ $$vulnerabilities -gt 0 ]; then \
+	  echo "[trivy] Found CRITICAL vulnerabilities in $$vulnerabilities images. Fails build."; \
+	  exit 1; \
+	fi
 
 docs-check: ## Run docs quality checks
 	./scripts/docs/quality-check.sh
