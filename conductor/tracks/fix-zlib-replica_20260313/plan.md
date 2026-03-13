@@ -6,13 +6,13 @@
     - [x] Run `make trivy-scan-local` and confirm the `smith-replica:local` failure for CVE-2026-22184.
 - [x] **Task: Conductor - User Manual Verification 'Baseline Verification' (Protocol in workflow.md)**
 
-#### Phase 2: Remediation
+#### Phase 2: Remediation [checkpoint: 5bddcd5]
 - [x] **Task: Update base image in Dockerfile**
     - [x] Inspect `docker/replica.Dockerfile` to identify the current base image version.
     - [x] Update the base image to a version known to include the `zlib` patch (e.g., Alpine 3.21.3 -> newer, or latest Go base).
 - [x] **Task: Rebuild the image**
     - [x] Run `make replica-build-local` to build the image with the new base.
-- [ ] **Task: Conductor - User Manual Verification 'Remediation' (Protocol in workflow.md)**
+- [x] **Task: Conductor - User Manual Verification 'Remediation' (Protocol in workflow.md)**
 
 #### Phase 3: Final Verification
 - [ ] **Task: Run security scan**
