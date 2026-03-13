@@ -240,6 +240,10 @@ test-unit: ## Run full Go test suite
 	go test ./...
 
 test-frontend: ## Run Playwright frontend/component tests for console
+	@if [ ! -d node_modules ]; then npm install; fi
+	@if [ ! -d frontend/node_modules ]; then cd frontend && npm install; fi
+	@if [ ! -d frontend/.svelte-kit ]; then cd frontend && npx svelte-kit sync; fi
+	cd frontend && npm run build
 	npm run test:frontend
 
 test-matrix: ## Run script-based local matrix (fixture + e2e + verification)
@@ -352,8 +356,6 @@ hooks-run-pre-push: ## Run pre-push checks manually
 	$(MAKE) test-unit
 	$(MAKE) test-acceptance
 	@if command -v npm >/dev/null 2>&1; then \
-		npm install --silent && \
-		cd frontend && npm install --silent && npm run build && cd .. && \
 		$(MAKE) test-frontend; \
 	else \
 		echo "[pre-push] skipping frontend tests (npm not available)"; \
