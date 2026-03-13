@@ -39,7 +39,7 @@ SMITH_LAT_SAMPLES=40 \
 
 The script:
 
-- toggles manual overrides (`unresolved` <-> `overwriting`) to generate journal events,
+- toggles manual overrides (`unresolved` <-> `running`) to generate journal events,
 - consumes SSE stream entries for the loop,
 - computes p95/p99 from observed `now - entry.timestamp` latency,
 - reports pass/warn against the `<100ms p95` target.

@@ -20,7 +20,7 @@
 
 ### Gate 1: Data Integrity
 - etcd schema version `v1` documented and implemented.
-- State transitions validated (`unresolved -> overwriting -> synced|flatline|cancelled`).
+- State transitions validated (`unresolved -> running -> synced|flatline|cancelled`).
 - Append-only journal and handoff records verified.
 
 ### Gate 2: Orchestration Correctness

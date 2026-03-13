@@ -36,7 +36,7 @@
 		$appState.loops.filter((loop: any) => {
 			const matchesState =
 				stateFilter === "all" ||
-				(stateFilter === "active" && (loop.status === "unresolved" || loop.status === "overwriting")) ||
+				(stateFilter === "active" && (loop.status === "unresolved" || loop.status === "running")) ||
 				loop.status === stateFilter;
 			const matchesSearch = !searchQuery || String(loop.loopID).toLowerCase().includes(searchQuery.toLowerCase());
 			return matchesState && matchesSearch;
@@ -45,7 +45,7 @@
 
 	const stats = $derived({
 		total: $appState.loops.length,
-		active: $appState.loops.filter((l: any) => l.status === "unresolved" || l.status === "overwriting").length,
+		active: $appState.loops.filter((l: any) => l.status === "unresolved" || l.status === "running").length,
 		flatline: $appState.loops.filter((l: any) => l.status === "flatline").length
 	});
 
@@ -63,7 +63,7 @@
         <option value="all">All States</option>
         <option value="active">Active Only</option>
         <option value="unresolved">Unresolved</option>
-        <option value="overwriting">Overwriting</option>
+        <option value="running">Running</option>
         <option value="synced">Synced</option>
         <option value="flatline">Flatline</option>
         <option value="cancelled">Cancelled</option>

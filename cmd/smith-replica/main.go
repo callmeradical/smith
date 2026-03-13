@@ -169,12 +169,16 @@ func main() {
 		gitPAT := strings.TrimSpace(os.Getenv("SMITH_GIT_PAT"))
 		gitRepo := strings.TrimSpace(os.Getenv("SMITH_GIT_REPOSITORY"))
 		gitBranch := strings.TrimSpace(os.Getenv("SMITH_GIT_BRANCH"))
+		gitUserName := strings.TrimSpace(os.Getenv("SMITH_GIT_USER_NAME"))
+		gitUserEmail := strings.TrimSpace(os.Getenv("SMITH_GIT_USER_EMAIL"))
 
 		protocol := completion.NewProtocol(storeClient, &completion.RealGit{
 			Workspace:  workspace,
 			Repository: gitRepo,
 			Branch:     gitBranch,
 			PAT:        gitPAT,
+			UserName:   gitUserName,
+			UserEmail:  gitUserEmail,
 		})
 
 		_ = storeClient.AppendJournal(ctx, model.JournalEntry{
@@ -406,7 +410,7 @@ func runIterativeLoop(ctx context.Context, storeClient *store.Store, loopID, cor
 			return model.LoopStateFlatline, "operator-terminated", nil
 		case model.LoopStateSynced:
 			return model.LoopStateSynced, "already-synced", nil
-		case model.LoopStateOverwriting:
+		case model.LoopStateRunning:
 			// Continue below.
 		default:
 			return state.Record.State, "loop-not-active", nil
@@ -1026,8 +1030,8 @@ func loopTerminalDecision(ctx context.Context, storeClient *store.Store, loopID 
 		return model.LoopStateFlatline, "state-missing", false, fmt.Errorf("state not found for loop_id=%s", loopID)
 	}
 	switch state.Record.State {
-	case model.LoopStateOverwriting:
-		return model.LoopStateOverwriting, "", false, nil
+	case model.LoopStateRunning:
+		return model.LoopStateRunning, "", false, nil
 	case model.LoopStateCancelled:
 		return model.LoopStateCancelled, "operator-cancelled", true, nil
 	case model.LoopStateFlatline:
@@ -1116,35 +1120,31 @@ func buildIssuePRDPrompt(anomaly model.Anomaly, prdPath string, storyCount int) 
 	if storyCount <= 0 {
 		storyCount = defaultPRDStoryCount
 	}
-	contextLabel := "Issue Context:"
-	if strings.TrimSpace(anomaly.SourceType) != "github_issue" {
-		contextLabel = "Prompt Context:"
-	}
-	interactivePrompt := ""
-	if anomaly.Metadata != nil {
-		interactivePrompt = strings.TrimSpace(anomaly.Metadata["workspace_prompt"])
-	}
 	lines := []string{
-		"You are Codex CLI running in smith-replica issue workflow.",
-		"Generate a PRD JSON document for the context below.",
-		"Write the PRD JSON file to: " + prdPath,
+		"You are an autonomous coding agent.",
+		"Use the $prd skill to create a Product Requirements Document in JSON.",
+		"Save the PRD to: " + prdPath,
+		"Do NOT implement anything.",
 		"Requirements:",
-		"- Include clear goals, non-goals, quality gates, and executable stories.",
-		"- Use machine-parseable JSON with a stories array and story statuses.",
 		fmt.Sprintf("- Include exactly %d user stories in the stories array.", storyCount),
 		"- Each story should be actionable, independently testable, and have status set to \"open\".",
-		"- If requirements are ambiguous, record assumptions explicitly.",
+		"After creating the PRD, end with:",
+		"PRD JSON saved to " + prdPath + ". Close this chat and run `smith build`.",
 		"",
-		contextLabel,
-		"- source_type: " + strings.TrimSpace(anomaly.SourceType),
-		"- source_ref: " + strings.TrimSpace(anomaly.SourceRef),
+		"User request:",
 		"- title: " + strings.TrimSpace(anomaly.Title),
 		"- description:",
 		strings.TrimSpace(anomaly.Description),
 	}
+
+	interactivePrompt := ""
+	if anomaly.Metadata != nil {
+		interactivePrompt = strings.TrimSpace(anomaly.Metadata["workspace_prompt"])
+	}
 	if interactivePrompt != "" {
 		lines = append(lines, "", "Operator Prompt:", interactivePrompt)
 	}
+
 	if fullContext := fullIssueContextForPrompt(anomaly.Metadata); fullContext != "" {
 		lines = append(lines, "", "GitHub Issue Full Context (JSON):", fullContext)
 	}
@@ -1152,22 +1152,22 @@ func buildIssuePRDPrompt(anomaly model.Anomaly, prdPath string, storyCount int) 
 }
 
 func buildIssueBuildPrompt(anomaly model.Anomaly, prdPath string, iteration, maxIterations int, progress prdProgress) string {
-	contextLabel := "Issue Context:"
-	if strings.TrimSpace(anomaly.SourceType) != "github_issue" {
-		contextLabel = "Prompt Context:"
-	}
 	lines := []string{
-		"You are Codex CLI running in smith-replica issue workflow.",
-		"Run the build phase using the PRD JSON at: " + prdPath,
-		fmt.Sprintf("This is build iteration %d of %d.", iteration, maxIterations),
-		fmt.Sprintf("Current PRD progress: total=%d open=%d in_progress=%d done=%d.", progress.Total, progress.Open, progress.InProgress, progress.Done),
-		"Apply the PRD stories in order, update files in the workspace, and run relevant verification commands.",
-		"Mark story status updates directly in the PRD JSON after each completed story.",
-		"If there are ambiguities, choose a reasonable implementation and record assumptions in progress artifacts.",
+		"You are an autonomous coding agent.",
+		"Use the PRD JSON at: " + prdPath,
+		fmt.Sprintf("Current build iteration: %d of %d", iteration, maxIterations),
 		"",
-		contextLabel,
-		"- source_type: " + strings.TrimSpace(anomaly.SourceType),
-		"- source_ref: " + strings.TrimSpace(anomaly.SourceRef),
+		"Instructions:",
+		"1. Read the PRD to identify the next 'open' user story.",
+		"2. Implement the changes required for that story.",
+		"3. Run verification (tests, linting) to ensure correctness.",
+		"4. Update the story status to 'done' in the PRD JSON.",
+		"5. Repeat for the next story if time permits.",
+		"",
+		"Do NOT implement anything not defined in the PRD.",
+		"If you encounter a blocker, record it in the PRD and stop.",
+		"",
+		"Issue Context:",
 		"- title: " + strings.TrimSpace(anomaly.Title),
 	}
 	if fullContext := fullIssueContextForPrompt(anomaly.Metadata); fullContext != "" {
@@ -1175,7 +1175,6 @@ func buildIssueBuildPrompt(anomaly model.Anomaly, prdPath string, iteration, max
 	}
 	return strings.Join(lines, "\n")
 }
-
 func fullIssueContextForPrompt(metadata map[string]string) string {
 	if metadata == nil {
 		return ""
@@ -1267,36 +1266,37 @@ func normalizeInvocationMethod(raw string) string {
 	return method
 }
 
+var agentCommandMap = map[string]string{
+	"codex":  "codex exec --yolo --skip-git-repo-check -",
+	"ralph":  "ralph build --yolo -",
+	"openai": "openai-agent exec -",
+}
+
 func resolveAgentCommand(providerID string) string {
+	// 1. Global override via environment variable
 	if command := strings.TrimSpace(os.Getenv("SMITH_AGENT_CLI_CMD")); command != "" {
 		return command
 	}
+
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
+	if providerID == "" {
+		providerID = "codex" // default fallback
+	}
+
+	// 2. Provider-specific override via environment variable (e.g. SMITH_AGENT_CLI_CMD_RALPH)
 	if providerEnv := providerCommandEnvVar(providerID); providerEnv != "" {
 		if command := strings.TrimSpace(os.Getenv(providerEnv)); command != "" {
 			return command
 		}
 	}
-	legacyCodex := strings.TrimSpace(os.Getenv("SMITH_CODEX_CLI_CMD"))
-	if legacyCodex != "" && (providerID == "" || providerID == "codex") {
-		return legacyCodex
-	}
-	if command, ok := defaultAgentCommandForProvider(providerID); ok {
-		return command
-	}
-	if legacyCodex != "" {
-		return legacyCodex
-	}
-	return defaultCodexCLICommand
-}
 
-func defaultAgentCommandForProvider(providerID string) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(providerID)) {
-	case "", "codex":
-		return defaultCodexCLICommand, true
-	default:
-		return "", false
+	// 3. Resolve from internal agent map
+	if cmd, ok := agentCommandMap[providerID]; ok {
+		return cmd
 	}
+
+	// 4. Final fallback to Codex for backward compatibility
+	return agentCommandMap["codex"]
 }
 
 func providerCommandEnvVar(providerID string) string {
@@ -1305,6 +1305,7 @@ func providerCommandEnvVar(providerID string) string {
 		return ""
 	}
 	var builder strings.Builder
+	builder.WriteString("SMITH_AGENT_CLI_CMD_")
 	lastUnderscore := false
 	for _, r := range raw {
 		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
@@ -1318,13 +1319,8 @@ func providerCommandEnvVar(providerID string) string {
 		builder.WriteByte('_')
 		lastUnderscore = true
 	}
-	suffix := strings.Trim(builder.String(), "_")
-	if suffix == "" {
-		return ""
-	}
-	return "SMITH_AGENT_CLI_CMD_" + suffix
+	return strings.Trim(builder.String(), "_")
 }
-
 func defaultLoopProfileForMethod(method string) (int, time.Duration) {
 	switch normalizeInvocationMethod(method) {
 	case "manual", "console", "interactive":
@@ -1348,7 +1344,7 @@ func finalizeLoopState(ctx context.Context, storeClient *store.Store, loopID str
 			return current, nil
 		}
 
-		if current.State != model.LoopStateOverwriting {
+		if current.State != model.LoopStateRunning {
 			return current, nil
 		}
 

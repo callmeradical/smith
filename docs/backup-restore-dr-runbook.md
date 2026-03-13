@@ -44,7 +44,7 @@ SMITH_DR_DRY_RUN=true scripts/integration/dr-restore-drill.sh
 
 ## What the Drill Validates
 
-1. Writes a canary loop anomaly/state into etcd (`overwriting` state).
+1. Writes a canary loop anomaly/state into etcd (`running` state).
 2. Takes etcd snapshot (`snapshot save`) and copies snapshot artifact.
 3. Simulates outage by deleting the etcd pod and waiting for replacement readiness.
 4. Performs restore rehearsal from snapshot in an isolated data dir inside etcd pod.

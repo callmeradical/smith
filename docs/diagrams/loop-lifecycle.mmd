@@ -1,0 +1,44 @@
+sequenceDiagram
+    participant client as smithctl / Console
+    participant api as smith-api
+    participant core as smith-core
+    participant etcd as etcd
+    participant k8s as Kubernetes
+    participant replica as smith-replica
+    participant github as GitHub (Repo)
+    participant codex as Agent Provider (Codex)
+
+    Note over client,api: Loop Creation
+    client->>api: POST /v1/loops
+    api->>etcd: Create loop record (status: unresolved)
+    etcd-->>api: OK
+    api-->>client: 201 Created (loop_id)
+
+    Note over core,etcd: Orchestration (Core)
+    core->>etcd: Watch /loops (state: unresolved)
+    etcd-->>core: New loop anomaly
+    core->>etcd: Acquire state lock
+    etcd-->>core: Lock Acquired
+    core->>k8s: Create replica Job (with repo/auth spec)
+    k8s-->>core: Job Created
+    core->>etcd: Update status: overwriting (handover to replica)
+
+    Note over replica,github: Execution (Replica)
+    k8s->>replica: Spawn replica Pod
+    replica->>github: git clone (Repository Source)
+    github-->>replica: Workspace Source
+    
+    loop Development Iterations
+        replica->>codex: Generate Plan/Code (PRD + Context)
+        codex-->>replica: Completion Response
+        replica->>replica: Run Tests/Verification
+    end
+
+    replica->>github: git commit & push (Verified Changes)
+    github-->>replica: OK (Commit SHA)
+    
+    replica->>etcd: Update status: synced (successful completion)
+    replica-->>k8s: Pod Exit (Success)
+    
+    core->>etcd: Release state lock
+    etcd-->>core: OK

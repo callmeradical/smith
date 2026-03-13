@@ -15,7 +15,7 @@ const loopsFixture = [
     record: {
       loop_id: 'loop-beta',
       project_id: 'alpha',
-      state: 'overwriting',
+      state: 'running',
       attempt: 3,
       reason: 'running worker',
     },
@@ -181,7 +181,7 @@ async function mockConsoleApi(page, options = {}) {
     const current = loopRecord(loopID);
     if (!current) return false;
     const state = String(current.record?.state || '').toLowerCase();
-    return state === 'unresolved' || state === 'overwriting';
+    return state === 'unresolved' || state === 'running';
   }
 
   function loopRuntimePayload(loopID) {

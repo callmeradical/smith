@@ -23,7 +23,7 @@ This PRD outlines the development of **Smith**: an industrial-grade, distributed
 
 * **Mirrored Schema:** Implement a KV schema that replicates `td` functionality:
 * `/smith/anomalies/{id}`: The task definition (The Story).
-* `/smith/state/{id}`: The lifecycle status (`unresolved`, `overwriting`, `synced`).
+* `/smith/state/{id}`: The lifecycle status (`unresolved`, `running`, `synced`).
 * `/smith/journal/{id}/{timestamp}`: Append-only logs of agent reasoning and tool output.
 
 

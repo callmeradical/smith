@@ -6,6 +6,7 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 
 ## Core Concepts
 
+- **Anomaly:** A discrete unit of work, bug, or task. In the Smith metaphor, an anomaly represents a deviation from the desired state of the system that must be resolved.
 - **Ralph Loops:** Structured feedback loops that externalize state into the repository, enabling long-running autonomous progress.
 - **Choreography:** A decentralized approach to development where PRDs define goals and agents react to repository state.
 - **Continuous Implementation:** A shift from traditional CI/CD pipelines to an autonomous `plan -> implement -> validate -> iterate` loop.

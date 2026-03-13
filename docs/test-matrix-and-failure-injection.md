@@ -31,7 +31,7 @@ Completion saga crash-point validation (covered by `internal/source/completion/p
 
 Reconcile failure behavior (covered by `internal/source/reconcile/loop_test.go`):
 
-- `F-004`: Missing runtime while `overwriting` -> unresolved retry or flatline when stale.
+- `F-004`: Missing runtime while `running` -> unresolved retry or flatline when stale.
 - `F-005`: Failed runtime with attempt exhaustion -> flatline escalation.
 - `F-006`: Zombie runtime after terminal etcd state -> runtime deletion.
 

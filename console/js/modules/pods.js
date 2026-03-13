@@ -56,7 +56,7 @@ export function renderGrid() {
   const filtered = state.loops.filter(loop => {
     const matchesState =
       stateFilter === "all" ||
-      (stateFilter === "active" && (loop.status === "unresolved" || loop.status === "overwriting")) ||
+      (stateFilter === "active" && (loop.status === "unresolved" || loop.status === "running")) ||
       loop.status === stateFilter;
     const matchesSearch = !searchQuery || String(loop.loopID).toLowerCase().includes(searchQuery);
     return matchesState && matchesSearch;
@@ -89,7 +89,7 @@ export function renderGrid() {
 
 export function renderStats() {
   const total = state.loops.length;
-  const active = state.loops.filter(l => l.status === "unresolved" || l.status === "overwriting").length;
+  const active = state.loops.filter(l => l.status === "unresolved" || l.status === "running").length;
   const flatline = state.loops.filter(l => l.status === "flatline").length;
 
   const totalEl = document.getElementById("stat-total");

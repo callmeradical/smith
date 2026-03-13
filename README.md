@@ -53,7 +53,7 @@ The repository becomes the shared coordination layer where autonomous loops coop
 Smith coordinates these autonomous execution loops as a state machine stored in etcd. It is designed to:
 
 - accept operator ingress requests (direct, GitHub issues, PRD tasks),
-- convert each request into a deterministic loop lifecycle (`unresolved -> overwriting -> synced|flatline|cancelled`),
+- convert each request into a deterministic loop lifecycle (`unresolved -> running -> synced|flatline|cancelled`),
 - enforce safe concurrency with per-loop locks and revision-checked state transitions,
 - run loop workers as Kubernetes Jobs and preserve execution evidence (journal, handoff, override, audit).
 

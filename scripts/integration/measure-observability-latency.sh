@@ -59,7 +59,7 @@ need_cmd sort
 
 ensure_loop
 state="$(get_state)"
-[[ "$state" == "unresolved" || "$state" == "overwriting" ]] || fail "loop must be in unresolved/overwriting state, found: $state"
+[[ "$state" == "unresolved" || "$state" == "running" ]] || fail "loop must be in unresolved/running state, found: $state"
 
 tmp_dir="$(mktemp -d)"
 samples_file="$tmp_dir/samples_ms.txt"
@@ -74,8 +74,8 @@ start_epoch="$(date +%s)"
 generated=0
 while (( generated < SMITH_LAT_SAMPLES )); do
   current="$(get_state)"
-  target="overwriting"
-  if [[ "$current" == "overwriting" ]]; then
+  target="running"
+  if [[ "$current" == "running" ]]; then
     target="unresolved"
   fi
   set_override "$target"

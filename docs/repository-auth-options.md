@@ -55,6 +55,27 @@ When configured, the generator emits:
   - `SMITH_GIT_SSH_PRIVATE_KEY` (secret ref)
   - `SMITH_GIT_SSH_KNOWN_HOSTS` (secret ref, optional)
 
+## Custom Agent Identity
+
+By default, Smith commits changes using the following identity:
+- **User Name**: `smith-replica`
+- **User Email**: `smith-replica@smith.io`
+
+When using a PAT or other authentication methods, you can customize this identity to match a specific "Smith Service User" or a developer profile.
+
+### Configuration
+
+The identity is controlled via the following environment variables in the Replica Job:
+
+- `SMITH_GIT_USER_NAME`: The display name for git commits (e.g., `Smith Bot [Acme]`).
+- `SMITH_GIT_USER_EMAIL`: The email address for git commits (e.g., `smith@acme.corp`).
+
+### Usage with PAT
+
+If you are using a project PAT and want it to appear as a specific user, ensure these variables are set in your loop or project configuration. Smith's `completion` protocol will automatically run `git config user.name` and `git config user.email` within the workspace before committing.
+
+---
+
 ## Rotation Guidance
 
 PAT mode:
