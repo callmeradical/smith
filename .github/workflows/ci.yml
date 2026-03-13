@@ -331,7 +331,7 @@ jobs:
           path: sbom-${{ matrix.image }}.spdx.json
 
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: smith-${{ matrix.image }}:ci
           format: json

@@ -355,6 +355,16 @@ ci-local: ## Run local CI-equivalent checks
 	$(MAKE) test-acceptance
 	$(MAKE) docs-check
 
+ci-local-act: ## Run core CI jobs locally using 'act' (requires 'act' and Docker)
+	@if ! command -v act >/dev/null 2>&1; then \
+		echo "ERROR: 'act' is not installed."; \
+		echo "HINT: install it with 'brew install act' or from https://github.com/nektos/act"; \
+		exit 1; \
+	fi
+	@echo "[act] running lint-and-check and unit-tests jobs..."
+	act -j lint-and-check
+	act -j unit-tests
+
 hooks-install: ## Install repository git hooks from .githooks
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit .githooks/pre-push .githooks/run-in-docker.sh
