@@ -563,6 +563,27 @@ func TestSubmitAndDeleteSuccess(t *testing.T) {
 	}
 }
 
+func TestSanitizeKubernetesLabelValueWithLongString(t *testing.T) {
+	// A string longer than 63 characters to trigger hashing
+	longString := "this-is-a-very-long-string-that-exceeds-the-maximum-length-of-sixty-three-characters"
+	sanitized := sanitizeKubernetesLabelValue(longString)
+
+	if len(sanitized) > 63 {
+		t.Errorf("expected sanitized string length <= 63, got %d", len(sanitized))
+	}
+
+	if !strings.Contains(sanitized, "-") {
+		t.Errorf("expected sanitized string to contain a suffix separator, got %q", sanitized)
+	}
+
+	// Verify it ends with an 8-character hex suffix
+	parts := strings.Split(sanitized, "-")
+	suffix := parts[len(parts)-1]
+	if len(suffix) != 8 {
+		t.Errorf("expected 8-character suffix, got %d characters: %q", len(suffix), suffix)
+	}
+}
+
 func validRequest() JobRequest {
 	return JobRequest{
 		Namespace:          "smith-system",
