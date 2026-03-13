@@ -7,11 +7,11 @@
 - [x] **Task: Conductor - User Manual Verification 'Baseline Verification' (Protocol in workflow.md)**
 
 #### Phase 2: Remediation
-- [ ] **Task: Update base image in Dockerfile**
-    - [ ] Inspect `docker/replica.Dockerfile` to identify the current base image version.
-    - [ ] Update the base image to a version known to include the `zlib` patch (e.g., Alpine 3.21.3 -> newer, or latest Go base).
-- [ ] **Task: Rebuild the image**
-    - [ ] Run `make replica-build-local` to build the image with the new base.
+- [x] **Task: Update base image in Dockerfile**
+    - [x] Inspect `docker/replica.Dockerfile` to identify the current base image version.
+    - [x] Update the base image to a version known to include the `zlib` patch (e.g., Alpine 3.21.3 -> newer, or latest Go base).
+- [x] **Task: Rebuild the image**
+    - [x] Run `make replica-build-local` to build the image with the new base.
 - [ ] **Task: Conductor - User Manual Verification 'Remediation' (Protocol in workflow.md)**
 
 #### Phase 3: Final Verification
