@@ -14,9 +14,9 @@
     - [x] Run `make replica-build-local` to build the image with the new base.
 - [x] **Task: Conductor - User Manual Verification 'Remediation' (Protocol in workflow.md)**
 
-#### Phase 3: Final Verification
+#### Phase 3: Final Verification [checkpoint: ad1b046]
 - [x] **Task: Run security scan**
     - [x] Run `make trivy-scan-local` and verify that `smith-replica:local` no longer reports CRITICAL vulnerabilities.
 - [x] **Task: Run functional smoke tests**
     - [x] Run `make test-acceptance-smoke` to ensure the replica remains functional after the base image change.
-- [ ] **Task: Conductor - User Manual Verification 'Final Verification' (Protocol in workflow.md)**
+- [x] **Task: Conductor - User Manual Verification 'Final Verification' (Protocol in workflow.md)**
