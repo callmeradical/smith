@@ -9,6 +9,8 @@ import (
 
 var (
 	ErrInvalidPolicy = errors.New("invalid git policy")
+	fragmentReplacer = strings.NewReplacer("/", "-", "_", "-", " ", "-", ".", "-")
+	fragmentRegex    = regexp.MustCompile(`[^a-z0-9\-]+`)
 )
 
 type MergeMethod string
@@ -174,10 +176,8 @@ func FinalizeBranchCommits(messages []string, p Policy) ([]string, error) {
 
 func sanitizeFragment(v string) string {
 	lower := strings.ToLower(strings.TrimSpace(v))
-	replacer := strings.NewReplacer("/", "-", "_", "-", " ", "-", ".", "-")
-	lower = replacer.Replace(lower)
-	re := regexp.MustCompile(`[^a-z0-9\-]+`)
-	lower = re.ReplaceAllString(lower, "")
+	lower = fragmentReplacer.Replace(lower)
+	lower = fragmentRegex.ReplaceAllString(lower, "")
 	lower = strings.Trim(lower, "-")
 	if len(lower) > 48 {
 		lower = lower[:48]
