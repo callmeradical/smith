@@ -1226,7 +1226,7 @@
     }
 
     .state-unresolved,
-    .state-overwriting {
+    .state-running {
       color: var(--warn);
       background: rgba(245, 158, 11, 0.18);
       border-color: rgba(245, 158, 11, 0.42);

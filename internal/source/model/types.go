@@ -8,7 +8,7 @@ type LoopState string
 
 const (
 	LoopStateUnresolved  LoopState = "unresolved"
-	LoopStateOverwriting LoopState = "overwriting"
+	LoopStateRunning LoopState = "running"
 	LoopStateSynced      LoopState = "synced"
 	LoopStateFlatline    LoopState = "flatline"
 	LoopStateCancelled   LoopState = "cancelled"

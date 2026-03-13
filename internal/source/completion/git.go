@@ -8,10 +8,12 @@ import (
 )
 
 type RealGit struct {
-	Workspace string
+	Workspace  string
 	Repository string
 	Branch     string
 	PAT        string
+	UserName   string
+	UserEmail  string
 }
 
 func (g *RealGit) CommitAndPush(ctx context.Context, loopID string, finalDiff string) (string, error) {
@@ -19,11 +21,20 @@ func (g *RealGit) CommitAndPush(ctx context.Context, loopID string, finalDiff st
 		return "", fmt.Errorf("git push failed: SMITH_GIT_PAT is not set")
 	}
 
-	// 1. Configure local git user if not set
-	if err := g.run(ctx, "config", "user.name", "smith-replica"); err != nil {
+	// 1. Configure local git user
+	userName := g.UserName
+	if userName == "" {
+		userName = "smith-replica"
+	}
+	userEmail := g.UserEmail
+	if userEmail == "" {
+		userEmail = "smith-replica@smith.io"
+	}
+
+	if err := g.run(ctx, "config", "user.name", userName); err != nil {
 		return "", err
 	}
-	if err := g.run(ctx, "config", "user.email", "smith-replica@smith.io"); err != nil {
+	if err := g.run(ctx, "config", "user.email", userEmail); err != nil {
 		return "", err
 	}
 

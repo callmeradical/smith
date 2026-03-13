@@ -168,9 +168,9 @@ func TestLoadLoopExecutionConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("SMITH_LOOP_INVOCATION_METHOD", "github_issue")
 	t.Setenv("SMITH_LOOP_SOURCE_TYPE", "github_issue")
 	t.Setenv("SMITH_LOOP_SOURCE_REF", "acme/repo#77")
-	t.Setenv("SMITH_AGENT_CLI_CMD", "")
+	t.Setenv("SMITH_AGENT_CLI_CMD", "custom-agent exec -")
 	t.Setenv("SMITH_AGENT_CLI_CMD_CODEX", "")
-	t.Setenv("SMITH_CODEX_CLI_CMD", "codex exec -")
+	t.Setenv("SMITH_CODEX_CLI_CMD", "")
 	t.Setenv("SMITH_LOOP_PRD_PATH", "tmp/prd.custom.json")
 	t.Setenv("SMITH_LOOP_PRD_STORY_COUNT", "7")
 	t.Setenv("SMITH_ISSUE_PRD_INTERACTIVE", "false")
@@ -196,7 +196,7 @@ func TestLoadLoopExecutionConfigFromEnvOverrides(t *testing.T) {
 	if cfg.SourceType != "github_issue" || cfg.SourceRef != "acme/repo#77" {
 		t.Fatalf("unexpected source fields type=%q ref=%q", cfg.SourceType, cfg.SourceRef)
 	}
-	if cfg.CodexCommand != "codex exec -" {
+	if cfg.CodexCommand != "custom-agent exec -" {
 		t.Fatalf("unexpected codex command: %q", cfg.CodexCommand)
 	}
 	if cfg.PRDPath != "tmp/prd.custom.json" {
@@ -218,7 +218,6 @@ func TestLoadLoopExecutionConfigFromEnvOverrides(t *testing.T) {
 		t.Fatal("expected issue workflow disabled")
 	}
 }
-
 func TestLoadLoopExecutionConfigFromEnvRejectsInvalidValues(t *testing.T) {
 	t.Setenv("SMITH_LOOP_PROVIDER", "")
 	t.Setenv("SMITH_AGENT_CLI_CMD", "")

@@ -260,7 +260,7 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 
 	jobName := replicaJobName(intent.LoopID)
 	next := current.Record
-	next.State = model.LoopStateOverwriting
+	next.State = model.LoopStateRunning
 	next.Attempt = current.Record.Attempt + 1
 	next.WorkerJobName = jobName
 	next.LockHolder = o.cfg.holderID
@@ -271,7 +271,7 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 
 	if err := o.createReplicaJob(ctx, intent.LoopID, jobName, next.CorrelationID, executionImage, anomaly, resolvedSkillMounts); err != nil {
 		_, _ = o.store.PutStateFromCurrent(ctx, intent.LoopID, func(current model.StateRecord) (model.StateRecord, error) {
-			if current.State != model.LoopStateOverwriting {
+			if current.State != model.LoopStateRunning {
 				return current, nil
 			}
 			current.State = model.LoopStateFlatline
@@ -304,7 +304,7 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 		CorrelationID: next.CorrelationID,
 		Metadata: map[string]string{
 			"job_name":                    jobName,
-			"state":                       string(model.LoopStateOverwriting),
+			"state":                       string(model.LoopStateRunning),
 			"execution_image_ref":         executionImage.Ref,
 			"execution_image_source":      executionImage.Source,
 			"execution_image_digest":      executionImage.Digest,

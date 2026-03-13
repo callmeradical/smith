@@ -23,6 +23,8 @@ type GitContext struct {
 	Repository string
 	Branch     string
 	CommitSHA  string
+	UserName   string
+	UserEmail  string
 }
 
 type GitAuthProvider string
@@ -225,6 +227,8 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 		{Name: "SMITH_GIT_REPOSITORY", Value: req.Git.Repository},
 		{Name: "SMITH_GIT_BRANCH", Value: req.Git.Branch},
 		{Name: "SMITH_GIT_COMMIT_SHA", Value: req.Git.CommitSHA},
+		{Name: "SMITH_GIT_USER_NAME", Value: req.Git.UserName},
+		{Name: "SMITH_GIT_USER_EMAIL", Value: req.Git.UserEmail},
 		{Name: "SMITH_HANDOFF_PATH", Value: "/smith/handoff/latest.json"},
 	}
 	if strings.TrimSpace(req.RuntimeCredentialsValue) != "" {

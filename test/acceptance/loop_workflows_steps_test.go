@@ -56,7 +56,7 @@ func (s *bddSuite) runSingleLoopFlow() error {
 	if err != nil {
 		return err
 	}
-	s.singleState = model.LoopStateOverwriting
+	s.singleState = model.LoopStateRunning
 	if err := s.mgr.Release(context.Background(), loopID, lock.Holder); err != nil {
 		return err
 	}

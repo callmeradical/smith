@@ -14,7 +14,7 @@
   const statusColor = $derived.by(() => {
     switch(loop.status) {
       case 'synced': return 'green';
-      case 'overwriting':
+      case 'running':
       case 'unresolved': return 'yellow';
       case 'flatline':
       case 'cancelled': return 'red';

@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant client as smithctl / Console
+    participant api as smith-api
+    participant k8s as Kubernetes
+    participant replica as smith-replica
+
+    client->>api: GET /v1/loops/{id}/runtime
+    api->>k8s: List Pods (label: loop_id)
+    k8s-->>api: Pod info
+    api-->>client: 200 OK (pod_name, attachable)
+
+    client->>api: POST /v1/loops/{id}/control/attach
+    api->>api: Verify Actor
+    api-->>client: 200 OK (attached)
+
+    client->>api: POST /v1/loops/{id}/control/command
+    api->>k8s: POST pods/exec
+    k8s->>replica: Execute command
+    replica-->>k8s: stdout/stderr/exit_code
+    k8s-->>api: Exec response
+    api-->>client: 200 OK (result)
+
+    client->>api: POST /v1/loops/{id}/control/detach
+    api-->>client: 200 OK (detached)

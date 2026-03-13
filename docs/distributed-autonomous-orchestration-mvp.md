@@ -11,6 +11,26 @@ Deliver Smith as a **Distributed Runtime for Autonomous Software Development** w
 
 ## Philosophy
 
+### Terminology & Theme (The "Smith" Metaphor)
+
+Smith's design and terminology are inspired by *The Matrix* and related cyberpunk themes. This metaphor defines the system's core entities:
+
+- **Smith:** The project's namesake. Like Agent Smith, the orchestrator is a program designed to maintain system order and "resolve" deviations.
+- **Anomaly:** A unit of work, bug, or unfinished feature. An anomaly is any state in the repository that deviates from the desired requirements (the PRD).
+- **Replica:** A homogeneous worker instance. Replicas are spawned to resolve specific anomalies, echoing Agent Smith's ability to replicate himself to handle multiple tasks.
+- **The Matrix:** The collective state of all loops and anomalies stored in `etcd`, representing the shared reality that all components observe.
+- **Operator:** The human controller (you) who manages the system from outside the "Matrix" using `smithctl` or the Console.
+
+### Lifecycle States
+
+The loop lifecycle transitions follow the same thematic naming convention:
+
+- **Unresolved:** The initial state. An anomaly has been detected and recorded in the Matrix, but no replica has been assigned to it yet.
+- **Overwriting:** The active state. A replica pod is running and actively "overwriting" the repository's source code to eliminate the anomaly.
+- **Synced:** The success state. The replica has verified its changes and successfully synchronized them to the remote repository.
+- **Flatline:** The failure state. The replica was unable to resolve the anomaly within the allowed attempts, or a fatal error occurred. The loop has "flatlined" and requires manual triage or override.
+- **Cancelled:** The termination state. An operator has manually stopped the loop before it could reach a terminal `synced` or `flatline` state.
+
 ### Choreography, Not Orchestration
 
 Smith uses choreography to coordinate development work. There is no central controller dictating every step. Instead, PRDs define goals, GitHub issues define tasks, and tests define correctness. Agents react to the shared repository state.
@@ -71,7 +91,7 @@ Required key families:
 1. Ingress writes anomaly + initial state (`unresolved`).
 2. Core watcher receives unresolved event.
 3. Core acquires lock (`/locks/{loop_id}` lease-backed).
-4. Core transitions state to `overwriting` and creates Replica Job.
+4. Core transitions state to `running` and creates Replica Job.
 5. Replica writes append-only journal events and heartbeats.
 6. On success, Replica writes completion payload + handoff and finalizes loop state to `synced`.
 7. On failure/timeout, Core applies retry policy or transitions to `flatline` with reason.

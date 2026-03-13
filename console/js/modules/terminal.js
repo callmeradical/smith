@@ -15,7 +15,7 @@ import {
 } from "./elements.js";
 
 function isActive(status) {
-  return status === "unresolved" || status === "overwriting";
+  return status === "unresolved" || status === "running";
 }
 
 function selectedLoopRecord() {
@@ -114,7 +114,7 @@ export function syncPodViewActions() {
 
   const terminateEl = getPodViewTerminateEl();
   if (terminateEl) {
-    const canTerminate = hasSelection && selected.status === "overwriting" && runtimeUnhealthy && !controlsLocked;
+    const canTerminate = hasSelection && selected.status === "running" && runtimeUnhealthy && !controlsLocked;
     terminateEl.disabled = !canTerminate;
     terminateEl.textContent = terminating ? "terminating..." : "terminate";
   }

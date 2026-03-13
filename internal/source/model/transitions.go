@@ -2,10 +2,10 @@ package model
 
 var allowedTransitions = map[LoopState]map[LoopState]struct{}{
 	LoopStateUnresolved: {
-		LoopStateOverwriting: {},
+		LoopStateRunning: {},
 		LoopStateCancelled:   {},
 	},
-	LoopStateOverwriting: {
+	LoopStateRunning: {
 		LoopStateSynced:     {},
 		LoopStateFlatline:   {},
 		LoopStateUnresolved: {},

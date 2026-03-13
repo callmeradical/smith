@@ -11,17 +11,117 @@ Define how loops are created and controlled for single and multi-loop execution.
 - Smith maps each issue into an anomaly payload with source metadata.
 - Batch submission supports running multiple loops in parallel.
 
+```mermaid
+sequenceDiagram
+    participant operator as Operator / smithctl
+    participant github as GitHub (API)
+    participant api as smith-api
+    participant etcd as etcd
+
+    Note over operator,github: Pre-ingest: Fetch issue data
+    operator->>github: gh issue view --json (number, title, body, labels)
+    github-->>operator: Issue JSON payload
+    
+    Note over operator,api: Ingest: Submit to Smith
+    operator->>api: POST /v1/ingress/github/issues (json: issues[])
+    loop For each issue
+        api->>api: Map to LoopDraft (source_type: github_issue)
+        api->>etcd: Create loop record (status: unresolved)
+        etcd-->>api: OK
+    end
+    api-->>operator: 200 OK (results: loops[])
+```
+
 ### 2. PRD Ingress
 - Operators can submit PRD documents (markdown/json) to create one or many loops.
 - PRD parser extracts tasks/scopes and emits loop specs.
 - Generated anomalies retain traceability to source PRD and section IDs.
+
+```mermaid
+sequenceDiagram
+    participant client as smithctl / Operator
+    participant api as smith-api
+    participant etcd as etcd
+
+    client->>api: POST /v1/ingress/prd (markdown/json)
+    api->>api: Parse Document (headings/tasks)
+    loop For each Task found
+        api->>api: Map to LoopDraft (source_type: prd_task)
+        api->>etcd: Create loop record (status: unresolved)
+        etcd-->>api: OK
+    end
+    api-->>client: 200 OK (results: loops[])
+```
 
 ### 3. Direct Interactive Ingress
 - Operator starts a loop and attaches an interactive terminal session.
 - Session supports live command/control, journal view, and manual interventions.
 - Session events are fully journaled.
 
+```mermaid
+sequenceDiagram
+    participant client as smithctl / Operator
+    participant api as smith-api
+    participant etcd as etcd
+
+    client->>api: POST /v1/loops (source_type: interactive)
+    api->>etcd: Create loop record (status: unresolved)
+    etcd-->>api: OK
+    api-->>client: 201 Created (loop_id)
+
+    Note over client,etcd: Loop starts (Interactive Terminal Flow)
+```
+
 ## Control Plane API (Proposed)
+
+### Loop Lifecycle Flow
+
+```mermaid
+sequenceDiagram
+    participant client as smithctl / Console
+    participant api as smith-api
+    participant core as smith-core
+    participant etcd as etcd
+    participant k8s as Kubernetes
+    participant replica as smith-replica
+    participant github as GitHub (Repo)
+    participant codex as Agent Provider (Codex)
+
+    Note over client,api: Loop Creation
+    client->>api: POST /v1/loops
+    api->>etcd: Create loop record (status: unresolved)
+    etcd-->>api: OK
+    api-->>client: 201 Created (loop_id)
+
+    Note over core,etcd: Orchestration (Core)
+    core->>etcd: Watch /loops (state: unresolved)
+    etcd-->>core: New loop anomaly
+    core->>etcd: Acquire state lock
+    etcd-->>core: Lock Acquired
+    core->>k8s: Create replica Job (with repo/auth spec)
+    k8s-->>core: Job Created
+    core->>etcd: Update status: overwriting (handover to replica)
+
+    Note over replica,github: Execution (Replica)
+    k8s->>replica: Spawn replica Pod
+    replica->>github: git clone (Repository Source)
+    github-->>replica: Workspace Source
+    
+    loop Development Iterations
+        replica->>codex: Generate Plan/Code (PRD + Context)
+        codex-->>replica: Completion Response
+        replica->>replica: Run Tests/Verification
+    end
+
+    replica->>github: git commit & push (Verified Changes)
+    github-->>replica: OK (Commit SHA)
+    
+    replica->>etcd: Update status: synced (successful completion)
+    replica-->>k8s: Pod Exit (Success)
+    
+    core->>etcd: Release state lock
+    etcd-->>core: OK
+```
 
 - `POST /v1/loops` create a single loop
 - `POST /v1/loops/batch` create multiple loops atomically by request
@@ -53,6 +153,132 @@ Example command surface:
 - `smith loop cancel <id>`
 - `smith prd create <name> --template <tpl>`
 - `smith prd submit <file>`
+
+## Data Model
+
+Smith uses a highly consistent data model stored in etcd (for ephemeral orchestration state) and Kubernetes ConfigMaps (for long-lived project configuration).
+
+```mermaid
+classDiagram
+    class Project {
+        +String ID
+        +String Name
+        +String RepoURL
+        +String GitHubUser
+        +String RuntimeImage
+        +String RuntimePullPolicy
+        +String UpdatedAt
+    }
+
+    class ProjectCredential {
+        +String GitHubUser
+        +String PAT
+        +Time UpdatedAt
+    }
+
+    class Document {
+        +String ID
+        +String ProjectID
+        +String Title
+        +String Content
+        +String Format
+        +String SourceType
+        +String SourceRef
+        +Time CreatedAt
+        +Time UpdatedAt
+    }
+
+    class Anomaly {
+        +String ID
+        +String Title
+        +String Description
+        +String SourceType
+        +String SourceRef
+        +String ProviderID
+        +String Model
+        +LoopEnvironment Environment
+        +LoopSkillMount[] Skills
+        +LoopPolicy Policy
+        +Time CreatedAt
+        +Time UpdatedAt
+        +String CorrelationID
+    }
+
+    class State {
+        +String LoopID
+        +LoopState State
+        +Int Attempt
+        +String Reason
+        +String WorkerJobName
+        +String LockHolder
+        +Time UpdatedAt
+        +String CorrelationID
+    }
+
+    class JournalEntry {
+        +String LoopID
+        +Int64 Sequence
+        +Time Timestamp
+        +String Phase
+        +String Level
+        +String ActorType
+        +String ActorID
+        +String Message
+        +String Command
+        +Int ExitCode
+        +String CorrelationID
+    }
+
+    class Handoff {
+        +String LoopID
+        +Int64 Sequence
+        +Time Timestamp
+        +String FinalDiffSummary
+        +String ValidationState
+        +String NextSteps
+        +String[] ArtifactRefs
+        +String CorrelationID
+    }
+
+    class LeaseLock {
+        +String LoopID
+        +String Holder
+        +Int64 LeaseID
+        +Time AcquiredAt
+        +Time HeartbeatAt
+    }
+
+    class OperatorOverride {
+        +String LoopID
+        +Int64 Sequence
+        +Time Timestamp
+        +String Actor
+        +String Action
+        +LoopState TargetState
+        +String Reason
+        +String CorrelationID
+    }
+
+    class AuditRecord {
+        +String EventID
+        +Time Timestamp
+        +String Actor
+        +String Action
+        +String TargetLoopID
+        +String CorrelationID
+    }
+
+    Project "1" -- "1" ProjectCredential : has
+    Project "1" -- "*" Document : owns
+    Project "1" -- "*" Anomaly : contains
+    Document "1" -- "*" Anomaly : generates
+    Anomaly "1" -- "1" State : tracks
+    Anomaly "1" -- "*" JournalEntry : logs
+    Anomaly "1" -- "*" Handoff : delivers
+    Anomaly "1" -- "0..1" LeaseLock : locked_by
+    Anomaly "1" -- "*" OperatorOverride : overridden_by
+    Anomaly "1" -- "*" AuditRecord : audited_via
+```
 
 ## MVP Decisions
 
@@ -133,6 +359,35 @@ Payload (batch):
 
 The interactive terminal flow used by the pods page and pod detail view is:
 `GET runtime` -> `POST attach` -> `POST command` (repeat) -> `POST detach`.
+
+### Interactive Terminal Flow
+
+```mermaid
+sequenceDiagram
+    participant client as smithctl / Console
+    participant api as smith-api
+    participant k8s as Kubernetes
+    participant replica as smith-replica
+
+    client->>api: GET /v1/loops/{id}/runtime
+    api->>k8s: List Pods (label: loop_id)
+    k8s-->>api: Pod info
+    api-->>client: 200 OK (pod_name, attachable)
+
+    client->>api: POST /v1/loops/{id}/control/attach
+    api->>api: Verify Actor
+    api-->>client: 200 OK (attached)
+
+    client->>api: POST /v1/loops/{id}/control/command
+    api->>k8s: POST pods/exec
+    k8s->>replica: Execute command
+    replica-->>k8s: stdout/stderr/exit_code
+    k8s-->>api: Exec response
+    api-->>client: 200 OK (result)
+
+    client->>api: POST /v1/loops/{id}/control/detach
+    api-->>client: 200 OK (detached)
+```
 
 ### Runtime Target Resolution
 
@@ -269,7 +524,7 @@ Success response:
 - API surface: attach returns `409` with `error: runtime pod not found`.
 - Console surface: attach/run controls stay disabled and pod detail message shows runtime target not attachable.
 - Checks:
-  - confirm loop is still in an active state (`unresolved` or `overwriting`);
+  - confirm loop is still in an active state (`unresolved` or `running`);
   - verify worker Job and Pod exist in the expected namespace;
   - check label `job-name=<worker job>` resolves at least one pod.
 

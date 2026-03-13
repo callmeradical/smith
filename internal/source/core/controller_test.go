@@ -53,7 +53,7 @@ func TestUnresolvedControllerProcessesWatchEvents(t *testing.T) {
 	defer cancel()
 	go func() { _ = controller.Run(ctx) }()
 
-	watchCh <- StateSnapshot{LoopID: "loop-ignore", State: model.LoopStateOverwriting, Revision: 1}
+	watchCh <- StateSnapshot{LoopID: "loop-ignore", State: model.LoopStateRunning, Revision: 1}
 	watchCh <- StateSnapshot{LoopID: "loop-watch", State: model.LoopStateUnresolved, Revision: 7}
 
 	select {
