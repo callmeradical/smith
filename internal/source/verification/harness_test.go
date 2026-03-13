@@ -23,4 +23,3 @@ func TestIsAmbiguous(t *testing.T) {
 		t.Fatal("unexpected ambiguous state")
 	}
 }
-

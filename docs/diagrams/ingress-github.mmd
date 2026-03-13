@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant operator as Operator / smithctl
+    participant github as GitHub (API)
+    participant api as smith-api
+    participant etcd as etcd
+
+    Note over operator,github: Pre-ingest: Fetch issue data
+    operator->>github: gh issue view --json (number, title, body, labels)
+    github-->>operator: Issue JSON payload
+    
+    Note over operator,api: Ingest: Submit to Smith
+    operator->>api: POST /v1/ingress/github/issues (json: issues[])
+    loop For each issue
+        api->>api: Map to LoopDraft (source_type: github_issue)
+        api->>etcd: Create loop record (status: unresolved)
+        etcd-->>api: OK
+    end
+    api-->>operator: 200 OK (results: loops[])

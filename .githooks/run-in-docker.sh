@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "usage: $0 <make-target>" >&2
+  exit 2
+fi
+
+target="$1"
+repo_root="$(git rev-parse --show-toplevel)"
+image="${SMITH_HOOKS_DOCKER_IMAGE:-golang:1.25-bookworm}"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker is required for containerized hooks" >&2
+  exit 1
+fi
+
+gomodcache="${GOMODCACHE:-${GOPATH:-$HOME/go}/pkg/mod}"
+
+container_id="$(docker create \
+  --workdir /workspace \
+  -v "${gomodcache}:/go/pkg/mod" \
+  --env HOME=/tmp \
+  --env GOMODCACHE=/go/pkg/mod \
+  --env SKIP_GIT_HOOKS=1 \
+  --env GOFLAGS=-buildvcs=false \
+  "${image}" \
+  /bin/bash -lc "export PATH=/usr/local/go/bin:\$PATH; make ${target}")"
+
+cleanup() {
+  docker rm -f "${container_id}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+docker cp "${repo_root}/." "${container_id}:/workspace"
+docker start -a "${container_id}"

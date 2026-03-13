@@ -1,0 +1,262 @@
+{
+  "version": 1,
+  "project": "Console Interactive Loop Terminal",
+  "overview": "Enable operators to open an interactive terminal session from the console Pods view and execute commands inside the active loop container, with auditable attach/detach/command events and live output in the pod detail journal panel.",
+  "goals": [
+    "Allow an operator to attach from the web console to the running container for a selected active loop",
+    "Allow line-based command execution from the pod detail view with output streamed back into the terminal panel",
+    "Preserve security and auditability for every attach, command, and detach action",
+    "Keep the feature aligned with existing loop state and journal streaming architecture"
+  ],
+  "nonGoals": [
+    "Full byte-level PTY emulation (for example curses/full-screen TUIs)",
+    "Cross-cluster pod exec beyond the cluster where smith-api is running",
+    "Collaborative multi-cursor terminal editing between multiple operators",
+    "Replacing smithctl terminal workflows"
+  ],
+  "successMetrics": [
+    "From pod detail page, attach succeeds within 5 seconds p95 when target loop pod is Running",
+    "Command round-trip (submit to first output line in journal) is under 1 second p95 for simple commands like 'echo ok'",
+    "100% of attach/detach/command actions create both audit records and journal events with actor metadata",
+    "Unauthorized terminal control attempts are rejected with HTTP 401/403 and execute zero pod commands",
+    "At least one Playwright scenario validates attach, command, output visibility, and detach from console pod detail"
+  ],
+  "openQuestions": [
+    "Should only one operator be allowed to issue commands per loop at a time, or can multiple attached operators issue commands concurrently?",
+    "What should the default idle timeout be before automatic detach (for example 5, 10, or 15 minutes)?",
+    "Which shell fallback order should be used when the container does not provide /bin/bash (for example /bin/sh only)?",
+    "Should command output be truncated per command and, if yes, what byte limit is acceptable?",
+    "Is this feature restricted to pods started by smith-core only, or also manually created debug pods with matching labels?"
+  ],
+  "stack": {
+    "framework": "Existing static console (console/index.html with vanilla JavaScript) and Go HTTP API (cmd/smith-api)",
+    "hosting": "Kubernetes via Helm (smith-console and smith-api services)",
+    "database": "etcd for loop/journal/audit persistence",
+    "auth": "Existing bearer token operator auth in smith-api plus actor attribution in request payloads"
+  },
+  "routes": [
+    {
+      "path": "#pods",
+      "name": "Pods Grid",
+      "purpose": "List loops as pod tiles and open selected loop detail"
+    },
+    {
+      "path": "#pod-view/:loopID",
+      "name": "Pod Detail Terminal",
+      "purpose": "Show live journal and interactive command controls for the selected loop"
+    },
+    {
+      "path": "POST /v1/loops/{id}/control/attach",
+      "name": "Attach Terminal Session",
+      "purpose": "Validate loop runtime is attachable and register operator attachment"
+    },
+    {
+      "path": "POST /v1/loops/{id}/control/command",
+      "name": "Execute Terminal Command",
+      "purpose": "Run command in active loop container and journal command output"
+    },
+    {
+      "path": "POST /v1/loops/{id}/control/detach",
+      "name": "Detach Terminal Session",
+      "purpose": "Terminate operator terminal session and record audit trail"
+    },
+    {
+      "path": "GET /v1/loops/{id}/runtime",
+      "name": "Loop Runtime Resolution",
+      "purpose": "Return resolved namespace/pod/container and attachability status for console UX"
+    }
+  ],
+  "uiNotes": [
+    "Pod detail page keeps existing live journal panel and adds a command composer row (single-line input + Run button + keyboard submit).",
+    "Attach button state machine: disabled when loop not active, enabled when active and attachable, loading during attach, attached state after success.",
+    "Command composer states: disabled before attach, enabled after attach, busy while command in-flight, error banner on API failure.",
+    "Surface resolved runtime target metadata (namespace/pod/container) in pod detail header for operator clarity.",
+    "Retain existing reconnect behavior for /journal/stream and render command output lines with visible operator-command prefix.",
+    "On mobile widths, composer wraps without hiding journal output; primary actions remain keyboard accessible."
+  ],
+  "dataModel": [
+    {
+      "entity": "LoopRuntimeTarget",
+      "fields": [
+        "loopId",
+        "namespace",
+        "podName",
+        "containerName",
+        "podPhase",
+        "attachable",
+        "reason"
+      ]
+    },
+    {
+      "entity": "TerminalSession",
+      "fields": [
+        "loopId",
+        "actor",
+        "terminal",
+        "attachedAt",
+        "lastActivityAt",
+        "status",
+        "runtimeTargetRef"
+      ]
+    },
+    {
+      "entity": "TerminalCommandExecution",
+      "fields": [
+        "loopId",
+        "actor",
+        "command",
+        "startedAt",
+        "finishedAt",
+        "exitCode",
+        "delivered",
+        "outputBytes",
+        "errorBytes"
+      ]
+    }
+  ],
+  "importFormat": {
+    "description": "Not applicable for this feature; no external import payload is introduced.",
+    "example": {}
+  },
+  "rules": [
+    "This is an existing codebase; all work must extend current API and console flows without re-platforming.",
+    "Attach is allowed only when loop state is active and a matching runtime pod/container is resolvable and Running.",
+    "Command execution requires prior attach by the same actor; otherwise return conflict and do not exec in pod.",
+    "Each successful command execution appends structured journal entries for command start and command result with exit code.",
+    "Detach is idempotent from UI perspective: first detach succeeds, repeated detach returns conflict but does not mutate runtime.",
+    "Terminal session auto-detaches when loop reaches terminal state or runtime pod is no longer available.",
+    "Command payloads exceeding defined max length are rejected with HTTP 400 and logged as rejected actions.",
+    "All control endpoints remain authorization-protected through existing bearer token checks."
+  ],
+  "qualityGates": [
+    "make build",
+    "go test ./cmd/smith-api/...",
+    "go test ./internal/source/...",
+    "go test ./...",
+    "npm run test:frontend",
+    "make test-matrix"
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Resolve runtime pod/container for a loop",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As an operator, I want the API to resolve the current runtime pod/container for a loop so the console can determine whether terminal attach is possible.",
+      "acceptanceCriteria": [
+        "Add runtime resolution logic that maps loop ID to namespace, pod name, container name, and attachability status.",
+        "Expose `GET /v1/loops/{id}/runtime` with explicit fields for `attachable` and human-readable `reason` when false.",
+        "Example: for an active loop with Running replica pod, endpoint returns `attachable=true` with concrete pod and container names.",
+        "Negative case: for a terminal loop or missing pod, endpoint returns `attachable=false` with reason `loop not active` or `runtime pod not found`.",
+        "Unit tests cover running, pending, terminal, and missing-runtime scenarios."
+      ],
+      "startedAt": "2026-03-09T08:32:36.824249+00:00",
+      "completedAt": "2026-03-09T08:43:33.213467+00:00",
+      "updatedAt": "2026-03-09T08:43:33.212914+00:00"
+    },
+    {
+      "id": "US-002",
+      "title": "Attach and detach terminal sessions against runtime target",
+      "status": "done",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As an operator, I want attach/detach to represent a real session bound to the resolved runtime target so command execution is controlled and auditable.",
+      "acceptanceCriteria": [
+        "Update `POST /v1/loops/{id}/control/attach` to require runtime resolution success and persist session metadata including runtime target reference.",
+        "Update `POST /v1/loops/{id}/control/detach` to close only existing actor attachment and append corresponding audit/journal records.",
+        "Example: attach from `terminal=console-pods` on a running loop returns status `attached` and increments attach count for the actor.",
+        "Negative case: attach attempt when runtime pod is not Running returns HTTP 409 and does not create attached session state.",
+        "Attach/detach tests assert audit metadata includes actor, terminal source, and runtime target identity."
+      ],
+      "startedAt": "2026-03-09T08:43:35.311508+00:00",
+      "completedAt": "2026-03-09T08:55:23.100815+00:00",
+      "updatedAt": "2026-03-09T08:55:23.100315+00:00"
+    },
+    {
+      "id": "US-003",
+      "title": "Execute line commands inside active loop container",
+      "status": "done",
+      "dependsOn": [
+        "US-002"
+      ],
+      "description": "As an attached operator, I want `control/command` to execute inside the loop container and stream results into the loop journal so I can interact from console.",
+      "acceptanceCriteria": [
+        "Implement pod exec integration using existing Kubernetes client-go dependencies (`k8s.io/client-go/tools/remotecommand`) without introducing a new service.",
+        "Run submitted commands via shell wrapper (for example `/bin/sh -lc`) and capture stdout/stderr plus exit status.",
+        "Set command response `delivered=true` when exec is attempted and include exit code/result metadata.",
+        "Example: command `echo hello` appends journal output containing `hello` and returns successful exit code.",
+        "Negative case: actor submits command without attach and receives HTTP 409 with no pod exec call performed.",
+        "Negative case: command over max size returns HTTP 400 with validation error and audit entry tagged as rejected."
+      ],
+      "startedAt": "2026-03-09T08:55:25.178381+00:00",
+      "completedAt": "2026-03-09T09:09:10.813717+00:00",
+      "updatedAt": "2026-03-09T09:09:10.813322+00:00"
+    },
+    {
+      "id": "US-004",
+      "title": "Add interactive command controls to pod detail UI",
+      "status": "done",
+      "dependsOn": [
+        "US-002",
+        "US-003"
+      ],
+      "description": "As an operator, I want a command input in the pod detail page so I can attach and run terminal commands directly from the console.",
+      "acceptanceCriteria": [
+        "Route `#pod-view/:loopID` includes explicit components: attach button, detach button, command input, run button, status indicator, and runtime target summary.",
+        "UI states are defined and implemented: `idle`, `attaching`, `attached`, `executing`, `detaching`, and `error`.",
+        "Command submission supports Enter key and Run button, disables controls while executing, and clears input only on success.",
+        "Example: user opens a running loop in pod detail, clicks attach, runs `pwd`, and sees command output appear in journal panel.",
+        "Negative case: user opens non-active loop; attach and command controls remain disabled with visible reason message from runtime endpoint.",
+        "Playwright test validates route behavior and control state transitions on success and failure paths."
+      ],
+      "startedAt": "2026-03-09T09:09:12.883974+00:00",
+      "completedAt": "2026-03-09T09:33:39.379446+00:00",
+      "updatedAt": "2026-03-09T09:33:39.378940+00:00"
+    },
+    {
+      "id": "US-005",
+      "title": "Harden security and operational limits for web terminal control",
+      "status": "done",
+      "dependsOn": [
+        "US-003"
+      ],
+      "description": "As a platform owner, I want secure and bounded terminal control so console access cannot execute unauthorized or abusive command traffic.",
+      "acceptanceCriteria": [
+        "All attach/command/detach handlers enforce existing authorization and reject unauthenticated calls before runtime resolution.",
+        "Add per-session command rate limiting and max command length validation with explicit API error codes.",
+        "Audit records include whether actions were accepted or rejected and include rejection reason when blocked.",
+        "Example: authorized operator issues valid command within limits and receives accepted execution path.",
+        "Negative case: unauthorized request (missing/invalid bearer token) receives HTTP 401 and produces no command execution in runtime pod.",
+        "Negative case: rapid burst exceeding rate policy returns throttling response and records throttle reason in audit metadata."
+      ],
+      "startedAt": "2026-03-09T09:33:41.446244+00:00",
+      "completedAt": "2026-03-09T09:45:55.314595+00:00",
+      "updatedAt": "2026-03-09T09:45:55.313731+00:00"
+    },
+    {
+      "id": "US-006",
+      "title": "Verification coverage and operator documentation",
+      "status": "done",
+      "dependsOn": [
+        "US-001",
+        "US-002",
+        "US-003",
+        "US-004",
+        "US-005"
+      ],
+      "description": "As a maintainer, I want automated coverage and docs for console terminal control so the feature is reliable and operable in Kubernetes environments.",
+      "acceptanceCriteria": [
+        "Add/extend API unit tests for runtime resolution, attach/detach lifecycle, command validation, and execution result handling.",
+        "Add integration-style tests (or harness tests) covering real or simulated Kubernetes exec flow for successful and failing commands.",
+        "Add Playwright coverage for pods page to pod detail attach -> command -> output visible -> detach flow.",
+        "Update docs/loop-ingress-and-cli.md and console-facing docs with API contracts, required permissions, and troubleshooting steps.",
+        "Example: test suite demonstrates attach plus `echo ok` command flow and terminal output visibility in UI artifacts.",
+        "Negative case: documented troubleshooting includes pod missing/not-running scenario and expected console/API error surfaces."
+      ],
+      "startedAt": "2026-03-09T09:45:57.378289+00:00",
+      "completedAt": "2026-03-09T09:59:49.347187+00:00",
+      "updatedAt": "2026-03-09T09:59:49.346717+00:00"
+    }
+  ]
+}

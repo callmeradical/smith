@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "total": 6,
+  "remaining": 2,
+  "quality_gates": [
+    "make build",
+    "go test ./cmd/smith-api/...",
+    "go test ./internal/source/...",
+    "go test ./...",
+    "npm run test:frontend",
+    "make test-matrix"
+  ],
+  "id": "US-005",
+  "title": "Harden security and operational limits for web terminal control"
+}
