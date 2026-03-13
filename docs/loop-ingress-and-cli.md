@@ -269,7 +269,7 @@ Success response:
 - API surface: attach returns `409` with `error: runtime pod not found`.
 - Console surface: attach/run controls stay disabled and pod detail message shows runtime target not attachable.
 - Checks:
-  - confirm loop is still in an active state (`unresolved` or `overwriting`);
+  - confirm loop is still in an active state (`unresolved` or `running`);
   - verify worker Job and Pod exist in the expected namespace;
   - check label `job-name=<worker job>` resolves at least one pod.
 

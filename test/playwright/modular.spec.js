@@ -22,7 +22,7 @@ test.describe('Modular Console', () => {
             record: {
               loop_id: 'loop-2',
               project_id: 'proj-1',
-              state: 'overwriting',
+              state: 'running',
               attempt: 2,
               reason: 'testing 2',
             },

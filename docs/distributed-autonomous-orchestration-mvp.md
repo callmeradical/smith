@@ -71,7 +71,7 @@ Required key families:
 1. Ingress writes anomaly + initial state (`unresolved`).
 2. Core watcher receives unresolved event.
 3. Core acquires lock (`/locks/{loop_id}` lease-backed).
-4. Core transitions state to `overwriting` and creates Replica Job.
+4. Core transitions state to `running` and creates Replica Job.
 5. Replica writes append-only journal events and heartbeats.
 6. On success, Replica writes completion payload + handoff and finalizes loop state to `synced`.
 7. On failure/timeout, Core applies retry policy or transitions to `flatline` with reason.

@@ -80,13 +80,13 @@ func (l *Loop) ReconcileOne(ctx context.Context, state StateSnapshot, runtime Ru
 	switch {
 	case state.State == model.LoopStateUnresolved && (runtime.Phase == RuntimePending || runtime.Phase == RuntimeRunning):
 		l.metrics.Inc(MetricDriftDetected)
-		if err := l.state.Transition(ctx, state.LoopID, model.LoopStateOverwriting, "runtime-active-detected"); err != nil {
+		if err := l.state.Transition(ctx, state.LoopID, model.LoopStateRunning, "runtime-active-detected"); err != nil {
 			return Result{}, err
 		}
 		l.metrics.Inc(MetricDriftCorrected)
-		return Result{DriftDetected: true, Corrected: true, Action: "state->overwriting"}, nil
+		return Result{DriftDetected: true, Corrected: true, Action: "state->running"}, nil
 
-	case state.State == model.LoopStateOverwriting && runtime.Phase == RuntimeMissing:
+	case state.State == model.LoopStateRunning && runtime.Phase == RuntimeMissing:
 		l.metrics.Inc(MetricDriftDetected)
 		if state.IsStale {
 			if err := l.state.Transition(ctx, state.LoopID, model.LoopStateFlatline, "runtime-missing-stale"); err != nil {
@@ -101,7 +101,7 @@ func (l *Loop) ReconcileOne(ctx context.Context, state StateSnapshot, runtime Ru
 		l.metrics.Inc(MetricDriftCorrected)
 		return Result{DriftDetected: true, Corrected: true, Action: "state->unresolved"}, nil
 
-	case state.State == model.LoopStateOverwriting && runtime.Phase == RuntimeFailed:
+	case state.State == model.LoopStateRunning && runtime.Phase == RuntimeFailed:
 		l.metrics.Inc(MetricDriftDetected)
 		if state.Attempt+1 >= state.MaxAttempts {
 			if err := l.state.Transition(ctx, state.LoopID, model.LoopStateFlatline, "runtime-failed-max-attempts"); err != nil {

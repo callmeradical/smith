@@ -406,7 +406,7 @@ func runIterativeLoop(ctx context.Context, storeClient *store.Store, loopID, cor
 			return model.LoopStateFlatline, "operator-terminated", nil
 		case model.LoopStateSynced:
 			return model.LoopStateSynced, "already-synced", nil
-		case model.LoopStateOverwriting:
+		case model.LoopStateRunning:
 			// Continue below.
 		default:
 			return state.Record.State, "loop-not-active", nil
@@ -1026,8 +1026,8 @@ func loopTerminalDecision(ctx context.Context, storeClient *store.Store, loopID 
 		return model.LoopStateFlatline, "state-missing", false, fmt.Errorf("state not found for loop_id=%s", loopID)
 	}
 	switch state.Record.State {
-	case model.LoopStateOverwriting:
-		return model.LoopStateOverwriting, "", false, nil
+	case model.LoopStateRunning:
+		return model.LoopStateRunning, "", false, nil
 	case model.LoopStateCancelled:
 		return model.LoopStateCancelled, "operator-cancelled", true, nil
 	case model.LoopStateFlatline:
@@ -1348,7 +1348,7 @@ func finalizeLoopState(ctx context.Context, storeClient *store.Store, loopID str
 			return current, nil
 		}
 
-		if current.State != model.LoopStateOverwriting {
+		if current.State != model.LoopStateRunning {
 			return current, nil
 		}
 

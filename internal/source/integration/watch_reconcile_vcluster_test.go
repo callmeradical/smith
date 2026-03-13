@@ -73,22 +73,22 @@ func TestVClusterWatchReconcile(t *testing.T) {
 	require.NoError(t, watcher.Handle(ctx, core.UnresolvedEvent{LoopID: loopID, State: model.LoopStateUnresolved, Revision: rev}), "handle unresolved event duplicate")
 	require.Equal(t, 1, q.count, "expected queue count 1 for duplicate event")
 
-	stateAfterOverwriting, err := es.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
+	stateAfterRunning, err := es.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
 		if current.State != model.LoopStateUnresolved {
 			return current, fmt.Errorf("unexpected state %s", current.State)
 		}
-		current.State = model.LoopStateOverwriting
+		current.State = model.LoopStateRunning
 		current.Reason = "integration-progress"
 		current.Attempt = 1
 		return current, nil
 	})
-	require.NoError(t, err, "transition to overwriting")
-	hassert.RequireLoopState(t, stateAfterOverwriting.Record.State, model.LoopStateOverwriting)
+	require.NoError(t, err, "transition to running")
+	hassert.RequireLoopState(t, stateAfterRunning.Record.State, model.LoopStateRunning)
 
-	next := stateAfterOverwriting.Record
+	next := stateAfterRunning.Record
 	next.State = model.LoopStateSynced
 	next.Reason = "integration-complete"
-	_, err = es.PutState(ctx, next, stateAfterOverwriting.Revision)
+	_, err = es.PutState(ctx, next, stateAfterRunning.Revision)
 	require.NoError(t, err, "transition to synced")
 
 	jobName := fmt.Sprintf("it-zombie-%d", time.Now().UTC().Unix()%100000)

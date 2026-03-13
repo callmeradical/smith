@@ -50,7 +50,7 @@ func TestDecodeStateRecordCurrentSchema(t *testing.T) {
 func TestDecodeStateRecordMigratesV1Alpha1(t *testing.T) {
 	input := []byte(`{
 		"loop_id":"loop-2",
-		"status":"overwriting",
+		"status":"running",
 		"attempt":1,
 		"observed_revision":9,
 		"correlation_id":"corr-2",
@@ -61,8 +61,8 @@ func TestDecodeStateRecordMigratesV1Alpha1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
-	if got.State != LoopStateOverwriting {
-		t.Fatalf("expected overwriting state after migration, got %q", got.State)
+	if got.State != LoopStateRunning {
+		t.Fatalf("expected running state after migration, got %q", got.State)
 	}
 	if got.SchemaVersion != SchemaVersionV1 {
 		t.Fatalf("expected migrated schema version %q, got %q", SchemaVersionV1, got.SchemaVersion)

@@ -2020,7 +2020,7 @@ func journalCommandOutputLines(raw string) []string {
 
 func isActiveLoopState(state model.LoopState) bool {
 	switch state {
-	case model.LoopStateUnresolved, model.LoopStateOverwriting:
+	case model.LoopStateUnresolved, model.LoopStateRunning:
 		return true
 	default:
 		return false

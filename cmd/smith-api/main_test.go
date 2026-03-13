@@ -146,7 +146,7 @@ func TestResolveLoopRuntimeRunningPod(t *testing.T) {
 
 	got := s.resolveLoopRuntime(context.Background(), "loop-a", model.StateRecord{
 		LoopID:        "loop-a",
-		State:         model.LoopStateOverwriting,
+		State:         model.LoopStateRunning,
 		WorkerJobName: "smith-replica-loop-a-12345",
 	})
 
@@ -237,7 +237,7 @@ func TestResolveLoopRuntimeMissingPod(t *testing.T) {
 
 	got := s.resolveLoopRuntime(context.Background(), "loop-d", model.StateRecord{
 		LoopID:        "loop-d",
-		State:         model.LoopStateOverwriting,
+		State:         model.LoopStateRunning,
 		WorkerJobName: "smith-replica-loop-d-12345",
 	})
 
@@ -272,7 +272,7 @@ func TestResolveLoopRuntimeFallsBackToFirstContainer(t *testing.T) {
 
 	got := s.resolveLoopRuntime(context.Background(), "loop-e", model.StateRecord{
 		LoopID:        "loop-e",
-		State:         model.LoopStateOverwriting,
+		State:         model.LoopStateRunning,
 		WorkerJobName: "smith-replica-loop-e-12345",
 	})
 
@@ -295,7 +295,7 @@ func TestHandleLoopAttachRejectsNonRunningRuntime(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					WorkerJobName: "smith-replica-loop-pending-12345",
 				},
 			}, true, nil
@@ -400,7 +400,7 @@ func TestHandleLoopAttachDetachIncludeRuntimeMetadata(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					WorkerJobName: "smith-replica-loop-running-12345",
 					CorrelationID: "corr-attach-detach",
 				},
@@ -503,7 +503,7 @@ func TestHandleLoopDetachOnlyRemovesTargetActor(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID: loopID,
-					State:  model.LoopStateOverwriting,
+					State:  model.LoopStateRunning,
 				},
 			}, true, nil
 		},
@@ -543,7 +543,7 @@ func TestHandleLoopDetachRejectsActorNotAttached(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					CorrelationID: "corr-detach-not-attached",
 				},
 			}, true, nil
@@ -597,7 +597,7 @@ func TestHandleLoopControlCommandExecutesAttachedRuntime(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					CorrelationID: "corr-command-success",
 				},
 			}, true, nil
@@ -719,7 +719,7 @@ func TestHandleLoopControlCommandRejectsInvalidJSON(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					CorrelationID: "corr-command-invalid-json",
 				},
 			}, true, nil
@@ -765,7 +765,7 @@ func TestHandleLoopControlCommandRejectsRequiredCommand(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					CorrelationID: "corr-command-required",
 				},
 			}, true, nil
@@ -811,7 +811,7 @@ func TestHandleLoopControlCommandRejectsOversizedCommand(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					CorrelationID: "corr-command-rejected",
 				},
 			}, true, nil
@@ -960,7 +960,7 @@ func TestHandleLoopControlCommandRateLimitPerSession(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					CorrelationID: "corr-command-throttle",
 				},
 			}, true, nil
@@ -1043,7 +1043,7 @@ func TestHandleLoopControlCommandHandlesNonZeroExitResult(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					CorrelationID: "corr-command-nonzero",
 				},
 			}, true, nil
@@ -1124,7 +1124,7 @@ func TestHandleLoopControlCommandHandlesExecError(t *testing.T) {
 			return store.LoopWithRevision{
 				Record: model.StateRecord{
 					LoopID:        loopID,
-					State:         model.LoopStateOverwriting,
+					State:         model.LoopStateRunning,
 					CorrelationID: "corr-command-exec-error",
 				},
 			}, true, nil

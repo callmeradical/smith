@@ -22,10 +22,10 @@ func TestReconcileCorrectsUnresolvedWhenRuntimeActive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.Corrected || result.Action != "state->overwriting" {
+	if !result.Corrected || result.Action != "state->running" {
 		t.Fatalf("unexpected result %+v", result)
 	}
-	if state.to != model.LoopStateOverwriting {
+	if state.to != model.LoopStateRunning {
 		t.Fatalf("expected overwrite transition, got %q", state.to)
 	}
 	if metrics.counts[MetricDriftCorrected] != 1 {
@@ -41,7 +41,7 @@ func TestReconcileEscalatesStaleMissingRuntime(t *testing.T) {
 
 	result, err := loop.ReconcileOne(context.Background(), StateSnapshot{
 		LoopID:      "loop-2",
-		State:       model.LoopStateOverwriting,
+		State:       model.LoopStateRunning,
 		Attempt:     1,
 		MaxAttempts: 3,
 		IsStale:     true,
@@ -68,7 +68,7 @@ func TestReconcileRetriesFailedRuntimeWhenAttemptsRemain(t *testing.T) {
 
 	result, err := loop.ReconcileOne(context.Background(), StateSnapshot{
 		LoopID:      "loop-3",
-		State:       model.LoopStateOverwriting,
+		State:       model.LoopStateRunning,
 		Attempt:     0,
 		MaxAttempts: 3,
 	}, RuntimeSnapshot{JobName: "job-3", Phase: RuntimeFailed})
@@ -114,7 +114,7 @@ func TestReconcileNoopWhenStateAndRuntimeAligned(t *testing.T) {
 
 	result, err := loop.ReconcileOne(context.Background(), StateSnapshot{
 		LoopID:      "loop-5",
-		State:       model.LoopStateOverwriting,
+		State:       model.LoopStateRunning,
 		Attempt:     1,
 		MaxAttempts: 3,
 	}, RuntimeSnapshot{JobName: "job-5", Phase: RuntimeRunning})

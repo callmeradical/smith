@@ -14,7 +14,7 @@ Source PRD: `docs/prd1.md`
   - Invalid payloads are rejected with clear errors.
 
 ### FR-002: Task lifecycle state tracking
-- Description: Persist lifecycle state under `/smith/state/{id}` with at least `unresolved`, `overwriting`, `synced`.
+- Description: Persist lifecycle state under `/smith/state/{id}` with at least `unresolved`, `running`, `synced`.
 - Acceptance:
   - State transitions are persisted and watchable.
   - Invalid transition attempts are rejected or flagged.

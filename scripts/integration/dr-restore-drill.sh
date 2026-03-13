@@ -54,7 +54,7 @@ info "artifacts: ${SMITH_DR_ARTIFACTS_DIR}"
 snapshot_started_at="$(date -u +%s)"
 run_or_echo kubectl -n "$SMITH_ETCD_NAMESPACE" exec "$etcd_pod" -- sh -ceu \
   "ETCDCTL_API=3 etcdctl --endpoints=http://127.0.0.1:2379 put /smith/v1/anomalies/${canary_loop} '{\"id\":\"${canary_loop}\",\"title\":\"DR Canary\",\"description\":\"dr canary\",\"source_type\":\"dr\",\"source_ref\":\"dr/${canary_loop}\",\"provider_id\":\"codex\",\"model\":\"gpt-5\",\"environment\":{},\"policy\":{\"max_attempts\":1,\"backoff_initial\":0,\"backoff_max\":0,\"timeout\":0,\"terminate_on_error\":false},\"correlation_id\":\"corr-${canary_loop}\",\"schema_version\":\"v1\"}' >/dev/null && \
-   ETCDCTL_API=3 etcdctl --endpoints=http://127.0.0.1:2379 put /smith/v1/state/${canary_loop} '{\"loop_id\":\"${canary_loop}\",\"state\":\"overwriting\",\"attempt\":1,\"reason\":\"dr-canary\",\"correlation_id\":\"corr-${canary_loop}\",\"schema_version\":\"v1\"}' >/dev/null && \
+   ETCDCTL_API=3 etcdctl --endpoints=http://127.0.0.1:2379 put /smith/v1/state/${canary_loop} '{\"loop_id\":\"${canary_loop}\",\"state\":\"running\",\"attempt\":1,\"reason\":\"dr-canary\",\"correlation_id\":\"corr-${canary_loop}\",\"schema_version\":\"v1\"}' >/dev/null && \
    ETCDCTL_API=3 etcdctl --endpoints=http://127.0.0.1:2379 snapshot save /tmp/smith-dr-snapshot.db >/dev/null"
 
 run_or_echo kubectl -n "$SMITH_ETCD_NAMESPACE" cp "${etcd_pod}:/tmp/smith-dr-snapshot.db" "$snapshot_file"

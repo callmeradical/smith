@@ -37,10 +37,10 @@
 
 ## Allowed Loop State Transitions
 
-- `unresolved -> overwriting`
-- `overwriting -> synced`
-- `overwriting -> flatline`
-- `overwriting -> unresolved` (retry)
-- `unresolved|overwriting -> cancelled` (operator action)
+- `unresolved -> running`
+- `running -> synced`
+- `running -> flatline`
+- `running -> unresolved` (retry)
+- `unresolved|running -> cancelled` (operator action)
 
 All other transitions are rejected.
