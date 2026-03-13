@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,6 +31,15 @@ func TestIsAmbiguous(t *testing.T) {
 }
 
 func TestVerifyScenario(t *testing.T) {
+	// Guard: ensure the test's working directory is not inside a real git repo,
+	// which would be catastrophic if git commands leaked to the parent repo.
+	if out, err := exec.Command("git", "rev-parse", "--git-dir").CombinedOutput(); err == nil {
+		gitDir := strings.TrimSpace(string(out))
+		if !strings.Contains(gitDir, os.TempDir()) {
+			t.Skip("skipping: running inside a real git repo — this test must only run in isolated environments")
+		}
+	}
+
 	repoDir := t.TempDir()
 	run(t, exec.Command("git", "-C", repoDir, "init", "-b", "main"))
 	run(t, exec.Command("git", "-C", repoDir, "config", "user.name", "tester"))
