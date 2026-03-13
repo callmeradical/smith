@@ -338,9 +338,13 @@ hooks-install: ## Install repository git hooks from .githooks
 
 hooks-run-pre-commit: ## Run pre-commit checks manually
 	@echo "[pre-commit] running quick checks..."
-	go test ./cmd/...
+	go vet ./...
+	go build ./...
+	@if command -v helm >/dev/null 2>&1; then helm lint helm/smith; fi
+	@if command -v npm >/dev/null 2>&1 && [ -d frontend/node_modules ]; then cd frontend && npm run build; fi
 
 hooks-run-pre-push: ## Run pre-push checks manually
 	@echo "[pre-push] running build and full tests..."
 	$(MAKE) build
 	$(MAKE) test-unit
+	$(MAKE) test-frontend
