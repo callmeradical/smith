@@ -90,7 +90,7 @@ jobs:
         run: go test -v ./...
 
       - name: Run frontend Playwright tests
-        run: npm run test:frontend
+        run: make test-frontend
 
       - name: Run test matrix (unit + e2e)
         env:
