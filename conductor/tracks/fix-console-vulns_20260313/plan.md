@@ -1,10 +1,11 @@
 # Implementation Plan: Fix Critical Vulnerabilities in smith-console
 
-#### Phase 1: Baseline Verification
-- [~] **Task: Confirm baseline vulnerability state**
-    - [ ] Run `make build-local` to ensure local images are fresh.
-    - [ ] Run `make trivy-scan-local` and confirm findings for `smith-console:local` (libcrypto3, libssl3, libxml2).
-- [ ] **Task: Conductor - User Manual Verification 'Baseline Verification' (Protocol in workflow.md)**
+#### Phase 1: Baseline Verification [checkpoint: 9ceed47]
+- [x] **Task: Confirm baseline vulnerability state**
+    - [x] Run `make build-local` to ensure local images are fresh.
+    - [x] Run `make trivy-scan-local` and confirm findings for `smith-console:local` (libcrypto3, libssl3, libxml2).
+- [x] **Task: Conductor - User Manual Verification 'Baseline Verification' (Protocol in workflow.md)**
+
 
 #### Phase 2: Remediation
 - [ ] **Task: Update base image in Dockerfile**
