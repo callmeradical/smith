@@ -15,9 +15,17 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
+# Ensure hooks image is built if using the default and missing
+if [[ "$image" == "smith-hooks:local" ]] && ! docker image inspect "$image" >/dev/null 2>&1; then
+  echo "building hooks image $image..." >&2
+  # Use make to build it to ensure it matches the project's build logic
+  make -C "$repo_root" hooks-image-build >&2
+fi
+
 gomodcache="${GOMODCACHE:-${GOPATH:-$HOME/go}/pkg/mod}"
 
 container_id="$(docker create \
+  --pull never \
   --workdir /workspace \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "${gomodcache}:/go/pkg/mod" \
