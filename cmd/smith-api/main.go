@@ -2791,13 +2791,15 @@ func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) strin
 	key = replacer.Replace(key)
 	key = strings.Trim(key, "-")
 
-	// Generate a stable short hash for the "xxxxx" part if we want it to look like the example
+	// Generate a stable short hash for the "xxxxx" part
 	h := sha256.New()
 	h.Write([]byte(key))
-	hashPart := hex.EncodeToString(h.Sum(nil))[:5]
+	fullHash := hex.EncodeToString(h.Sum(nil))
+	hashPart := fullHash[:5]
 
 	if key == "" {
-		return fmt.Sprintf("%s-%s-%d", prefix, hashPart, time.Now().UTC().UnixNano())
+		// Use a bit more of the hash if key is empty to avoid collisions
+		return fmt.Sprintf("%s-%s-%s", prefix, hashPart, fullHash[5:10])
 	}
 
 	// Clean key for use in ID
