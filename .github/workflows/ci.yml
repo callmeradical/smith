@@ -16,6 +16,7 @@ permissions:
   contents: read
   packages: write
   security-events: write
+  issues: write
 
 jobs:
   # ─── Stage 1: Lint and check ────────────────────────────────────
@@ -303,12 +304,65 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: smith-${{ matrix.image }}:ci
-          format: table
+          format: json
+          output: trivy-results-${{ matrix.image }}.json
           ignore-unfixed: true
           severity: CRITICAL
-          # WORKAROUND: exit-code 0 allows CI to proceed while we evaluate vulnerabilities.
-          # TODO: Switch back to exit-code 1 once baseline is clean.
           exit-code: '0'
+
+      - name: Create GitHub Issues for vulnerabilities
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('trivy-results-${{ matrix.image }}.json', 'utf8'));
+            const vulnerabilities = results.Results.flatMap(r => r.Vulnerabilities || []);
+            
+            if (vulnerabilities.length === 0) {
+              console.log('No vulnerabilities found.');
+              return;
+            }
+
+            const title = `Security: CRITICAL vulnerabilities found in smith-${{ matrix.image }}`;
+            let body = `Trivy found **${vulnerabilities.length}** critical vulnerabilities in **smith-${{ matrix.image }}:ci**.\n\n`;
+            
+            for (const vuln of vulnerabilities) {
+              body += `### ${vuln.VulnerabilityID} (${vuln.PkgName})\n`;
+              body += `- **Installed Version:** ${vuln.InstalledVersion}\n`;
+              body += `- **Fixed Version:** ${vuln.FixedVersion}\n`;
+              body += `- **Severity:** ${vuln.Severity}\n`;
+              body += `- **Description:** ${vuln.Description}\n`;
+              body += `- **Reference:** ${vuln.PrimaryURL}\n\n`;
+            }
+
+            // Check if issue already exists for this image
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: `security,vulnerability,smith-${{ matrix.image }}`
+            });
+
+            if (issues.length > 0) {
+              const existingIssue = issues[0];
+              console.log(`Issue already exists: ${existingIssue.html_url}`);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `CI run detected recurring vulnerabilities:\n${body}`
+              });
+            } else {
+              const { data: newIssue } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['security', 'vulnerability', 'critical', `smith-${{ matrix.image }}`]
+              });
+              console.log(`Created new issue: ${newIssue.html_url}`);
+            }
+            core.setFailed(`Found ${vulnerabilities.length} CRITICAL vulnerabilities in smith-${{ matrix.image }}`);
 
       - name: Build and publish image
         if: github.event_name == 'push'
