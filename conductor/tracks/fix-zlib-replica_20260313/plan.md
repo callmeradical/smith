@@ -1,7 +1,7 @@
 # Implementation Plan: Fix Critical zlib Vulnerability in smith-replica
 
 #### Phase 1: Baseline Verification
-- [ ] **Task: Confirm baseline failure**
+- [x] **Task: Confirm baseline failure**
     - [ ] Run `make build-local` to ensure a fresh local image is available.
     - [ ] Run `make trivy-scan-local` and confirm the `smith-replica:local` failure for CVE-2026-22184.
 - [ ] **Task: Conductor - User Manual Verification 'Baseline Verification' (Protocol in workflow.md)**

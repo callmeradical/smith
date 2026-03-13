@@ -329,6 +329,13 @@ images-local: image-build-local image-load-local hooks-image-build ## Build and 
 hooks-image-build: ## Build the containerized hook image
 	docker build -f docker/hooks.Dockerfile -t "smith-hooks:local" .
 
+trivy-scan-local: ## Run local vulnerability scans on all Smith images
+	@echo "[trivy] scanning images for critical vulnerabilities..."
+	@for img in core api replica console chat; do \
+	  echo "Scanning smith-$$img:local..."; \
+	  trivy image --severity CRITICAL --exit-code 0 "smith-$$img:local"; \
+	done
+
 docs-check: ## Run docs quality checks
 	./scripts/docs/quality-check.sh
 
@@ -362,4 +369,5 @@ hooks-run-pre-push: ## Run pre-push checks manually
 	fi
 	./scripts/fixtures/provision-smith-test-repo.sh /tmp/smith-test-repo
 	./scripts/fixtures/verify-smith-test-repo.sh /tmp/smith-test-repo
+	$(MAKE) trivy-scan-local
 	$(MAKE) docs-check
