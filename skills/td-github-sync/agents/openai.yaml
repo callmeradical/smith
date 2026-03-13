@@ -1,4 +1,0 @@
-interface:
-  display_name: "TD GitHub Sync"
-  short_description: "Sync td issues to GitHub issues with td-id traceability."
-  default_prompt: "Sync current td epic or selected td issues to GitHub, creating missing GitHub issues with [td-id] titles and links."
