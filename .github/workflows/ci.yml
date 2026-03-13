@@ -300,15 +300,21 @@ jobs:
           name: sbom-${{ matrix.image }}
           path: sbom-${{ matrix.image }}.spdx.json
 
-      - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: smith-${{ matrix.image }}:ci
-          format: json
-          output: trivy-results-${{ matrix.image }}.json
-          ignore-unfixed: true
-          severity: CRITICAL
-          exit-code: '0'
+      - name: Install Trivy
+        run: |
+          TRIVY_VERSION="0.56.1"
+          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          tar zxf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          sudo mv trivy /usr/local/bin/
+          trivy --version
+
+      - name: Run Trivy scan
+        run: |
+          trivy image --format json --output trivy-results-${{ matrix.image }}.json --ignore-unfixed --severity CRITICAL smith-${{ matrix.image }}:ci || true
+          if [ ! -f trivy-results-${{ matrix.image }}.json ]; then
+            echo "Trivy scan failed to write results."
+            exit 1
+          fi
 
       - name: Create GitHub Issues for vulnerabilities
         if: always()
