@@ -4,5 +4,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [~] **Track: Vulnerability: Critical zlib CVE-2026-22184 in smith-replica**
+- [x] **Track: Vulnerability: Critical zlib CVE-2026-22184 in smith-replica**
 *Link: [./tracks/fix-zlib-replica_20260313/](./tracks/fix-zlib-replica_20260313/)*
