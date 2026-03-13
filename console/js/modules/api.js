@@ -24,9 +24,11 @@ export async function fetchWithTimeout(url, options, timeoutMs, label) {
 export async function fetchJSON(path) {
   const headers = { Accept: "application/json" };
   if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
-  // Always prepend /api to match monolithic app's behavior and nginx proxy
+  
+  const fullPath = apiBase ? apiBase + path : path;
+  
   const res = await fetchWithTimeout(
-    "/api" + path,
+    fullPath,
     { headers },
     requestTimeoutMs,
     path,
@@ -55,8 +57,11 @@ export async function requestJSON(path, method, payload) {
     "Content-Type": "application/json",
   };
   if (operatorToken) headers.Authorization = "Bearer " + operatorToken;
+  
+  const fullPath = apiBase ? apiBase + path : path;
+
   const res = await fetchWithTimeout(
-    "/api" + path,
+    fullPath,
     {
       method,
       headers,

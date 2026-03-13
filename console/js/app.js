@@ -4,11 +4,18 @@ import { initApp } from "./modules/init.js";
 import { setActivePage } from "./modules/ui.js";
 import * as elements from "./modules/elements.js";
 
+import { refreshLoops } from "./modules/pods.js";
+import { renderProviderList } from "./modules/providers.js";
+import { refreshProjects } from "./modules/projects.js";
+
 // Legacy exposure for tests
 window.state = state;
 window.setActivePage = setActivePage;
 window.sidebarEl = document.querySelector(".sidebar");
 window.pages = elements.getPages();
+window.refreshLoops = refreshLoops;
+window.renderProviderList = renderProviderList;
+window.refreshProjects = refreshProjects;
 
 function pageFromHash() {
   const rawValue = String(window.location.hash || "").replace(/^#/, "").trim();

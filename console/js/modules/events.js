@@ -53,7 +53,11 @@ import {
   getPodViewRunEl,
   getDocViewChatInputEl,
   getDocViewChatSendEl,
-  getDocViewTabs
+  getDocViewTabs,
+  getProviderListEl,
+  getProviderBackEl,
+  getProjectAddEl,
+  getProjectBackEl
 } from "./elements.js";
 import { state } from "./state.js";
 
@@ -163,7 +167,42 @@ export function initEventListeners() {
   const attachBtn = getPodViewAttachEl();
   if (attachBtn) {
     attachBtn.addEventListener("click", () => {
-      // Toggle attach logic...
+      import("./terminal.js").then((m) => {
+        const selected = state.selectedLoop;
+        if (!selected) return;
+        if (state.terminalAttachedLoopID === selected) {
+          m.setTerminalUIState("detaching", "");
+          // Actual detach logic would go here
+          state.terminalAttachedLoopID = "";
+          m.setTerminalUIState("idle", "");
+        } else {
+          m.setTerminalUIState("attaching", "");
+          // Actual attach logic would go here
+          state.terminalAttachedLoopID = selected;
+          m.setTerminalUIState("idle", "");
+        }
+      });
+    });
+  }
+
+  const cancelBtn = getPodViewCancelEl();
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      import("./terminal.js").then((m) => m.cancelSelectedLoop());
+    });
+  }
+
+  const terminateBtn = getPodViewTerminateEl();
+  if (terminateBtn) {
+    terminateBtn.addEventListener("click", () => {
+      import("./terminal.js").then((m) => m.terminateSelectedLoop());
+    });
+  }
+
+  const deleteBtn = getPodViewDeleteEl();
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+      import("./terminal.js").then((m) => m.deleteSelectedLoop());
     });
   }
 
@@ -174,14 +213,18 @@ export function initEventListeners() {
     });
   }
 
-  const commandInput = getPodViewCommandEl();
-  if (commandInput) {
-    commandInput.addEventListener("keydown", (e) => {
+  const commandEl = getPodViewCommandEl();
+  if (commandEl) {
+    commandEl.addEventListener("input", () => {
+      import("./terminal.js").then((m) => m.syncPodViewActions());
+    });
+    commandEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
-        import("./terminal.js").then(m => m.runSelectedLoopCommand());
+        import("./terminal.js").then((m) => m.runSelectedLoopCommand());
       }
     });
   }
+
 
   // Doc View Actions
   getDocViewTabs().forEach(btn => {
@@ -213,4 +256,67 @@ export function initEventListeners() {
   if (searchInput) searchInput.addEventListener("input", renderGrid);
   const refreshBtn = document.getElementById("refresh");
   if (refreshBtn) refreshBtn.addEventListener("click", () => refreshLoops());
+
+  const overrideApply = document.getElementById("override-apply");
+  if (overrideApply) {
+    overrideApply.addEventListener("click", () => {
+      import("./controls.js").then((m) => m.applyOverride());
+    });
+  }
+
+  // Provider List Delegation
+  const providerList = getProviderListEl();
+  if (providerList) {
+    providerList.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-provider-config]");
+      if (btn) {
+        import("./providers.js").then((m) => m.configureProvider(btn.dataset.providerConfig));
+      }
+    });
+  }
+
+  // Provider Drawer Close
+  const providerBack = getProviderBackEl();
+  if (providerBack) {
+    providerBack.addEventListener("click", () => {
+      import("./providers.js").then((m) => m.setProviderConfigOpen(false));
+    });
+  }
+
+  // Provider Auth Actions
+  const authSaveBtn = document.getElementById("auth-save-api-key");
+  if (authSaveBtn) {
+    authSaveBtn.addEventListener("click", () => {
+      import("./providers.js").then((m) => m.saveAPIKey());
+    });
+  }
+
+  const authDisconnectBtn = document.getElementById("auth-disconnect");
+  if (authDisconnectBtn) {
+    authDisconnectBtn.addEventListener("click", () => {
+      import("./providers.js").then((m) => m.disconnectProvider());
+    });
+  }
+
+  // Project Drawer
+  const projectAdd = getProjectAddEl();
+  if (projectAdd) {
+    projectAdd.addEventListener("click", () => {
+      import("./projects.js").then((m) => m.openAddProjectForm());
+    });
+  }
+
+  const projectBack = getProjectBackEl();
+  if (projectBack) {
+    projectBack.addEventListener("click", () => {
+      import("./projects.js").then((m) => m.setProjectEditorOpen(false));
+    });
+  }
+
+  const projectSaveBtn = document.getElementById("project-save");
+  if (projectSaveBtn) {
+    projectSaveBtn.addEventListener("click", () => {
+      import("./projects.js").then((m) => m.saveProject());
+    });
+  }
 }

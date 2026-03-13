@@ -8,7 +8,9 @@ import {
   getProviderConfigPanelEl,
   getProviderConfigTitleEl,
   getProviderCodexPanelEl,
-  getProviderCatalogStatusEl
+  getProviderCatalogStatusEl,
+  getAuthAPIKeyEl,
+  getAuthAccountIDEl
 } from "./elements.js";
 
 export function setProviderConfigOpen(open) {
@@ -64,6 +66,40 @@ export function configureProvider(providerID) {
     if (statusEl) statusEl.textContent = (providerCatalog.find((p) => p.id === target)?.label || target) + " configuration is coming soon.";
     return;
   }
+
+  const codexPanel = getProviderCodexPanelEl();
+  if (codexPanel) codexPanel.classList.remove("hidden");
+
   state.activeProvider = target;
   setProviderConfigOpen(true);
+}
+
+export async function saveAPIKey() {
+  const keyEl = getAuthAPIKeyEl();
+  const accountEl = getAuthAccountIDEl();
+  const key = keyEl ? keyEl.value.trim() : "";
+  if (!key) return;
+  try {
+    await postJSON("/v1/auth/codex/connect/api-key", {
+      api_key: key,
+      account_id: accountEl ? accountEl.value.trim() : "",
+    });
+    state.providerStatus.codex = { ...state.providerStatus.codex, connected: true };
+    if (keyEl) keyEl.value = "";
+    setProviderConfigOpen(false);
+    renderProviderList();
+  } catch (err) {
+    pushToast("Failed to save API key: " + err.message, "err");
+  }
+}
+
+export async function disconnectProvider() {
+  try {
+    await postJSON("/v1/auth/codex/disconnect", {});
+    state.providerStatus.codex = { ...state.providerStatus.codex, connected: false };
+    setProviderConfigOpen(false);
+    renderProviderList();
+  } catch (err) {
+    pushToast("Failed to disconnect: " + err.message, "err");
+  }
 }

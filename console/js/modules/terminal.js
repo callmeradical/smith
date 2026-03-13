@@ -15,7 +15,11 @@ import {
 } from "./elements.js";
 
 function isActive(status) {
-  return status === "unresolved" || status === "running";
+  return (
+    status === "unresolved" ||
+    status === "running" ||
+    status === "reconciling"
+  );
 }
 
 function selectedLoopRecord() {
@@ -32,14 +36,13 @@ function selectedLoopRuntime() {
 
 function runtimeSummaryText(runtime) {
   if (!runtime || typeof runtime !== "object") {
-    return "runtime target: -- / -- / -- (phase --)";
+    return "-- / -- / -- (phase --)";
   }
   const namespace = String(runtime.namespace || "--");
   const podName = String(runtime.pod_name || "--");
   const containerName = String(runtime.container_name || "--");
   const phase = String(runtime.pod_phase || "--");
   return (
-    "runtime target: " +
     namespace +
     " / " +
     podName +
@@ -56,9 +59,80 @@ function runtimeReason(runtime) {
   return String(runtime.reason || "runtime target not attachable").trim();
 }
 
+export async function cancelSelectedLoop() {
+  const id = state.selectedLoop;
+  if (!id) return;
+  state.loopControlBusy = true;
+  state.loopControlBusyLoopID = id;
+  state.loopControlAction = "cancel";
+  syncPodViewActions();
+  try {
+    await postJSON(`/v1/loops/${encodeURIComponent(id)}/control/cancel`, {
+      actor: "operator",
+      reason: "manual cancel from console",
+    });
+    pushToast("Loop cancel requested.", "ok");
+  } catch (err) {
+    pushToast("Cancel failed: " + err.message, "err");
+  } finally {
+    state.loopControlBusy = false;
+    state.loopControlBusyLoopID = "";
+    state.loopControlAction = "";
+    syncPodViewActions();
+  }
+}
+
+export async function terminateSelectedLoop() {
+  const id = state.selectedLoop;
+  if (!id) return;
+  if (!window.confirm("Terminate loop " + id + "?")) return;
+  state.loopControlBusy = true;
+  state.loopControlBusyLoopID = id;
+  state.loopControlAction = "terminate";
+  syncPodViewActions();
+  try {
+    await postJSON(`/v1/loops/${encodeURIComponent(id)}/control/terminate`, {
+      actor: "operator",
+      reason: "manual terminate from console",
+    });
+    pushToast("Loop termination requested.", "ok");
+  } catch (err) {
+    pushToast("Termination failed: " + err.message, "err");
+  } finally {
+    state.loopControlBusy = false;
+    state.loopControlBusyLoopID = "";
+    state.loopControlAction = "";
+    syncPodViewActions();
+  }
+}
+
+export async function deleteSelectedLoop() {
+  const id = state.selectedLoop;
+  if (!id) return;
+  if (!window.confirm("Delete loop " + id + "?")) return;
+  state.loopDeleteBusy = true;
+  syncPodViewActions();
+  try {
+    await deleteJSON(`/v1/loops/${encodeURIComponent(id)}`);
+    pushToast("Loop deleted: " + id, "ok");
+    state.selectedLoop = "";
+    setActivePage("pods", true);
+    import("./pods.js").then((m) => m.refreshLoops());
+  } catch (err) {
+    pushToast("Delete failed: " + err.message, "err");
+  } finally {
+    state.loopDeleteBusy = false;
+    syncPodViewActions();
+  }
+}
+
 export function setTerminalUIState(nextState, message) {
   state.terminalUIState = nextState;
   state.terminalMessage = String(message || "").trim();
+  if (nextState === "attached" && !message) {
+    const commandEl = getPodViewCommandEl();
+    if (commandEl) commandEl.value = "";
+  }
   syncPodViewActions();
 }
 
@@ -86,7 +160,7 @@ export function syncPodViewActions() {
   const cancelling = controlBusyOnSelected && state.loopControlAction === "cancel";
   const terminating = controlBusyOnSelected && state.loopControlAction === "terminate";
   const controlsLocked =
-    state.loopDeleteBusy || loopControlBusy || loadingRuntime || attaching || executing || detaching;
+    state.loopDeleteBusy || loopControlBusy || attaching || executing || detaching;
 
   const attachEl = getPodViewAttachEl();
   if (attachEl) {
@@ -121,9 +195,9 @@ export function syncPodViewActions() {
 
   const deleteEl = getPodViewDeleteEl();
   if (deleteEl) {
-    const canDelete = hasSelection && !isActive(selected.status) && !controlsLocked;
+    const canDelete = hasSelection && (!isActive(selected.status) || selected.status === "flatline") && !controlsLocked;
     deleteEl.disabled = !canDelete;
-    deleteEl.textContent = state.loopDeleteBusy ? "deleting..." : "delete loop";
+    deleteEl.textContent = state.loopDeleteBusy ? "deleting..." : "delete";
   }
 
   const commandEl = getPodViewCommandEl();
@@ -146,7 +220,11 @@ export function syncPodViewActions() {
 
   const runtimeTargetEl = getPodViewRuntimeTargetEl();
   if (runtimeTargetEl) {
-    runtimeTargetEl.textContent = runtimeSummaryText(runtime);
+    if (loadingRuntime && !runtime) {
+      runtimeTargetEl.textContent = "Loading runtime target...";
+    } else {
+      runtimeTargetEl.textContent = runtimeSummaryText(runtime);
+    }
   }
 
   const controlMessageEl = getPodViewControlMessageEl();
@@ -163,9 +241,9 @@ export function syncPodViewActions() {
     } else if (state.terminalMessage) {
       controlMessage = state.terminalMessage;
     } else if (status === "attached") {
-      controlMessage = "Attached. Press Enter or Run to execute a command.";
+      controlMessage = "Attached. Ready for commands.";
     } else if (status === "idle" && runtimeAttachable) {
-      controlMessage = "Attach to enable command execution.";
+      controlMessage = "Attach to enable terminal controls.";
     } else if (status === "idle") {
       controlMessage = "Runtime target not attachable.";
     } else if (status === "executing") {
