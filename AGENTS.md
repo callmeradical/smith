@@ -4,8 +4,8 @@ You must run td usage --new-session at conversation start (or after /clear) to s
 Use td usage -q for subsequent reads.
 
 ## Git Hooks Workflow
-- Hooks run in Docker by default (`SMITH_HOOKS_IN_DOCKER=1`).
-- **MANDATORY**: All validation (lint, test, security) must run in the containerized environment. Host-side dependencies are not supported for validation.
-- `pre-commit`: Fast checks (Go build/vet, Helm lint).
-- `pre-push`: Comprehensive checks (Go unit/acceptance tests, Frontend build/Playwright, Trivy, Docs check).
-- To build the hooks image: `make hooks-image-build`.
+- We use `act` to run CI jobs locally for git hooks.
+- **MANDATORY**: Ensure `act` and Docker are installed.
+- `pre-commit`: Runs the `lint-and-check` job via `act`.
+- `pre-push`: Runs the parallel unit tests (`go-unit-tests`, `node-unit-tests`, `playwright-tests`) via `act`.
+- To run the full local CI suite manually: `make ci-local-act`.

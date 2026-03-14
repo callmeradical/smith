@@ -202,45 +202,39 @@ test-unit: ## Run full Go test suite
 test-acceptance: ## Run acceptance tests
 	go test ./test/acceptance/...
 
-test-frontend: ## Run Playwright frontend/component tests for console (auto-delegates to Docker)
-	@if [ -f /.dockerenv ] || [ -f /run/.containerenv ] || [ "$$SMITH_HOOKS_IN_DOCKER" = "0" ]; then \
-		$(MAKE) hooks-run-test-frontend; \
-	else \
-		./.githooks/run-in-docker.sh test-frontend; \
-	fi
-hooks-run-test-frontend: ## Internal: Run frontend tests inside container
+test-frontend: ## Run Playwright frontend/component tests for console
 	@if [ ! -d node_modules ]; then npm install; fi
 	@if [ ! -d frontend/node_modules ]; then cd frontend && npm install; fi
 	@if [ ! -d frontend/.svelte-kit ]; then cd frontend && npx svelte-kit sync; fi
 	cd frontend && npm run build
 	npm run test:frontend
-trivy-scan-local: ## Run local vulnerability scans on all Smith images (auto-delegates to Docker)
-	@if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then \
-		echo "[trivy] scanning images for critical vulnerabilities..."; \
-		vulnerabilities=0; \
-		for img in core api replica console chat; do \
-		  echo "Scanning smith-$$img:local..."; \
-		  if ! trivy image --severity CRITICAL --exit-code 1 "smith-$$img:local" > /tmp/trivy-$$img.log 2>&1; then \
-		    cat /tmp/trivy-$$img.log; \
-		    vulnerabilities=$$((vulnerabilities + 1)); \
-		  else \
-		    cat /tmp/trivy-$$img.log; \
-		  fi; \
-		done; \
-		if [ $$vulnerabilities -gt 0 ]; then \
-		  echo "[trivy] Found CRITICAL vulnerabilities in $$vulnerabilities images. Fails build."; \
-		  exit 1; \
-		fi; \
-	else \
-		./.githooks/run-in-docker.sh trivy-scan-local; \
+
+trivy-scan-local: ## Run local vulnerability scans on all Smith images
+	@echo "[trivy] scanning images for critical vulnerabilities..."
+	@vulnerabilities=0; \
+	for img in core api replica console chat; do \
+	  echo "Scanning smith-$$img:local..."; \
+	  if ! trivy image --severity CRITICAL --exit-code 1 "smith-$$img:local" > /tmp/trivy-$$img.log 2>&1; then \
+	    cat /tmp/trivy-$$img.log; \
+	    vulnerabilities=$$((vulnerabilities + 1)); \
+	  else \
+	    cat /tmp/trivy-$$img.log; \
+	  fi; \
+	done; \
+	if [ $$vulnerabilities -gt 0 ]; then \
+	  echo "[trivy] Found CRITICAL vulnerabilities in $$vulnerabilities images. Fails build."; \
+	  exit 1; \
 	fi
+
 docs-check: ## Run docs quality checks
 	./scripts/docs/quality-check.sh
+
 ci-local: ## Run local CI-equivalent checks
 	$(MAKE) build
 	$(MAKE) test-unit
 	$(MAKE) test-acceptance
 	$(MAKE) docs-check
+
 ci-local-act: ## Run core CI jobs locally using 'act' (requires 'act' and Docker)
 	@if ! command -v act >/dev/null 2>&1; then \
 		echo "ERROR: 'act' is not installed."; \
@@ -249,30 +243,11 @@ ci-local-act: ## Run core CI jobs locally using 'act' (requires 'act' and Docker
 	fi
 	@echo "[act] running lint-and-check and unit-tests jobs..."
 	act -j lint-and-check
-	act -j unit-tests
+	act -j go-unit-tests
+	act -j node-unit-tests
+	act -j playwright-tests
+
 hooks-install: ## Install repository git hooks from .githooks
 	git config core.hooksPath .githooks
-	chmod +x .githooks/pre-commit .githooks/pre-push .githooks/run-in-docker.sh
+	chmod +x .githooks/pre-commit .githooks/pre-push
 	@echo "Installed git hooks from .githooks"
-hooks-run-pre-commit: ## Run pre-commit checks manually
-	@echo "[pre-commit] running quick checks..."
-	go vet ./...
-	go build ./...
-	@if command -v helm >/dev/null 2>&1; then helm lint helm/smith; fi
-	@if command -v npm >/dev/null 2>&1; then cd frontend && npm install --silent && npm run check; fi
-hooks-run-pre-push: ## Run pre-push checks manually
-	@echo "[pre-push] running build and full tests..."
-	$(MAKE) build
-	$(MAKE) test-unit
-	$(MAKE) test-acceptance
-	@if command -v npm >/dev/null 2>&1; then \
-		$(MAKE) test-frontend; \
-	else \
-		echo "[pre-push] skipping frontend tests (npm not available)"; \
-	fi
-	./scripts/fixtures/provision-smith-test-repo.sh /tmp/smith-test-repo
-	./scripts/fixtures/verify-smith-test-repo.sh /tmp/smith-test-repo
-	$(MAKE) trivy-scan-local
-	$(MAKE) docs-check
-hooks-image-build: ## Build the smith-hooks docker image for running hooks
-	docker build -f docker/hooks.Dockerfile -t smith-hooks:local .
