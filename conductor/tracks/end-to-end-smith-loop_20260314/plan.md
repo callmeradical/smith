@@ -4,12 +4,12 @@
 - [x] Task: Implement GitHub issue ingress for the Smith loop. [6e5d9af]
     - [x] Define the GitHub issue webhook handler.
     - [x] Create a new Smith loop entry in etcd when an issue is received.
-- [ ] Task: Create a Smith Replica worker for PRD generation.
-    - [ ] Define the Replica configuration for the PRD generation stage.
-    - [ ] Implement the logic to retrieve the issue content from etcd.
-- [ ] Task: Implement the PRD generation logic from the GitHub issue.
-    - [ ] Utilize the Smith LLM integration to generate a PRD with user stories and acceptance criteria.
-    - [ ] Write the generated PRD back to the Smith loop state in etcd.
+- [x] Task: Create a Smith Replica worker for PRD generation. [07e5e24]
+    - [x] Define the Replica configuration for the PRD generation stage.
+    - [x] Implement the logic to retrieve the issue content from etcd.
+- [x] Task: Implement the PRD generation logic from the GitHub issue. [07e5e24]
+    - [x] Utilize the Smith LLM integration to generate a PRD with user stories and acceptance criteria.
+    - [x] Write the generated PRD back to the Smith loop state in etcd.
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Ingress and PRD Generation' (Protocol in workflow.md).
 
 ## Phase 2: Technical Planning
