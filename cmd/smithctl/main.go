@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	client "smith/pkg/client/v1"
 )
 
 const defaultServer = "http://127.0.0.1:8080"
@@ -48,23 +50,6 @@ type fileConfig struct {
 type contextConfig struct {
 	Server string `json:"server"`
 	Token  string `json:"token"`
-}
-
-type apiClient struct {
-	baseURL string
-	token   string
-	http    *http.Client
-}
-
-type apiError struct {
-	Method     string
-	Path       string
-	StatusCode int
-	Body       []byte
-}
-
-func (e *apiError) Error() string {
-	return fmt.Sprintf("%s %s returned %d: %s", e.Method, e.Path, e.StatusCode, strings.TrimSpace(string(e.Body)))
 }
 
 type stringMapFlag map[string]string
@@ -157,12 +142,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		printHelp(stdout)
 		return 0
 	}
-	client := &apiClient{
-		baseURL: strings.TrimRight(cfg.Server, "/"),
-		token:   cfg.Token,
-		http:    &http.Client{Timeout: 30 * time.Second},
-	}
+	client := client.NewClient(cfg.Server, cfg.Token)
 	switch rest[0] {
+
 	case "loop":
 		return runLoop(client, cfg.Output, rest[1:], stdout, stderr)
 	case "prd":
@@ -273,7 +255,7 @@ func readFileConfig(path string) (fileConfig, error) {
 	return out, nil
 }
 
-func runLoop(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func runLoop(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printLoopHelp(stdout)
 		return 0
@@ -311,7 +293,7 @@ func runLoop(client *apiClient, output string, args []string, stdout, stderr io.
 	}
 }
 
-func cmdLoopTrace(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopTrace(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop trace", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
@@ -339,7 +321,7 @@ func cmdLoopTrace(client *apiClient, output string, args []string, stdout, stder
 	for _, loopID := range loopIDs {
 		var trace any
 		path := "/v1/loops/" + loopID + "/trace?limit=" + strconv.Itoa(limit)
-		if err := client.doJSON(http.MethodGet, path, nil, &trace); err != nil {
+		if err := client.Do(context.Background(), http.MethodGet, path, nil, &trace); err != nil {
 			results = append(results, map[string]any{
 				"loop_id": loopID,
 				"status":  "error",
@@ -365,7 +347,7 @@ func cmdLoopTrace(client *apiClient, output string, args []string, stdout, stder
 	return 0
 }
 
-func runPRD(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func runPRD(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printPRDHelp(stdout)
 		return 0
@@ -382,9 +364,9 @@ func runPRD(client *apiClient, output string, args []string, stdout, stderr io.W
 	}
 }
 
-func cmdLoopList(client *apiClient, output string, stdout, stderr io.Writer) int {
+func cmdLoopList(client *client.Client, output string, stdout, stderr io.Writer) int {
 	var out any
-	if err := client.doJSON(http.MethodGet, "/v1/loops", nil, &out); err != nil {
+	if err := client.Do(context.Background(), http.MethodGet, "/v1/loops", nil, &out); err != nil {
 		fmt.Fprintf(stderr, "loop list failed: %v\n", err)
 		return 1
 	}
@@ -392,7 +374,7 @@ func cmdLoopList(client *apiClient, output string, stdout, stderr io.Writer) int
 	return 0
 }
 
-func cmdLoopGet(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopGet(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop get", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var filePath string
@@ -415,7 +397,7 @@ func cmdLoopGet(client *apiClient, output string, args []string, stdout, stderr 
 	failed := false
 	for _, loopID := range loopIDs {
 		var out any
-		if err := client.doJSON(http.MethodGet, "/v1/loops/"+loopID, nil, &out); err != nil {
+		if err := client.Do(context.Background(), http.MethodGet, "/v1/loops/"+loopID, nil, &out); err != nil {
 			results = append(results, map[string]any{
 				"loop_id": loopID,
 				"status":  "error",
@@ -441,7 +423,7 @@ func cmdLoopGet(client *apiClient, output string, args []string, stdout, stderr 
 	return 0
 }
 
-func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopCreate(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop create", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
@@ -582,7 +564,7 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 		}
 
 		var out any
-		if err := client.doJSON(http.MethodPost, "/v1/ingress/github/issues", payload, &out); err != nil {
+		if err := client.Do(context.Background(), http.MethodPost, "/v1/ingress/github/issues", payload, &out); err != nil {
 			fmt.Fprintf(stderr, "loop create failed: %v\n", err)
 			return 1
 		}
@@ -629,7 +611,7 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 			return 2
 		}
 		var out any
-		if err := client.doJSON(http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
+		if err := client.Do(context.Background(), http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
 			if writeStructuredAPIError(err, output, stdout, stderr) {
 				return 1
 			}
@@ -729,7 +711,7 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 		}
 	}
 	var out any
-	if err := client.doJSON(http.MethodPost, "/v1/loops", payload, &out); err != nil {
+	if err := client.Do(context.Background(), http.MethodPost, "/v1/loops", payload, &out); err != nil {
 		if writeStructuredAPIError(err, output, stdout, stderr) {
 			return 1
 		}
@@ -822,7 +804,7 @@ func buildEnvironmentPayload(
 	return environment, nil
 }
 
-func cmdLoopLogs(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopLogs(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop logs", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
@@ -858,7 +840,7 @@ func cmdLoopLogs(client *apiClient, output string, args []string, stdout, stderr
 	for _, loopID := range loopIDs {
 		var journal any
 		path := "/v1/loops/" + loopID + "/journal?limit=" + strconv.Itoa(limit)
-		if err := client.doJSON(http.MethodGet, path, nil, &journal); err != nil {
+		if err := client.Do(context.Background(), http.MethodGet, path, nil, &journal); err != nil {
 			results = append(results, map[string]any{
 				"loop_id": loopID,
 				"status":  "error",
@@ -884,7 +866,7 @@ func cmdLoopLogs(client *apiClient, output string, args []string, stdout, stderr
 	return 0
 }
 
-func cmdLoopAttach(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopAttach(apiClient *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop attach", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
@@ -923,7 +905,7 @@ func cmdLoopAttach(client *apiClient, output string, args []string, stdout, stde
 			"terminal": "smithctl",
 		}
 		var out any
-		err := client.doJSON(http.MethodPost, "/v1/loops/"+loopID+"/control/attach", payload, &out)
+		err := apiClient.Do(context.Background(), http.MethodPost, "/v1/loops/"+loopID+"/control/attach", payload, &out)
 		if err == nil {
 			attachResults = append(attachResults, map[string]any{
 				"loop_id": loopID,
@@ -932,7 +914,8 @@ func cmdLoopAttach(client *apiClient, output string, args []string, stdout, stde
 			})
 			continue
 		}
-		if strings.Contains(err.Error(), "returned 404") {
+		var apiErr *client.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			attachResults = append(attachResults, map[string]any{
 				"loop_id": loopID,
 				"status":  "not_supported",
@@ -956,12 +939,12 @@ func cmdLoopAttach(client *apiClient, output string, args []string, stdout, stde
 		if softFailure {
 			fmt.Fprintln(stderr, "attach endpoint unavailable for one or more loops; following journal instead")
 		}
-		return followLoopLogs(client, output, loopIDs, int64(limit), interval, stdout, stderr)
+		return followLoopLogs(apiClient, output, loopIDs, int64(limit), interval, stdout, stderr)
 	}
 	return 0
 }
 
-func cmdLoopCancel(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopCancel(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop cancel", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
@@ -996,7 +979,7 @@ func cmdLoopCancel(client *apiClient, output string, args []string, stdout, stde
 			"actor":        actor,
 		}
 		var out any
-		if err := client.doJSON(http.MethodPost, "/v1/control/override", payload, &out); err != nil {
+		if err := client.Do(context.Background(), http.MethodPost, "/v1/control/override", payload, &out); err != nil {
 			results = append(results, map[string]any{
 				"loop_id": loopID,
 				"status":  "error",
@@ -1022,7 +1005,7 @@ func cmdLoopCancel(client *apiClient, output string, args []string, stdout, stde
 	return 0
 }
 
-func cmdLoopDetach(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopDetach(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop detach", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
@@ -1050,7 +1033,7 @@ func cmdLoopDetach(client *apiClient, output string, args []string, stdout, stde
 	for _, loopID := range loopIDs {
 		payload := map[string]any{"actor": actor}
 		var out any
-		err := client.doJSON(http.MethodPost, "/v1/loops/"+loopID+"/control/detach", payload, &out)
+		err := client.Do(context.Background(), http.MethodPost, "/v1/loops/"+loopID+"/control/detach", payload, &out)
 		if err != nil {
 			results = append(results, map[string]any{
 				"loop_id": loopID,
@@ -1077,7 +1060,7 @@ func cmdLoopDetach(client *apiClient, output string, args []string, stdout, stde
 	return 0
 }
 
-func cmdLoopCommand(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopCommand(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	loopIDArg := ""
 	parseArgs := args
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -1117,7 +1100,7 @@ func cmdLoopCommand(client *apiClient, output string, args []string, stdout, std
 		"actor":   actor,
 		"command": command,
 	}
-	if err := client.doJSON(http.MethodPost, "/v1/loops/"+loopID+"/control/command", payload, &out); err != nil {
+	if err := client.Do(context.Background(), http.MethodPost, "/v1/loops/"+loopID+"/control/command", payload, &out); err != nil {
 		fmt.Fprintf(stderr, "loop command failed: %v\n", err)
 		return 1
 	}
@@ -1125,7 +1108,7 @@ func cmdLoopCommand(client *apiClient, output string, args []string, stdout, std
 	return 0
 }
 
-func cmdLoopIngestGitHub(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopIngestGitHub(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop ingest-github", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var filePath string
@@ -1145,7 +1128,7 @@ func cmdLoopIngestGitHub(client *apiClient, output string, args []string, stdout
 		return 1
 	}
 	var out any
-	if err := client.doJSON(http.MethodPost, "/v1/ingress/github/issues", payload, &out); err != nil {
+	if err := client.Do(context.Background(), http.MethodPost, "/v1/ingress/github/issues", payload, &out); err != nil {
 		fmt.Fprintf(stderr, "loop ingest-github failed: %v\n", err)
 		return 1
 	}
@@ -1153,7 +1136,7 @@ func cmdLoopIngestGitHub(client *apiClient, output string, args []string, stdout
 	return 0
 }
 
-func cmdPRDSubmit(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdPRDSubmit(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("prd submit", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
@@ -1206,7 +1189,7 @@ func cmdPRDSubmit(client *apiClient, output string, args []string, stdout, stder
 		return 2
 	}
 	var out any
-	if err := client.doJSON(http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
+	if err := client.Do(context.Background(), http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
 		if writeStructuredAPIError(err, output, stdout, stderr) {
 			return 1
 		}
@@ -1332,57 +1315,17 @@ func normalizePRDSubmitOutput(out any) any {
 }
 
 func writeStructuredAPIError(err error, output string, stdout, stderr io.Writer) bool {
-	var apiErr *apiError
-	if !errors.As(err, &apiErr) || len(apiErr.Body) == 0 || !json.Valid(apiErr.Body) {
+	body, ok := client.StructuredErrorBody(err)
+	if !ok {
 		return false
 	}
 	if output == "json" {
-		_, _ = stdout.Write(append(bytes.TrimSpace(apiErr.Body), '\n'))
+		_, _ = stdout.Write(append(body, '\n'))
 		return true
 	}
-	fmt.Fprintln(stderr, string(bytes.TrimSpace(apiErr.Body)))
+	fmt.Fprintln(stderr, string(body))
 	return true
 }
-
-func (c *apiClient) doJSON(method, path string, body any, out any) error {
-	var payload io.Reader
-	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("encode body: %w", err)
-		}
-		payload = bytes.NewReader(encoded)
-	}
-	req, err := http.NewRequest(method, c.baseURL+path, payload)
-	if err != nil {
-		return err
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if strings.TrimSpace(c.token) != "" {
-		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(c.token))
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return &apiError{
-			Method:     method,
-			Path:       path,
-			StatusCode: resp.StatusCode,
-			Body:       raw,
-		}
-	}
-	if out == nil {
-		return nil
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
-}
-
 func readJSONFile(path string) (map[string]any, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1454,7 +1397,7 @@ func collectLoopIDs(filePath string, args []string) ([]string, error) {
 	return out, nil
 }
 
-func followLoopLogs(client *apiClient, output string, loopIDs []string, limit int64, interval time.Duration, stdout, stderr io.Writer) int {
+func followLoopLogs(client *client.Client, output string, loopIDs []string, limit int64, interval time.Duration, stdout, stderr io.Writer) int {
 	if interval <= 0 {
 		interval = 2 * time.Second
 	}
@@ -1473,7 +1416,7 @@ func followLoopLogs(client *apiClient, output string, loopIDs []string, limit in
 		for _, loopID := range loopIDs {
 			var journal []map[string]any
 			path := "/v1/loops/" + loopID + "/journal?limit=" + strconv.FormatInt(limit, 10)
-			if err := client.doJSON(http.MethodGet, path, nil, &journal); err != nil {
+			if err := client.Do(context.Background(), http.MethodGet, path, nil, &journal); err != nil {
 				fmt.Fprintf(stderr, "loop logs follow failed (%s): %v\n", loopID, err)
 				hadError = true
 				allTerminal = false
@@ -1491,7 +1434,7 @@ func followLoopLogs(client *apiClient, output string, loopIDs []string, limit in
 				})
 			}
 			var loopOut map[string]any
-			if err := client.doJSON(http.MethodGet, "/v1/loops/"+loopID, nil, &loopOut); err != nil {
+			if err := client.Do(context.Background(), http.MethodGet, "/v1/loops/"+loopID, nil, &loopOut); err != nil {
 				allTerminal = false
 				continue
 			}
@@ -1603,7 +1546,7 @@ func printLoopHelp(w io.Writer) {
 	fmt.Fprintln(w, "Commands: list, get, trace, create, logs, runtime, cost, attach, detach, command, cancel, ingest-github")
 }
 
-func cmdLoopRuntime(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopRuntime(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop runtime", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var filePath string
@@ -1627,7 +1570,7 @@ func cmdLoopRuntime(client *apiClient, output string, args []string, stdout, std
 	for _, loopID := range loopIDs {
 		var runtime any
 		path := "/v1/loops/" + loopID + "/runtime"
-		if err := client.doJSON(http.MethodGet, path, nil, &runtime); err != nil {
+		if err := client.Do(context.Background(), http.MethodGet, path, nil, &runtime); err != nil {
 			results = append(results, map[string]any{
 				"loop_id": loopID,
 				"status":  "error",
@@ -1653,7 +1596,7 @@ func cmdLoopRuntime(client *apiClient, output string, args []string, stdout, std
 	return 0
 }
 
-func cmdLoopCost(client *apiClient, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopCost(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop cost", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var filePath string
@@ -1677,7 +1620,7 @@ func cmdLoopCost(client *apiClient, output string, args []string, stdout, stderr
 	for _, loopID := range loopIDs {
 		var cost any
 		path := "/v1/reporting/cost?loop_id=" + loopID
-		if err := client.doJSON(http.MethodGet, path, nil, &cost); err != nil {
+		if err := client.Do(context.Background(), http.MethodGet, path, nil, &cost); err != nil {
 			results = append(results, map[string]any{
 				"loop_id": loopID,
 				"status":  "error",

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,9 +27,18 @@ import (
 	"smith/internal/source/model"
 	"smith/internal/source/provider"
 	"smith/internal/source/store"
+	api "smith/pkg/api/v1"
+	pb "smith/proto/v1"
+
+	httpSwagger "github.com/swaggo/http-swagger/v2"
+	_ "smith/docs"
 
 	"github.com/gorilla/websocket"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	corev1 "k8s.io/api/core/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	kubescheme "k8s.io/client-go/kubernetes/scheme"
@@ -39,8 +49,10 @@ import (
 )
 
 const (
-	defaultPort             = 8080
-	defaultShutdownTimeout  = 10 * time.Second
+	defaultPort            = 8080
+	defaultGRPCPort        = 8081
+	defaultShutdownTimeout = 10 * time.Second
+
 	defaultRuntimeReason    = "runtime pod not found"
 	terminalCommandMaxSize  = 2048
 	terminalCommandRateMax  = 5
@@ -57,8 +69,10 @@ var (
 )
 
 type config struct {
-	port                  int
-	etcdEndpoints         []string
+	port          int
+	grpcPort      int
+	etcdEndpoints []string
+
 	etcdDialTimeout       time.Duration
 	operatorToken         string
 	authStoreBackend      string
@@ -87,129 +101,24 @@ type server struct {
 	restConfig   *rest.Config
 	upgrader     websocket.Upgrader
 }
-type overrideRequest struct {
-	LoopID      string          `json:"loop_id"`
-	TargetState model.LoopState `json:"target_state"`
-	Reason      string          `json:"reason"`
-	Actor       string          `json:"actor"`
-}
-
-type costSummary struct {
-	LoopID         string  `json:"loop_id"`
-	ProviderID     string  `json:"provider_id,omitempty"`
-	Model          string  `json:"model,omitempty"`
-	EntryCount     int     `json:"entry_count"`
-	TotalTokens    int64   `json:"total_tokens"`
-	PromptTokens   int64   `json:"prompt_tokens"`
-	OutputTokens   int64   `json:"output_tokens"`
-	TotalCostUSD   float64 `json:"total_cost_usd"`
-	LastActivityAt string  `json:"last_activity_at,omitempty"`
-}
-type authStartRequest struct {
-	Actor string `json:"actor"`
-}
-
-type authCompleteRequest struct {
-	Actor      string `json:"actor"`
-	DeviceCode string `json:"device_code"`
-}
-
-type authAPIKeyRequest struct {
-	Actor     string `json:"actor"`
-	APIKey    string `json:"api_key"`
-	AccountID string `json:"account_id"`
-}
-
-type projectCredentialUpsertRequest struct {
-	Actor      string `json:"actor"`
-	ProjectID  string `json:"project_id"`
-	GitHubUser string `json:"github_user"`
-	Credential string `json:"credential"`
-}
-
-type projectCredentialDeleteRequest struct {
-	Actor     string `json:"actor"`
-	ProjectID string `json:"project_id"`
-}
-
-type terminalAttachRequest struct {
-	Actor    string `json:"actor"`
-	Terminal string `json:"terminal"`
-}
-
-type terminalDetachRequest struct {
-	Actor string `json:"actor"`
-}
-
-type terminalCommandRequest struct {
-	Actor   string `json:"actor"`
-	Command string `json:"command"`
-}
-
-type loopRuntimeResponse struct {
-	LoopID        string `json:"loop_id"`
-	Namespace     string `json:"namespace,omitempty"`
-	PodName       string `json:"pod_name,omitempty"`
-	ContainerName string `json:"container_name,omitempty"`
-	PodPhase      string `json:"pod_phase,omitempty"`
-	Attachable    bool   `json:"attachable"`
-	Reason        string `json:"reason,omitempty"`
-}
-
-type loopDeleteRequest struct {
-	Actor string `json:"actor"`
-}
-
-type documentRequest struct {
-	ID         string            `json:"id,omitempty"`
-	ProjectID  string            `json:"project_id"`
-	Title      string            `json:"title"`
-	Content    string            `json:"content"`
-	Format     string            `json:"format"`
-	SourceType string            `json:"source_type"`
-	SourceRef  string            `json:"source_ref,omitempty"`
-	Status     string            `json:"status,omitempty"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
-}
-
-type documentBuildRequest struct {
-	Actor string `json:"actor"`
-}
-
-type loopCreateRequest struct {
-	LoopID         string                 `json:"loop_id,omitempty"`
-	IdempotencyKey string                 `json:"idempotency_key,omitempty"`
-	Title          string                 `json:"title"`
-	Description    string                 `json:"description"`
-	SourceType     string                 `json:"source_type"`
-	SourceRef      string                 `json:"source_ref"`
-	ProviderID     string                 `json:"provider_id,omitempty"`
-	Model          string                 `json:"model,omitempty"`
-	CorrelationID  string                 `json:"correlation_id,omitempty"`
-	Metadata       map[string]string      `json:"metadata,omitempty"`
-	Environment    *model.LoopEnvironment `json:"environment,omitempty"`
-	Skills         []model.LoopSkillMount `json:"skills,omitempty"`
-}
-
-type loopBatchRequest struct {
-	Loops []loopCreateRequest `json:"loops"`
-}
-
-type loopCreateResult struct {
-	LoopID           string                     `json:"loop_id"`
-	Status           string                     `json:"status"`
-	Created          bool                       `json:"created"`
-	Message          string                     `json:"message,omitempty"`
-	Environment      model.LoopEnvironment      `json:"environment"`
-	Skills           []model.LoopSkillMount     `json:"skills,omitempty"`
-	ValidationReport *model.PRDValidationReport `json:"validation_report,omitempty"`
-	HTTPCode         int                        `json:"http_code,omitempty"`
-}
-
-type githubIngressRequest struct {
-	Issues   []ingress.GitHubIssue `json:"issues"`
-	Metadata map[string]string     `json:"metadata,omitempty"`
-}
+type overrideRequest = api.OverrideRequest
+type costSummary = api.CostSummary
+type authStartRequest = api.AuthStartRequest
+type authCompleteRequest = api.AuthCompleteRequest
+type authAPIKeyRequest = api.AuthAPIKeyRequest
+type projectCredentialUpsertRequest = api.ProjectCredentialUpsertRequest
+type projectCredentialDeleteRequest = api.ProjectCredentialDeleteRequest
+type terminalAttachRequest = api.TerminalAttachRequest
+type terminalDetachRequest = api.TerminalDetachRequest
+type terminalCommandRequest = api.TerminalCommandRequest
+type loopRuntimeResponse = api.LoopRuntimeResponse
+type loopDeleteRequest = api.LoopDeleteRequest
+type documentRequest = api.DocumentRequest
+type documentBuildRequest = api.DocumentBuildRequest
+type loopCreateRequest = api.LoopCreateRequest
+type loopBatchRequest = api.LoopBatchRequest
+type loopCreateResult = api.LoopCreateResult
+type githubIngressRequest = api.GitHubIngressRequest
 
 type githubWebhookPayload struct {
 	Action string `json:"action"`
@@ -225,43 +134,18 @@ type githubWebhookPayload struct {
 	} `json:"repository"`
 }
 
-type prdIngressRequest struct {
-	Format    string            `json:"format,omitempty"`
-	SourceRef string            `json:"source_ref,omitempty"`
-	Markdown  string            `json:"markdown,omitempty"`
-	PRD       json.RawMessage   `json:"prd,omitempty"`
-	Tasks     []ingress.PRDTask `json:"tasks,omitempty"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
-}
-
-type ingressResult struct {
-	ItemIndex int    `json:"item_index"`
-	LoopID    string `json:"loop_id,omitempty"`
-	SourceRef string `json:"source_ref,omitempty"`
-	Status    string `json:"status"`
-	Created   bool   `json:"created"`
-	Message   string `json:"message,omitempty"`
-}
-
-type loopTraceResponse struct {
-	LoopID      string                   `json:"loop_id"`
-	State       model.StateRecord        `json:"state"`
-	Anomaly     *model.Anomaly           `json:"anomaly,omitempty"`
-	Environment model.LoopEnvironment    `json:"environment,omitempty"`
-	Journal     []model.JournalEntry     `json:"journal"`
-	Handoffs    []model.Handoff          `json:"handoffs"`
-	Overrides   []model.OperatorOverride `json:"overrides"`
-	Audit       []store.AuditRecord      `json:"audit"`
-}
+type prdIngressRequest = api.PRDIngressRequest
+type ingressResult = api.IngressResult
+type ingressSummary = api.IngressSummary
+type loopTraceResponse = api.LoopTraceResponse
+type loopResponse = api.LoopResponse
+type overrideResponse = api.OverrideResponse
+type presetCreateRequest = api.PresetCreateRequest
 
 type presetCatalog struct {
 	mu            sync.RWMutex
 	defaultPreset string
 	presets       map[string]struct{}
-}
-
-type presetCreateRequest struct {
-	Name string `json:"name"`
 }
 
 type terminalSessionStore struct {
@@ -562,6 +446,26 @@ func (s *server) appendJournal(ctx context.Context, entry model.JournalEntry) er
 	}
 	return s.store.AppendJournal(ctx, entry)
 }
+
+// @title Smith API
+// @version 1.0
+// @description Smith API server for managing loops and anomalies.
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://www.swagger.io/support
+// @contact.email support@swagger.io
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host localhost:8080
+// @BasePath /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -657,7 +561,31 @@ func main() {
 	mux.HandleFunc("/v1/projects", s.handleProjects)
 	mux.HandleFunc("/v1/projects/", s.handleProjectByID)
 
+	mux.Handle("/swagger/", httpSwagger.WrapHandler)
+
+	// gRPC Server
+	gs := &grpcServer{
+		store:       es,
+		presets:     s.presets,
+		skillPolicy: s.skillPolicy,
+	}
+	grpcAddr := fmt.Sprintf(":%d", cfg.grpcPort)
+	lis, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		log.Fatalf("failed to listen for gRPC: %v", err)
+	}
+	grpcServer := grpc.NewServer()
+	pb.RegisterSmithServiceServer(grpcServer, gs)
+
+	go func() {
+		log.Printf("smith-api gRPC listening on %s", grpcAddr)
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Printf("gRPC server failed: %v", err)
+		}
+	}()
+
 	addr := fmt.Sprintf(":%d", cfg.port)
+
 	httpServer := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() {
@@ -692,6 +620,17 @@ func (s *server) handleReady(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ready"))
 }
 
+// @Summary List or create loops
+// @Description Get all loop states or create a new loop
+// @Tags loops
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body loopCreateRequest false "Create Loop Request"
+// @Success 200 {array} api.LoopWithRevision "List Loops"
+// @Success 201 {object} api.LoopCreateResult "Create Loop"
+// @Router /v1/loops [get]
+// @Router /v1/loops [post]
 func (s *server) handleLoops(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -788,7 +727,7 @@ func (s *server) handleIngressGitHubIssues(w http.ResponseWriter, r *http.Reques
 			Message:   res.Message,
 		})
 	}
-	writeJSON(w, http.StatusOK, ingressSummary(results))
+	writeJSON(w, http.StatusOK, newIngressSummary(results))
 }
 
 func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
@@ -811,7 +750,7 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	issue := ingress.GitHubIssue{
+	issue := api.GitHubIssue{
 		Repository: payload.Repository.FullName,
 		Number:     payload.Issue.Number,
 		Title:      payload.Issue.Title,
@@ -890,7 +829,7 @@ func (s *server) handleIngressPRD(w http.ResponseWriter, r *http.Request) {
 			Message:   res.Message,
 		})
 	}
-	writeJSON(w, http.StatusOK, ingressSummary(results))
+	writeJSON(w, http.StatusOK, newIngressSummary(results))
 }
 
 func buildPRDIngressDrafts(format, markdown string, rawPRD json.RawMessage, sourceRef string, metadata map[string]string) ([]ingress.LoopDraft, *model.PRDValidationReport, error) {
@@ -963,11 +902,11 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
-	environment, err := model.NormalizeLoopEnvironmentWithPolicy(req.Environment, s.presets.Policy())
+	environment, err := model.NormalizeLoopEnvironmentWithPolicy(apiToModelEnvironment(req.Environment), s.presets.Policy())
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
-	skills, skillAudit, err := model.NormalizeLoopSkillsWithPolicy(req.Skills, selection.ProviderID, s.skillPolicy)
+	skills, skillAudit, err := model.NormalizeLoopSkillsWithPolicy(apiToModelSkills(req.Skills), selection.ProviderID, s.skillPolicy)
 	if err != nil {
 		return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusBadRequest}
 	}
@@ -990,8 +929,8 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 			Status:      string(existing.Record.State),
 			Created:     false,
 			Message:     "existing loop returned via idempotency or explicit loop_id",
-			Environment: stored.Environment,
-			Skills:      stored.Skills,
+			Environment: modelToApiEnvironment(stored.Environment),
+			Skills:      modelToApiSkills(stored.Skills),
 			HTTPCode:    http.StatusOK,
 		}
 	}
@@ -1052,8 +991,8 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		LoopID:      loopID,
 		Status:      string(model.LoopStateUnresolved),
 		Created:     true,
-		Environment: environment,
-		Skills:      skills,
+		Environment: modelToApiEnvironment(environment),
+		Skills:      modelToApiSkills(skills),
 		HTTPCode:    http.StatusCreated,
 	}
 }
@@ -1105,6 +1044,15 @@ func (s *server) handleEnvironmentPresetByName(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// @Summary Get or delete loop
+// @Description Get detailed information about a loop or delete it
+// @Tags loops
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Loop ID"
+// @Success 200 {object} api.LoopResponse "Loop Details"
+// @Router /v1/loops/{id} [get]
+// @Router /v1/loops/{id} [delete]
 func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 	loopID, route := splitLoopRoute(r.URL.Path)
 	if strings.TrimSpace(loopID) == "" {
@@ -1129,15 +1077,19 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if !anomalyFound {
-				writeJSON(w, http.StatusOK, map[string]any{"state": state})
+				writeJSON(w, http.StatusOK, api.LoopResponse{
+					State: modelToApiState(state.Record),
+				})
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{
-				"state":       state,
-				"anomaly":     anomaly,
-				"environment": anomaly.Environment,
+			env := modelToApiEnvironment(anomaly.Environment)
+			writeJSON(w, http.StatusOK, api.LoopResponse{
+				State:       modelToApiState(state.Record),
+				Anomaly:     ptr(modelToApiAnomaly(anomaly)),
+				Environment: &env,
 			})
 			return
+
 		case http.MethodDelete:
 			if !s.authorized(r) {
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
@@ -2131,11 +2083,11 @@ func (s *server) handleLoopTrace(w http.ResponseWriter, r *http.Request, loopID 
 
 	out := loopTraceResponse{
 		LoopID:    loopID,
-		State:     state.Record,
-		Journal:   []model.JournalEntry{},
-		Handoffs:  []model.Handoff{},
-		Overrides: []model.OperatorOverride{},
-		Audit:     []store.AuditRecord{},
+		State:     modelToApiState(state.Record),
+		Journal:   []api.JournalEntry{},
+		Handoffs:  []api.Handoff{},
+		Overrides: []api.OperatorOverride{},
+		Audit:     []api.AuditRecord{},
 	}
 
 	anomaly, anomalyFound, err := s.store.GetAnomaly(r.Context(), loopID)
@@ -2144,31 +2096,38 @@ func (s *server) handleLoopTrace(w http.ResponseWriter, r *http.Request, loopID 
 		return
 	}
 	if anomalyFound {
-		out.Anomaly = &anomaly
-		out.Environment = anomaly.Environment
+		apiAnomaly := modelToApiAnomaly(anomaly)
+		out.Anomaly = &apiAnomaly
+		out.Environment = modelToApiEnvironment(anomaly.Environment)
 	}
 
-	out.Journal, err = s.store.ListJournal(r.Context(), loopID, limit)
+	journal, err := s.store.ListJournal(r.Context(), loopID, limit)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	out.Handoffs, err = s.store.ListHandoffs(r.Context(), loopID, limit)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	out.Overrides, err = s.store.ListOverrides(r.Context(), loopID, limit)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	out.Audit, err = s.store.ListAudit(r.Context(), loopID, limit)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	out.Journal = modelToApiJournalEntries(journal)
 
+	handoffs, err := s.store.ListHandoffs(r.Context(), loopID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out.Handoffs = modelToApiHandoffs(handoffs)
+
+	overrides, err := s.store.ListOverrides(r.Context(), loopID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out.Overrides = modelToApiOverrides(overrides)
+
+	audit, err := s.store.ListAudit(r.Context(), loopID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out.Audit = storeToApiAudits(audit)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -2285,13 +2244,13 @@ func (s *server) handleOverride(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "loop not found")
 		return
 	}
-	if !model.IsValidTransition(state.Record.State, req.TargetState) {
+	if !model.IsValidTransition(state.Record.State, model.LoopState(req.TargetState)) {
 		writeErr(w, http.StatusBadRequest, fmt.Sprintf("invalid transition %s -> %s", state.Record.State, req.TargetState))
 		return
 	}
 
 	next := state.Record
-	next.State = req.TargetState
+	next.State = model.LoopState(req.TargetState)
 	next.Reason = req.Reason
 	next.LockHolder = "operator-override"
 	rev, err := s.store.PutState(r.Context(), next, state.Revision)
@@ -2308,11 +2267,19 @@ func (s *server) handleOverride(w http.ResponseWriter, r *http.Request) {
 		LoopID:        req.LoopID,
 		Actor:         req.Actor,
 		Action:        "override-state",
-		TargetState:   req.TargetState,
+		TargetState:   model.LoopState(req.TargetState),
 		Reason:        req.Reason,
 		CorrelationID: next.CorrelationID,
 	}
 	_ = s.store.AppendOverride(r.Context(), override)
+
+	writeJSON(w, http.StatusOK, overrideResponse{
+		LoopID:   req.LoopID,
+		Status:   "overridden",
+		State:    modelToApiState(next),
+		Revision: rev,
+	})
+
 	_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
 		Actor:         req.Actor,
 		Action:        "override-state",
@@ -2865,8 +2832,10 @@ func loadConfig() (config, error) {
 	authStoreK8sSecret := strings.TrimSpace(envString("SMITH_AUTH_STORE_K8S_SECRET", "smith-auth-store"))
 	authStoreK8sKey := strings.TrimSpace(envString("SMITH_AUTH_STORE_K8S_KEY", "tokens.json"))
 	return config{
-		port:                  envInt("SMITH_API_PORT", defaultPort),
-		etcdEndpoints:         endpoints,
+		port:          envInt("SMITH_API_PORT", defaultPort),
+		grpcPort:      envInt("SMITH_GRPC_PORT", defaultGRPCPort),
+		etcdEndpoints: endpoints,
+
 		etcdDialTimeout:       envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
 		operatorToken:         strings.TrimSpace(os.Getenv("SMITH_OPERATOR_TOKEN")),
 		authStoreBackend:      authStoreBackend,
@@ -2924,7 +2893,7 @@ func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) strin
 
 	return fmt.Sprintf("%s-%s-%s", prefix, hashPart, key)
 }
-func ingressSummary(results []ingressResult) map[string]any {
+func newIngressSummary(results []ingressResult) ingressSummary {
 	created := 0
 	existing := 0
 	errorsCount := 0
@@ -2938,17 +2907,13 @@ func ingressSummary(results []ingressResult) map[string]any {
 			existing++
 		}
 	}
-	return map[string]any{
-		"results": results,
-		"summary": map[string]int{
-			"requested": len(results),
-			"created":   created,
-			"existing":  existing,
-			"errors":    errorsCount,
-		},
-	}
+	var out ingressSummary
+	out.Results = results
+	out.Summary.Created = created
+	out.Summary.Existing = existing
+	out.Summary.Errors = errorsCount
+	return out
 }
-
 func withIdempotency(metadata map[string]string, key string) map[string]string {
 	out := map[string]string{}
 	for k, v := range metadata {
@@ -3355,7 +3320,7 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 				Message:   res.Message,
 			})
 		}
-		writeJSON(w, http.StatusOK, ingressSummary(results))
+		writeJSON(w, http.StatusOK, newIngressSummary(results))
 		return
 	}
 
@@ -3562,4 +3527,769 @@ func (s *server) handleAuditStream(w http.ResponseWriter, r *http.Request) {
 			_ = send("update", rec)
 		}
 	}
+}
+
+func apiToModelEnvironment(in *api.LoopEnvironment) *model.LoopEnvironment {
+	if in == nil {
+		return nil
+	}
+	out := &model.LoopEnvironment{
+		Preset:       in.Preset,
+		Env:          in.Env,
+		ResolvedMode: in.ResolvedMode,
+	}
+	if in.Mise != nil {
+		out.Mise = &model.MiseEnvironment{
+			ToolVersionsFile: in.Mise.ToolVersionsFile,
+			Tools:            in.Mise.Tools,
+		}
+	}
+	if in.ContainerImage != nil {
+		out.ContainerImage = &model.ContainerImageProfile{
+			Ref:        in.ContainerImage.Ref,
+			PullPolicy: in.ContainerImage.PullPolicy,
+		}
+	} else if in.ImageRef != "" {
+		out.ContainerImage = &model.ContainerImageProfile{
+			Ref:        in.ImageRef,
+			PullPolicy: in.ImagePullPolicy,
+		}
+	}
+	if in.Dockerfile != nil {
+		out.Dockerfile = &model.DockerfileProfile{
+			ContextDir:     in.Dockerfile.ContextDir,
+			DockerfilePath: in.Dockerfile.DockerfilePath,
+			Target:         in.Dockerfile.Target,
+			BuildArgs:      in.Dockerfile.BuildArgs,
+		}
+	}
+	return out
+}
+
+func modelToApiEnvironment(in model.LoopEnvironment) api.LoopEnvironment {
+	out := api.LoopEnvironment{
+		Preset:       in.Preset,
+		Env:          in.Env,
+		ResolvedMode: in.ResolvedMode,
+	}
+	if in.Mise != nil {
+		out.Mise = &api.MiseEnvironment{
+			ToolVersionsFile: in.Mise.ToolVersionsFile,
+			Tools:            in.Mise.Tools,
+		}
+	}
+	if in.ContainerImage != nil {
+		out.ContainerImage = &api.ContainerImageProfile{
+			Ref:        in.ContainerImage.Ref,
+			PullPolicy: in.ContainerImage.PullPolicy,
+		}
+	}
+	if in.Dockerfile != nil {
+		out.Dockerfile = &api.DockerfileProfile{
+			ContextDir:     in.Dockerfile.ContextDir,
+			DockerfilePath: in.Dockerfile.DockerfilePath,
+			Target:         in.Dockerfile.Target,
+			BuildArgs:      in.Dockerfile.BuildArgs,
+		}
+	}
+	return out
+}
+
+func apiToModelSkills(in []api.LoopSkillMount) []model.LoopSkillMount {
+	if in == nil {
+		return nil
+	}
+	out := make([]model.LoopSkillMount, 0, len(in))
+	for _, s := range in {
+		out = append(out, model.LoopSkillMount{
+			Name:      s.Name,
+			Source:    s.Source,
+			Version:   s.Version,
+			MountPath: s.MountPath,
+			ReadOnly:  s.ReadOnly,
+		})
+	}
+	return out
+}
+
+func modelToApiSkills(in []model.LoopSkillMount) []api.LoopSkillMount {
+	if in == nil {
+		return nil
+	}
+	out := make([]api.LoopSkillMount, 0, len(in))
+	for _, s := range in {
+		out = append(out, api.LoopSkillMount{
+			Name:      s.Name,
+			Source:    s.Source,
+			Version:   s.Version,
+			MountPath: s.MountPath,
+			ReadOnly:  s.ReadOnly,
+		})
+	}
+	return out
+}
+
+func modelToApiState(in model.State) api.State {
+	return api.State{
+		LoopID:           in.LoopID,
+		State:            api.LoopState(in.State),
+		Attempt:          in.Attempt,
+		Reason:           in.Reason,
+		WorkerJobName:    in.WorkerJobName,
+		LockHolder:       in.LockHolder,
+		ObservedRevision: in.ObservedRevision,
+		UpdatedAt:        in.UpdatedAt,
+		LastHeartbeatAt:  in.LastHeartbeatAt,
+		CorrelationID:    in.CorrelationID,
+		SchemaVersion:    in.SchemaVersion,
+	}
+}
+
+func modelToApiAnomaly(in model.Anomaly) api.Anomaly {
+	return api.Anomaly{
+		ID:            in.ID,
+		Title:         in.Title,
+		Description:   in.Description,
+		SourceType:    in.SourceType,
+		SourceRef:     in.SourceRef,
+		ProviderID:    in.ProviderID,
+		Model:         in.Model,
+		Environment:   modelToApiEnvironment(in.Environment),
+		Skills:        modelToApiSkills(in.Skills),
+		Policy:        api.LoopPolicy(in.Policy),
+		Metadata:      in.Metadata,
+		CreatedAt:     in.CreatedAt,
+		UpdatedAt:     in.UpdatedAt,
+		CorrelationID: in.CorrelationID,
+		SchemaVersion: in.SchemaVersion,
+	}
+}
+func ptr[T any](v T) *T { return &v }
+
+func modelToApiJournalEntry(in model.JournalEntry) api.JournalEntry {
+	return api.JournalEntry{
+		LoopID:        in.LoopID,
+		Sequence:      in.Sequence,
+		Timestamp:     in.Timestamp,
+		Phase:         in.Phase,
+		Level:         in.Level,
+		ActorType:     in.ActorType,
+		ActorID:       in.ActorID,
+		Message:       in.Message,
+		Command:       in.Command,
+		ExitCode:      in.ExitCode,
+		Metadata:      in.Metadata,
+		CorrelationID: in.CorrelationID,
+		SchemaVersion: in.SchemaVersion,
+	}
+}
+
+func modelToApiHandoff(in model.Handoff) api.Handoff {
+	return api.Handoff{
+		LoopID:            in.LoopID,
+		Sequence:          in.Sequence,
+		Timestamp:         in.Timestamp,
+		FinalDiffSummary:  in.FinalDiffSummary,
+		ValidationState:   in.ValidationState,
+		ValidationDetails: in.ValidationDetails,
+		NextSteps:         in.NextSteps,
+		ArtifactRefs:      in.ArtifactRefs,
+		Metadata:          in.Metadata,
+		CorrelationID:     in.CorrelationID,
+		SchemaVersion:     in.SchemaVersion,
+	}
+}
+
+func modelToApiOverride(in model.OperatorOverride) api.OperatorOverride {
+	return api.OperatorOverride{
+		LoopID:        in.LoopID,
+		Sequence:      in.Sequence,
+		Timestamp:     in.Timestamp,
+		Actor:         in.Actor,
+		Action:        in.Action,
+		TargetState:   api.LoopState(in.TargetState),
+		Reason:        in.Reason,
+		CorrelationID: in.CorrelationID,
+		SchemaVersion: in.SchemaVersion,
+	}
+}
+
+func storeToApiAudit(in store.AuditRecord) api.AuditRecord {
+	return api.AuditRecord{
+		EventID:       in.EventID,
+		Timestamp:     in.Timestamp,
+		Actor:         in.Actor,
+		Action:        in.Action,
+		TargetLoopID:  in.TargetLoopID,
+		Reason:        in.Reason,
+		CorrelationID: in.CorrelationID,
+		Metadata:      in.Metadata,
+		SchemaVersion: in.SchemaVersion,
+	}
+}
+
+func modelToApiJournalEntries(in []model.JournalEntry) []api.JournalEntry {
+	if in == nil {
+		return nil
+	}
+	out := make([]api.JournalEntry, 0, len(in))
+	for _, e := range in {
+		out = append(out, modelToApiJournalEntry(e))
+	}
+	return out
+}
+
+func modelToApiHandoffs(in []model.Handoff) []api.Handoff {
+	if in == nil {
+		return nil
+	}
+	out := make([]api.Handoff, 0, len(in))
+	for _, h := range in {
+		out = append(out, modelToApiHandoff(h))
+	}
+	return out
+}
+
+func modelToApiOverrides(in []model.OperatorOverride) []api.OperatorOverride {
+	if in == nil {
+		return nil
+	}
+	out := make([]api.OperatorOverride, 0, len(in))
+	for _, o := range in {
+		out = append(out, modelToApiOverride(o))
+	}
+	return out
+}
+
+func storeToApiAudits(in []store.AuditRecord) []api.AuditRecord {
+	if in == nil {
+		return nil
+	}
+	out := make([]api.AuditRecord, 0, len(in))
+	for _, a := range in {
+		out = append(out, storeToApiAudit(a))
+	}
+	return out
+}
+
+type grpcServer struct {
+	pb.UnimplementedSmithServiceServer
+	store       store.StateStore
+	presets     *presetCatalog
+	skillPolicy model.SkillPolicy
+}
+
+func (s *grpcServer) ListLoops(ctx context.Context, req *pb.ListLoopsRequest) (*pb.ListLoopsResponse, error) {
+	states, err := s.store.ListStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var loops []*pb.LoopWithRevision
+	for _, l := range states {
+		loops = append(loops, &pb.LoopWithRevision{
+			Record:   modelToPbState(l.Record),
+			Revision: l.Revision,
+		})
+	}
+
+	return &pb.ListLoopsResponse{Loops: loops}, nil
+}
+
+func (s *grpcServer) CreateLoop(ctx context.Context, req *pb.LoopCreateRequest) (*pb.LoopCreateResult, error) {
+	reg := provider.NewDefaultRegistry()
+	selection, err := reg.Resolve(req.ProviderId, req.Model)
+	if err != nil {
+		return nil, err
+	}
+
+	environment, err := model.NormalizeLoopEnvironmentWithPolicy(pbToModelEnvironment(req.Environment), s.presets.Policy())
+	if err != nil {
+		return nil, err
+	}
+
+	skills, _, err := model.NormalizeLoopSkillsWithPolicy(pbToModelSkills(req.Skills), selection.ProviderID, s.skillPolicy)
+	if err != nil {
+		return nil, err
+	}
+
+	loopID := strings.TrimSpace(req.LoopId)
+	if loopID == "" {
+		loopID = deriveLoopID("", req.IdempotencyKey, req.SourceType, req.SourceRef)
+	}
+
+	existing, found, err := s.store.GetState(ctx, loopID)
+	if err == nil && found {
+		stored, _, _ := s.store.GetAnomaly(ctx, loopID)
+		return &pb.LoopCreateResult{
+			LoopId:      loopID,
+			Status:      string(existing.Record.State),
+			Created:     false,
+			Message:     "existing loop returned via idempotency or explicit loop_id",
+			Environment: modelToPbEnvironment(stored.Environment),
+			Skills:      modelToPbSkills(stored.Skills),
+		}, nil
+	}
+
+	anomaly := model.Anomaly{
+		ID:            loopID,
+		Title:         req.Title,
+		Description:   req.Description,
+		SourceType:    req.SourceType,
+		SourceRef:     req.SourceRef,
+		ProviderID:    selection.ProviderID,
+		Model:         selection.Model,
+		Environment:   environment,
+		Skills:        skills,
+		Metadata:      req.Metadata,
+		CorrelationID: req.CorrelationId,
+	}
+
+	err = s.store.PutAnomaly(ctx, anomaly)
+	if err != nil {
+		return nil, err
+	}
+
+	state := model.StateRecord{
+		LoopID:        loopID,
+		State:         model.LoopStateUnresolved,
+		Reason:        "created-via-grpc",
+		CorrelationID: req.CorrelationId,
+	}
+
+	_, err = s.store.PutState(ctx, state, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.LoopCreateResult{
+		LoopId:      loopID,
+		Status:      string(model.LoopStateUnresolved),
+		Created:     true,
+		Environment: modelToPbEnvironment(environment),
+		Skills:      modelToPbSkills(skills),
+	}, nil
+}
+
+func (s *grpcServer) GetLoop(ctx context.Context, req *pb.GetLoopRequest) (*pb.LoopResponse, error) {
+	state, found, err := s.store.GetState(ctx, req.LoopId)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errors.New("loop not found")
+	}
+
+	res := &pb.LoopResponse{
+		State: modelToPbState(state.Record),
+	}
+
+	anomaly, found, err := s.store.GetAnomaly(ctx, req.LoopId)
+	if err == nil && found {
+		res.Anomaly = modelToPbAnomaly(anomaly)
+		res.Environment = modelToPbEnvironment(anomaly.Environment)
+	}
+
+	return res, nil
+}
+
+func (s *grpcServer) DeleteLoop(ctx context.Context, req *pb.LoopDeleteRequest) (*pb.DeleteLoopResponse, error) {
+	state, found, err := s.store.GetState(ctx, req.LoopId)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errors.New("loop not found")
+	}
+
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "grpc-client"
+	}
+
+	next := state.Record
+	next.State = model.LoopStateCancelled
+	next.Reason = fmt.Sprintf("cancelled by %s", actor)
+	next.LockHolder = ""
+
+	_, err = s.store.PutState(ctx, next, state.Revision)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = s.store.AppendAudit(ctx, store.AuditRecord{
+		Actor:        actor,
+		Action:       "delete-loop",
+		TargetLoopID: req.LoopId,
+		Reason:       "request via grpc",
+	})
+
+	return &pb.DeleteLoopResponse{
+		LoopId: req.LoopId,
+		Status: "deleted",
+		Actor:  actor,
+	}, nil
+}
+
+func (s *grpcServer) TraceLoop(ctx context.Context, req *pb.TraceLoopRequest) (*pb.LoopTraceResponse, error) {
+	state, found, err := s.store.GetState(ctx, req.LoopId)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errors.New("loop not found")
+	}
+
+	out := &pb.LoopTraceResponse{
+		LoopId: req.LoopId,
+		State:  modelToPbState(state.Record),
+	}
+
+	anomaly, anomalyFound, err := s.store.GetAnomaly(ctx, req.LoopId)
+	if err == nil && anomalyFound {
+		out.Anomaly = modelToPbAnomaly(anomaly)
+		out.Environment = modelToPbEnvironment(anomaly.Environment)
+	}
+
+	journal, _ := s.store.ListJournal(ctx, req.LoopId, 500)
+	for _, j := range journal {
+		out.Journal = append(out.Journal, modelToPbJournalEntry(j))
+	}
+
+	handoffs, _ := s.store.ListHandoffs(ctx, req.LoopId, 500)
+	for _, h := range handoffs {
+		out.Handoffs = append(out.Handoffs, modelToPbHandoff(h))
+	}
+
+	overrides, _ := s.store.ListOverrides(ctx, req.LoopId, 500)
+	for _, o := range overrides {
+		out.Overrides = append(out.Overrides, modelToPbOverride(o))
+	}
+
+	audit, _ := s.store.ListAudit(ctx, req.LoopId, 500)
+	for _, a := range audit {
+		out.Audit = append(out.Audit, storeToPbAudit(a))
+	}
+
+	return out, nil
+}
+
+func (s *grpcServer) GetJournal(ctx context.Context, req *pb.GetJournalRequest) (*pb.GetJournalResponse, error) {
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+
+	journal, err := s.store.ListJournal(ctx, req.LoopId, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []*pb.JournalEntry
+	for _, j := range journal {
+		entries = append(entries, modelToPbJournalEntry(j))
+	}
+
+	return &pb.GetJournalResponse{Entries: entries}, nil
+}
+
+func (s *grpcServer) OverrideLoop(ctx context.Context, req *pb.OverrideRequest) (*pb.OverrideResponse, error) {
+	state, found, err := s.store.GetState(ctx, req.LoopId)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errors.New("loop not found")
+	}
+
+	targetState := pbToModelLoopState(req.TargetState)
+	if !model.IsValidTransition(state.Record.State, targetState) {
+		return nil, fmt.Errorf("invalid transition %s -> %s", state.Record.State, targetState)
+	}
+
+	next := state.Record
+	next.State = targetState
+	next.Reason = req.Reason
+	next.LockHolder = "operator-override"
+
+	rev, err := s.store.PutState(ctx, next, state.Revision)
+	if err != nil {
+		return nil, err
+	}
+
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "grpc-client"
+	}
+
+	_ = s.store.AppendOverride(ctx, model.OperatorOverride{
+		LoopID:        req.LoopId,
+		Actor:         actor,
+		Action:        "override-state",
+		TargetState:   targetState,
+		Reason:        req.Reason,
+		CorrelationID: next.CorrelationID,
+	})
+
+	return &pb.OverrideResponse{
+		LoopId:   req.LoopId,
+		Status:   "overridden",
+		State:    modelToPbState(next),
+		Revision: rev,
+	}, nil
+}
+
+// Helper conversions
+
+func modelToPbState(in model.StateRecord) *pb.State {
+	return &pb.State{
+		LoopId:           in.LoopID,
+		State:            modelToPbLoopState(in.State),
+		Attempt:          int32(in.Attempt),
+		Reason:           in.Reason,
+		WorkerJobName:    in.WorkerJobName,
+		LockHolder:       in.LockHolder,
+		ObservedRevision: in.ObservedRevision,
+		UpdatedAt:        timestamppb.New(in.UpdatedAt),
+		LastHeartbeatAt:  timestamppb.New(safeTime(in.LastHeartbeatAt)),
+		CorrelationId:    in.CorrelationID,
+		SchemaVersion:    in.SchemaVersion,
+	}
+}
+
+func modelToPbLoopState(in model.LoopState) pb.LoopState {
+	switch in {
+	case model.LoopStateUnresolved:
+		return pb.LoopState_LOOP_STATE_UNRESOLVED
+	case model.LoopStateRunning:
+		return pb.LoopState_LOOP_STATE_RUNNING
+	case model.LoopStateSynced:
+		return pb.LoopState_LOOP_STATE_SYNCED
+	case model.LoopStateFlatline:
+		return pb.LoopState_LOOP_STATE_FLATLINE
+	case model.LoopStateCancelled:
+		return pb.LoopState_LOOP_STATE_CANCELLED
+	default:
+		return pb.LoopState_LOOP_STATE_UNSPECIFIED
+	}
+}
+
+func pbToModelLoopState(in pb.LoopState) model.LoopState {
+	switch in {
+	case pb.LoopState_LOOP_STATE_UNRESOLVED:
+		return model.LoopStateUnresolved
+	case pb.LoopState_LOOP_STATE_RUNNING:
+		return model.LoopStateRunning
+	case pb.LoopState_LOOP_STATE_SYNCED:
+		return model.LoopStateSynced
+	case pb.LoopState_LOOP_STATE_FLATLINE:
+		return model.LoopStateFlatline
+	case pb.LoopState_LOOP_STATE_CANCELLED:
+		return model.LoopStateCancelled
+	default:
+		return model.LoopStateUnresolved // Default
+	}
+}
+
+func modelToPbEnvironment(in model.LoopEnvironment) *pb.LoopEnvironment {
+	out := &pb.LoopEnvironment{
+		Preset:       in.Preset,
+		Env:          in.Env,
+		ResolvedMode: in.ResolvedMode,
+	}
+	if in.Mise != nil {
+		out.Mise = &pb.MiseEnvironment{
+			ToolVersionsFile: in.Mise.ToolVersionsFile,
+			Tools:            in.Mise.Tools,
+		}
+	}
+	if in.ContainerImage != nil {
+		out.ContainerImage = &pb.ContainerImageProfile{
+			Ref:        in.ContainerImage.Ref,
+			PullPolicy: in.ContainerImage.PullPolicy,
+		}
+	}
+	if in.Dockerfile != nil {
+		out.Dockerfile = &pb.DockerfileProfile{
+			ContextDir:     in.Dockerfile.ContextDir,
+			DockerfilePath: in.Dockerfile.DockerfilePath,
+			Target:         in.Dockerfile.Target,
+			BuildArgs:      in.Dockerfile.BuildArgs,
+		}
+	}
+	return out
+}
+
+func pbToModelEnvironment(in *pb.LoopEnvironment) *model.LoopEnvironment {
+	if in == nil {
+		return nil
+	}
+	out := &model.LoopEnvironment{
+		Preset:       in.Preset,
+		Env:          in.Env,
+		ResolvedMode: in.ResolvedMode,
+	}
+	if in.Mise != nil {
+		out.Mise = &model.MiseEnvironment{
+			ToolVersionsFile: in.Mise.ToolVersionsFile,
+			Tools:            in.Mise.Tools,
+		}
+	}
+	if in.ContainerImage != nil {
+		out.ContainerImage = &model.ContainerImageProfile{
+			Ref:        in.ContainerImage.Ref,
+			PullPolicy: in.ContainerImage.PullPolicy,
+		}
+	}
+	if in.Dockerfile != nil {
+		out.Dockerfile = &model.DockerfileProfile{
+			ContextDir:     in.Dockerfile.ContextDir,
+			DockerfilePath: in.Dockerfile.DockerfilePath,
+			Target:         in.Dockerfile.Target,
+			BuildArgs:      in.Dockerfile.BuildArgs,
+		}
+	}
+	return out
+}
+
+func modelToPbSkills(in []model.LoopSkillMount) []*pb.LoopSkillMount {
+	var out []*pb.LoopSkillMount
+	for _, s := range in {
+		out = append(out, &pb.LoopSkillMount{
+			Name:      s.Name,
+			Source:    s.Source,
+			Version:   s.Version,
+			MountPath: s.MountPath,
+			ReadOnly:  safeBool(s.ReadOnly),
+			Config:    nil, // Model doesn't have config yet
+		})
+	}
+	return out
+}
+
+func pbToModelSkills(in []*pb.LoopSkillMount) []model.LoopSkillMount {
+	var out []model.LoopSkillMount
+	for _, s := range in {
+		out = append(out, model.LoopSkillMount{
+			Name:      s.Name,
+			Source:    s.Source,
+			Version:   s.Version,
+			MountPath: s.MountPath,
+			ReadOnly:  ptr(s.ReadOnly),
+		})
+	}
+	return out
+}
+
+func modelToPbAnomaly(in model.Anomaly) *pb.Anomaly {
+	return &pb.Anomaly{
+		Id:            in.ID,
+		Title:         in.Title,
+		Description:   in.Description,
+		SourceType:    in.SourceType,
+		SourceRef:     in.SourceRef,
+		ProviderId:    in.ProviderID,
+		Model:         in.Model,
+		Environment:   modelToPbEnvironment(in.Environment),
+		Skills:        modelToPbSkills(in.Skills),
+		Policy:        modelToPbPolicy(in.Policy),
+		Metadata:      in.Metadata,
+		CreatedAt:     timestamppb.New(in.CreatedAt),
+		UpdatedAt:     timestamppb.New(in.UpdatedAt),
+		CorrelationId: in.CorrelationID,
+		SchemaVersion: in.SchemaVersion,
+	}
+}
+
+func modelToPbPolicy(in model.LoopPolicy) *pb.LoopPolicy {
+	return &pb.LoopPolicy{
+		MaxAttempts:         int32(in.MaxAttempts),
+		BackoffInitialNanos: in.BackoffInitial.Nanoseconds(),
+		BackoffMaxNanos:     in.BackoffMax.Nanoseconds(),
+		TimeoutNanos:        in.Timeout.Nanoseconds(),
+		TerminateOnError:    in.TerminateOnError,
+	}
+}
+
+func modelToPbJournalEntry(in model.JournalEntry) *pb.JournalEntry {
+	return &pb.JournalEntry{
+		LoopId:        in.LoopID,
+		Sequence:      in.Sequence,
+		Timestamp:     timestamppb.New(in.Timestamp),
+		Phase:         in.Phase,
+		Level:         in.Level,
+		ActorType:     in.ActorType,
+		ActorId:       in.ActorID,
+		Message:       in.Message,
+		Command:       in.Command,
+		ExitCode:      int32(safeIntPtr(in.ExitCode)),
+		Metadata:      in.Metadata,
+		CorrelationId: in.CorrelationID,
+		SchemaVersion: in.SchemaVersion,
+	}
+}
+
+func modelToPbHandoff(in model.Handoff) *pb.Handoff {
+	return &pb.Handoff{
+		LoopId:            in.LoopID,
+		Sequence:          in.Sequence,
+		Timestamp:         timestamppb.New(in.Timestamp),
+		FinalDiffSummary:  in.FinalDiffSummary,
+		ValidationState:   in.ValidationState,
+		ValidationDetails: in.ValidationDetails,
+		NextSteps:         in.NextSteps,
+		ArtifactRefs:      in.ArtifactRefs,
+		Metadata:          in.Metadata,
+		CorrelationId:     in.CorrelationID,
+		SchemaVersion:     in.SchemaVersion,
+	}
+}
+
+func modelToPbOverride(in model.OperatorOverride) *pb.OperatorOverride {
+	return &pb.OperatorOverride{
+		LoopId:        in.LoopID,
+		Sequence:      in.Sequence,
+		Timestamp:     timestamppb.New(in.Timestamp),
+		Actor:         in.Actor,
+		Action:        in.Action,
+		TargetState:   modelToPbLoopState(in.TargetState),
+		Reason:        in.Reason,
+		CorrelationId: in.CorrelationID,
+		SchemaVersion: in.SchemaVersion,
+	}
+}
+
+func storeToPbAudit(in store.AuditRecord) *pb.AuditRecord {
+	return &pb.AuditRecord{
+		EventId:       in.EventID,
+		Timestamp:     timestamppb.New(in.Timestamp),
+		Actor:         in.Actor,
+		Action:        in.Action,
+		TargetLoopId:  in.TargetLoopID,
+		Reason:        in.Reason,
+		CorrelationId: in.CorrelationID,
+		Metadata:      in.Metadata,
+		SchemaVersion: in.SchemaVersion,
+	}
+}
+
+func safeTime(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return *t
+}
+
+func safeBool(b *bool) bool {
+	if b == nil {
+		return true
+	}
+	return *b
+}
+
+func safeIntPtr(i *int) int {
+	if i == nil {
+		return 0
+	}
+	return *i
 }

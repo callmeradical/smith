@@ -1,0 +1,250 @@
+syntax = "proto3";
+
+package smith.v1;
+
+option go_package = "smith/pkg/api/v1;v1";
+
+import "google/protobuf/timestamp.proto";
+
+enum LoopState {
+  LOOP_STATE_UNSPECIFIED = 0;
+  LOOP_STATE_UNRESOLVED = 1;
+  LOOP_STATE_RUNNING = 2;
+  LOOP_STATE_SYNCED = 3;
+  LOOP_STATE_FLATLINE = 4;
+  LOOP_STATE_CANCELLED = 5;
+}
+
+message MiseEnvironment {
+  string tool_versions_file = 1;
+  map<string, string> tools = 2;
+}
+
+message ContainerImageProfile {
+  string ref = 1;
+  string pull_policy = 2;
+}
+
+message DockerfileProfile {
+  string context_dir = 1;
+  string dockerfile_path = 2;
+  string target = 3;
+  map<string, string> build_args = 4;
+}
+
+message LoopEnvironment {
+  string preset = 1;
+  MiseEnvironment mise = 2;
+  ContainerImageProfile container_image = 3;
+  DockerfileProfile dockerfile = 4;
+  map<string, string> env = 5;
+  string resolved_mode = 6;
+}
+
+message LoopSkillMount {
+  string name = 1;
+  string source = 2;
+  string version = 3;
+  string mount_path = 4;
+  bool read_only = 5;
+  map<string, string> config = 6;
+}
+
+message LoopPolicy {
+  int32 max_attempts = 1;
+  int64 backoff_initial_nanos = 2;
+  int64 backoff_max_nanos = 3;
+  int64 timeout_nanos = 4;
+  bool terminate_on_error = 5;
+}
+
+message Anomaly {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string source_type = 4;
+  string source_ref = 5;
+  string provider_id = 6;
+  string model = 7;
+  LoopEnvironment environment = 8;
+  repeated LoopSkillMount skills = 9;
+  LoopPolicy policy = 10;
+  map<string, string> metadata = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  string correlation_id = 14;
+  string schema_version = 15;
+}
+
+message State {
+  string loop_id = 1;
+  LoopState state = 2;
+  int32 attempt = 3;
+  string reason = 4;
+  string worker_job_name = 5;
+  string lock_holder = 6;
+  int64 observed_revision = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  google.protobuf.Timestamp last_heartbeat_at = 9;
+  string correlation_id = 10;
+  string schema_version = 11;
+}
+
+message LoopWithRevision {
+  State record = 1;
+  int64 revision = 2;
+}
+
+message JournalEntry {
+  string loop_id = 1;
+  int64 sequence = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string phase = 4;
+  string level = 5;
+  string actor_type = 6;
+  string actor_id = 7;
+  string message = 8;
+  string command = 9;
+  int32 exit_code = 10;
+  map<string, string> metadata = 11;
+  string correlation_id = 12;
+  string schema_version = 13;
+}
+
+message Handoff {
+  string loop_id = 1;
+  int64 sequence = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string final_diff_summary = 4;
+  string validation_state = 5;
+  string validation_details = 6;
+  string next_steps = 7;
+  repeated string artifact_refs = 8;
+  map<string, string> metadata = 9;
+  string correlation_id = 10;
+  string schema_version = 11;
+}
+
+message OperatorOverride {
+  string loop_id = 1;
+  int64 sequence = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string actor = 4;
+  string action = 5;
+  LoopState target_state = 6;
+  string reason = 7;
+  string correlation_id = 8;
+  string schema_version = 9;
+}
+
+message AuditRecord {
+  string event_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string actor = 3;
+  string action = 4;
+  string target_loop_id = 5;
+  string reason = 6;
+  string correlation_id = 7;
+  map<string, string> metadata = 8;
+  string schema_version = 9;
+}
+
+// Service Definitions
+
+service SmithService {
+  rpc ListLoops(ListLoopsRequest) returns (ListLoopsResponse);
+  rpc CreateLoop(LoopCreateRequest) returns (LoopCreateResult);
+  rpc GetLoop(GetLoopRequest) returns (LoopResponse);
+  rpc DeleteLoop(LoopDeleteRequest) returns (DeleteLoopResponse);
+  rpc TraceLoop(TraceLoopRequest) returns (LoopTraceResponse);
+  rpc GetJournal(GetJournalRequest) returns (GetJournalResponse);
+  rpc OverrideLoop(OverrideRequest) returns (OverrideResponse);
+}
+
+message ListLoopsRequest {}
+message ListLoopsResponse {
+  repeated LoopWithRevision loops = 1;
+}
+
+message LoopCreateRequest {
+  string loop_id = 1;
+  string idempotency_key = 2;
+  string title = 3;
+  string description = 4;
+  string source_type = 5;
+  string source_ref = 6;
+  string provider_id = 7;
+  string model = 8;
+  string correlation_id = 9;
+  map<string, string> metadata = 10;
+  LoopEnvironment environment = 11;
+  repeated LoopSkillMount skills = 12;
+}
+
+message LoopCreateResult {
+  string loop_id = 1;
+  string status = 2;
+  bool created = 3;
+  string message = 4;
+  LoopEnvironment environment = 5;
+  repeated LoopSkillMount skills = 6;
+}
+
+message GetLoopRequest {
+  string loop_id = 1;
+}
+
+message LoopResponse {
+  State state = 1;
+  Anomaly anomaly = 2;
+  LoopEnvironment environment = 3;
+}
+
+message LoopDeleteRequest {
+  string loop_id = 1;
+  string actor = 2;
+}
+
+message DeleteLoopResponse {
+  string loop_id = 1;
+  string status = 2;
+  string actor = 3;
+}
+
+message TraceLoopRequest {
+  string loop_id = 1;
+}
+
+message LoopTraceResponse {
+  string loop_id = 1;
+  State state = 2;
+  Anomaly anomaly = 3;
+  LoopEnvironment environment = 4;
+  repeated JournalEntry journal = 5;
+  repeated Handoff handoffs = 6;
+  repeated OperatorOverride overrides = 7;
+  repeated AuditRecord audit = 8;
+}
+
+message GetJournalRequest {
+  string loop_id = 1;
+  int64 limit = 2;
+}
+
+message GetJournalResponse {
+  repeated JournalEntry entries = 1;
+}
+
+message OverrideRequest {
+  string loop_id = 1;
+  LoopState target_state = 2;
+  string reason = 3;
+  string actor = 4;
+}
+
+message OverrideResponse {
+  string loop_id = 1;
+  string status = 2;
+  State state = 3;
+  int64 revision = 4;
+}

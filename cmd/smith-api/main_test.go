@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,20 +13,25 @@ import (
 
 	"smith/internal/source/model"
 	"smith/internal/source/store"
+	pb "smith/proto/v1"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestIngressSummary(t *testing.T) {
-	summary := ingressSummary([]ingressResult{
+	summary := newIngressSummary([]ingressResult{
 		{Status: "unresolved", Created: true},
 		{Status: "error", Created: false},
 		{Status: "unresolved", Created: false},
 	})
-	meta := summary["summary"].(map[string]int)
-	if meta["requested"] != 3 || meta["created"] != 1 || meta["existing"] != 1 || meta["errors"] != 1 {
-		t.Fatalf("unexpected summary: %#v", meta)
+	if len(summary.Results) != 3 || summary.Summary.Created != 1 || summary.Summary.Existing != 1 || summary.Summary.Errors != 1 {
+		t.Fatalf("unexpected summary: %#v", summary.Summary)
 	}
 }
 
@@ -198,7 +204,6 @@ func TestHandleDocumentBuildRejectsInvalidPRD(t *testing.T) {
 		t.Fatalf("expected no created loops, got %d", len(states))
 	}
 }
-
 func TestPresetCatalogSupportsCRUDAndPolicy(t *testing.T) {
 	catalog := newPresetCatalog("team-default")
 	if !catalog.Has("team-default") {
@@ -1386,4 +1391,140 @@ func TestDeriveLoopIDDifferentInputs(t *testing.T) {
 	if id3 == id4 {
 		t.Fatalf("deriveLoopID collision for different source refs: %q", id3)
 	}
+}
+
+func setupTestGRPC(t *testing.T) (store.StateStore, pb.SmithServiceClient, func()) {
+	es := store.NewMemStore()
+
+	gs := &grpcServer{
+		store:       es,
+		presets:     newPresetCatalog("standard"),
+		skillPolicy: model.DefaultSkillPolicy(),
+	}
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	server := grpc.NewServer()
+	pb.RegisterSmithServiceServer(server, gs)
+
+	go func() {
+		_ = server.Serve(lis)
+	}()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+
+	client := pb.NewSmithServiceClient(conn)
+
+	return es, client, func() {
+		conn.Close()
+		server.Stop()
+		lis.Close()
+	}
+}
+
+func TestGRPCServer_ListLoops(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	es, client, cleanup := setupTestGRPC(t)
+	defer cleanup()
+
+	loopID := "loop-grpc-test"
+	_, _ = es.PutState(ctx, model.StateRecord{
+		LoopID: loopID,
+		State:  model.LoopStateRunning,
+	}, 0)
+
+	res, err := client.ListLoops(ctx, &pb.ListLoopsRequest{})
+	assert.NoError(t, err)
+	require.NotNil(t, res)
+	assert.NotEmpty(t, res.Loops)
+	assert.Equal(t, loopID, res.Loops[0].Record.LoopId)
+}
+
+func TestGRPCServer_CreateLoop(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, client, cleanup := setupTestGRPC(t)
+	defer cleanup()
+
+	req := &pb.LoopCreateRequest{
+		Title:      "gRPC Created Loop",
+		SourceType: "grpc",
+		SourceRef:  "test",
+		ProviderId: "codex",
+		Model:      "gpt-5-codex",
+	}
+
+	res, err := client.CreateLoop(ctx, req)
+	assert.NoError(t, err)
+	require.NotNil(t, res)
+	assert.True(t, res.Created)
+	assert.NotEmpty(t, res.LoopId)
+}
+
+func TestGRPCServer_GetLoop(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	es, client, cleanup := setupTestGRPC(t)
+	defer cleanup()
+
+	loopID := "loop-get-test"
+	_, _ = es.PutState(ctx, model.StateRecord{
+		LoopID: loopID,
+		State:  model.LoopStateSynced,
+	}, 0)
+
+	res, err := client.GetLoop(ctx, &pb.GetLoopRequest{LoopId: loopID})
+	assert.NoError(t, err)
+	assert.Equal(t, pb.LoopState_LOOP_STATE_SYNCED, res.State.State)
+}
+
+func TestGRPCServer_DeleteLoop(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	es, client, cleanup := setupTestGRPC(t)
+	defer cleanup()
+
+	loopID := "loop-delete-test"
+	_, _ = es.PutState(ctx, model.StateRecord{
+		LoopID: loopID,
+		State:  model.LoopStateRunning,
+	}, 0)
+
+	res, err := client.DeleteLoop(ctx, &pb.LoopDeleteRequest{LoopId: loopID, Actor: "test-actor"})
+	assert.NoError(t, err)
+	assert.Equal(t, "deleted", res.Status)
+
+	state, _, _ := es.GetState(ctx, loopID)
+	assert.Equal(t, model.LoopStateCancelled, state.Record.State)
+}
+
+func TestGRPCServer_OverrideLoop(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	es, client, cleanup := setupTestGRPC(t)
+	defer cleanup()
+
+	loopID := "loop-override-test"
+	_, _ = es.PutState(ctx, model.StateRecord{
+		LoopID: loopID,
+		State:  model.LoopStateRunning,
+	}, 0)
+
+	res, err := client.OverrideLoop(ctx, &pb.OverrideRequest{
+		LoopId:      loopID,
+		TargetState: pb.LoopState_LOOP_STATE_SYNCED,
+		Reason:      "manual fix",
+		Actor:       "operator",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "overridden", res.Status)
+	assert.Equal(t, pb.LoopState_LOOP_STATE_SYNCED, res.State.State)
 }

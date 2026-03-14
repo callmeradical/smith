@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"smith/internal/source/model"
+	api "smith/pkg/api/v1"
 )
 
 type LoopDraft struct {
@@ -19,27 +20,7 @@ type LoopDraft struct {
 	Metadata       map[string]string
 }
 
-type GitHubIssue struct {
-	ID             string            `json:"id,omitempty"`
-	Repository     string            `json:"repository"`
-	Number         int               `json:"number"`
-	Title          string            `json:"title"`
-	Body           string            `json:"body,omitempty"`
-	URL            string            `json:"url,omitempty"`
-	Labels         []string          `json:"labels,omitempty"`
-	IdempotencyKey string            `json:"idempotency_key,omitempty"`
-	Metadata       map[string]string `json:"metadata,omitempty"`
-}
-
-type PRDTask struct {
-	ID          string            `json:"id,omitempty"`
-	Title       string            `json:"title"`
-	Description string            `json:"description,omitempty"`
-	Section     string            `json:"section,omitempty"`
-	SourceRef   string            `json:"source_ref,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
-}
-
+// Remove redundant internal types
 type ParseError struct {
 	ItemIndex int
 	Message   string
@@ -53,7 +34,7 @@ var (
 	nonSlugCharacters = regexp.MustCompile(`[^a-z0-9-]+`)
 )
 
-func GitHubIssueToDraft(issue GitHubIssue) (LoopDraft, error) {
+func GitHubIssueToDraft(issue api.GitHubIssue) (LoopDraft, error) {
 	repo := strings.TrimSpace(issue.Repository)
 	title := strings.TrimSpace(issue.Title)
 	if repo == "" {
@@ -93,7 +74,7 @@ func GitHubIssueToDraft(issue GitHubIssue) (LoopDraft, error) {
 	}, nil
 }
 
-func PRDTasksToDrafts(tasks []PRDTask, sourceRef string, baseMetadata map[string]string) ([]LoopDraft, []ParseError) {
+func PRDTasksToDrafts(tasks []api.PRDTask, sourceRef string, baseMetadata map[string]string) ([]LoopDraft, []ParseError) {
 	trimmedSource := strings.TrimSpace(sourceRef)
 	if trimmedSource == "" {
 		trimmedSource = "prd:adhoc"
@@ -151,7 +132,7 @@ func ParsePRDMarkdown(markdown, sourceRef string, baseMetadata map[string]string
 	}
 	lines := strings.Split(markdown, "\n")
 	section := "General"
-	tasks := make([]PRDTask, 0)
+	tasks := make([]api.PRDTask, 0)
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
@@ -170,7 +151,7 @@ func ParsePRDMarkdown(markdown, sourceRef string, baseMetadata map[string]string
 		if taskText == "" {
 			continue
 		}
-		tasks = append(tasks, PRDTask{
+		tasks = append(tasks, api.PRDTask{
 			Title:       taskText,
 			Description: fmt.Sprintf("Extracted from PRD line %d", i+1),
 			Section:     section,
@@ -197,12 +178,13 @@ func ParsePRDMarkdown(markdown, sourceRef string, baseMetadata map[string]string
 				break
 			}
 		}
-		tasks = append(tasks, PRDTask{
+		tasks = append(tasks, api.PRDTask{
 			Title:       title,
 			Description: markdown,
 			Section:     "General",
 		})
 	}
+
 	return PRDTasksToDrafts(tasks, trimmedSource, baseMetadata)
 }
 
