@@ -120,7 +120,7 @@ func TestHandleIngressPRDRejectsInvalidCanonicalPRD(t *testing.T) {
 		t.Fatalf("expected validation failure payload, got %+v", body)
 	}
 	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticMissingQualityGates)
-	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticOversizedStory)
+	assertDiagnosticCodeInReport(t, body.Report.Warnings, model.PRDDiagnosticOversizedStory)
 	states, err := ms.ListStates(context.Background())
 	if err != nil {
 		t.Fatalf("list states: %v", err)

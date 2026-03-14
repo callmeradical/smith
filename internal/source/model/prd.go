@@ -96,11 +96,20 @@ const (
 	PRDDiagnosticMultipleInProgress      = "prd_multiple_in_progress_stories"
 	PRDDiagnosticUnknownStoryDependency  = "prd_unknown_story_dependency"
 	PRDDiagnosticOversizedStory          = "prd_oversized_story"
+	PRDDiagnosticWeakAcceptance          = "prd_weak_acceptance_criteria"
+	PRDDiagnosticMissingNegativeCase     = "prd_missing_negative_case"
+	PRDDiagnosticFutureStoryDependency   = "prd_future_story_dependency"
+	PRDDiagnosticBundledStorySurfaces    = "prd_bundled_story_surfaces"
 )
 
 var (
 	prdStoryIDPattern  = regexp.MustCompile(`^US-\d{3}$`)
 	prdAllowedStatuses = []string{"open", "in_progress", "done"}
+	prdNegativeCaseRE  = regexp.MustCompile(`\b(invalid|missing|reject(?:s|ed)?|error(?:s)?|fail(?:s|ed|ure)?|without|cannot|can't|does not|prevent(?:s|ed)?|negative case|malformed|den(?:y|ies|ied)|empty|unknown|unauthorized)\b`)
+	prdWeakCriterionRE = regexp.MustCompile(`\b(works?(?: as expected)?|handles?(?: edge cases)?|supports?|appropriate|proper(?:ly)?|correct(?:ly)?|improve|enhance|clean(?: ?up)?|better|nice to have|user-friendly|robust|seamless)\b`)
+	prdCLISurfaceRE    = regexp.MustCompile(`\b(cli|command|terminal|flag)\b`)
+	prdAPISurfaceRE    = regexp.MustCompile(`\b(api|http|endpoint|handler|server)\b`)
+	prdUISurfaceRE     = regexp.MustCompile(`\b(ui|ux|frontend|front-end|page|component|screen)\b`)
 )
 
 const (
@@ -255,11 +264,35 @@ func (p *PRD) ValidateReport() PRDValidationReport {
 			})
 		}
 		storySize := len(strings.TrimSpace(story.Title)) + len(strings.TrimSpace(story.Description))
+		hasNegativeCase := false
 		for _, criterion := range story.AcceptanceCriteria {
-			storySize += len(strings.TrimSpace(criterion))
+			trimmedCriterion := strings.TrimSpace(criterion)
+			storySize += len(trimmedCriterion)
+			if prdNegativeCaseRE.MatchString(strings.ToLower(trimmedCriterion)) {
+				hasNegativeCase = true
+			}
+			if criterionNeedsClarification(trimmedCriterion) {
+				report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
+					Code:       PRDDiagnosticWeakAcceptance,
+					Path:       storyPath + ".acceptanceCriteria",
+					StoryID:    storyID,
+					Message:    "acceptance criteria should describe observable behavior with concrete outcomes",
+					Suggestion: "Rewrite vague criteria with concrete inputs, outputs, or user-visible results.",
+				})
+				break
+			}
+		}
+		if !hasNegativeCase {
+			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
+				Code:       PRDDiagnosticMissingNegativeCase,
+				Path:       storyPath + ".acceptanceCriteria",
+				StoryID:    storyID,
+				Message:    "story acceptance criteria should cover at least one negative or failure case",
+				Suggestion: "Add a criterion describing how the system rejects, blocks, or reports an invalid scenario.",
+			})
 		}
 		if len(story.AcceptanceCriteria) > maxPRDStoryAcceptanceCriteria || storySize > maxPRDStoryCharacters {
-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
 				Code:    PRDDiagnosticOversizedStory,
 				Path:    storyPath,
 				StoryID: storyID,
@@ -268,6 +301,15 @@ func (p *PRD) ValidateReport() PRDValidationReport {
 					"Split the story into smaller stories with at most %d acceptance criteria and tighter scope.",
 					maxPRDStoryAcceptanceCriteria,
 				),
+			})
+		}
+		if bundledDeliverySurfaces(story) >= 3 && len(story.DependsOn) == 0 {
+			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+				Code:       PRDDiagnosticBundledStorySurfaces,
+				Path:       storyPath,
+				StoryID:    storyID,
+				Message:    "story bundles CLI, API, and UI work without dependency ordering",
+				Suggestion: "Split the work into separate stories per surface and add dependsOn links for the execution order.",
 			})
 		}
 		status := strings.TrimSpace(story.Status)
@@ -299,16 +341,26 @@ func (p *PRD) ValidateReport() PRDValidationReport {
 		storyID := strings.TrimSpace(story.ID)
 		for depIndex, dependency := range story.DependsOn {
 			depID := strings.TrimSpace(dependency)
-			if _, ok := storyIDs[depID]; ok {
+			depStoryIndex, ok := storyIDs[depID]
+			if !ok {
+				report.Errors = append(report.Errors, PRDValidationDiagnostic{
+					Code:       PRDDiagnosticUnknownStoryDependency,
+					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
+					StoryID:    storyID,
+					Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
+					Suggestion: "Reference an existing canonical story id.",
+				})
 				continue
 			}
-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
-				Code:       PRDDiagnosticUnknownStoryDependency,
-				Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
-				StoryID:    storyID,
-				Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
-				Suggestion: "Reference an existing canonical story id.",
-			})
+			if depStoryIndex >= i {
+				report.Errors = append(report.Errors, PRDValidationDiagnostic{
+					Code:       PRDDiagnosticFutureStoryDependency,
+					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
+					StoryID:    storyID,
+					Message:    fmt.Sprintf("story dependency %q must appear before %q in story order", depID, storyID),
+					Suggestion: "Reorder the stories or update dependsOn so each dependency points to an earlier story.",
+				})
+			}
 		}
 	}
 
@@ -322,4 +374,30 @@ func (p *PRD) ValidateReport() PRDValidationReport {
 		report.Readiness = PRDReadinessPass
 	}
 	return report
+}
+
+func criterionNeedsClarification(criterion string) bool {
+	trimmed := strings.TrimSpace(criterion)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	if prdNegativeCaseRE.MatchString(lower) {
+		return false
+	}
+	if prdWeakCriterionRE.MatchString(lower) {
+		return true
+	}
+	return len(strings.Fields(trimmed)) < 4
+}
+
+func bundledDeliverySurfaces(story PRDStory) int {
+	text := strings.ToLower(strings.Join(append(append([]string{story.Title, story.Description}, story.AcceptanceCriteria...), story.DependsOn...), " "))
+	surfaces := 0
+	for _, pattern := range []*regexp.Regexp{prdCLISurfaceRE, prdAPISurfaceRE, prdUISurfaceRE} {
+		if pattern.MatchString(text) {
+			surfaces++
+		}
+	}
+	return surfaces
 }

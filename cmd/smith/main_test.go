@@ -236,6 +236,55 @@ func TestRunValidateInvalidPRDReturnsDiagnostics(t *testing.T) {
 	}
 }
 
+func TestRunValidateWarningOnlyPRDReturnsZero(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "prd.json")
+	prd := `{
+  "version": 1,
+  "project": "Smith PRD Validation",
+  "overview": "Canonical PRD validation",
+  "qualityGates": ["go test ./..."],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Clarify readiness warnings",
+      "status": "open",
+      "description": "As a maintainer, I want warning-only lint results preserved.",
+      "acceptanceCriteria": ["UI works as expected."]
+    }
+  ]
+}`
+	if err := os.WriteFile(jsonPath, []byte(prd), 0o644); err != nil {
+		t.Fatalf("write prd json: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--prd", "validate", jsonPath}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected validation warning code=0, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+
+	var report struct {
+		Valid     bool   `json:"valid"`
+		Readiness string `json:"readiness"`
+		Warnings  []struct {
+			Code string `json:"code"`
+		} `json:"warnings"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("expected machine-readable JSON diagnostics: %v\nstdout=%s", err, stdout.String())
+	}
+	if !report.Valid {
+		t.Fatalf("expected warning-only report to be valid, got %+v", report)
+	}
+	if report.Readiness != "warn" {
+		t.Fatalf("expected readiness warn, got %+v", report)
+	}
+	if len(report.Warnings) == 0 {
+		t.Fatalf("expected warning diagnostics, got %+v", report)
+	}
+}
+
 func TestRunRejectsInvalidExportArguments(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--prd", "--to-markdown", "prd.md"}, strings.NewReader(""), &stdout, &stderr)
