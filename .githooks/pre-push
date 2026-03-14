@@ -12,6 +12,4 @@ if ! command -v act >/dev/null 2>&1; then
 fi
 
 echo "[pre-push] running unit tests via act..."
-act -j go-unit-tests
-act -j node-unit-tests
-act -j playwright-tests
+make hooks-run-pre-push

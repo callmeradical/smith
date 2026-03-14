@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "project": "Smith PRD Validation",
+  "overview": "Normalize markdown PRDs into canonical JSON for downstream workflows.",
+  "goals": [
+    "Make canonical PRD JSON deterministic.",
+    "Preserve story ordering from markdown."
+  ],
+  "nonGoals": [
+    "Building a rich editor."
+  ],
+  "successMetrics": [
+    "Imports preserve story IDs and quality gates."
+  ],
+  "rules": [
+    "Canonical JSON is the source of truth."
+  ],
+  "qualityGates": [
+    "go test ./...",
+    "./scripts/validate-acceptance.sh"
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Define validation contract",
+      "status": "in_progress",
+      "description": "As a maintainer, I want validation diagnostics shared across entrypoints.",
+      "acceptanceCriteria": [
+        "Validation returns machine-readable diagnostics."
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Normalize markdown PRDs into canonical JSON",
+      "status": "open",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As a user, I want markdown normalized into canonical PRD JSON.",
+      "acceptanceCriteria": [
+        "Supported headings map into canonical JSON fields.",
+        "Quality gates are preserved."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "cleanup_pod_visualizer_20260313",
+  "title": "Cleanup Pod-Visualizer",
+  "status": "completed",
+  "owner": "Gemini CLI",
+  "started_at": "2026-03-13T10:00:00Z",
+  "description": "Removing pod-visualizer and pod-visualizer-testing as they are no longer needed."
+}

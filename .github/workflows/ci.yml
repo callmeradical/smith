@@ -151,7 +151,7 @@ jobs:
         run: make test-frontend
 
       - name: Upload Playwright artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-playwright-artifacts
@@ -181,7 +181,7 @@ jobs:
         run: ./scripts/test/run-matrix.sh
 
       - name: Upload test artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-test-artifacts
@@ -210,7 +210,7 @@ jobs:
         run: make test-acceptance-bdd
 
       - name: Upload acceptance artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-acceptance-artifacts
@@ -245,7 +245,7 @@ jobs:
         run: ${{ matrix.scenario.script }}
 
       - name: Upload scenario artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-e2e-${{ matrix.scenario.id }}-artifacts
@@ -270,11 +270,12 @@ jobs:
           SMITH_ENABLE_CLUSTER_TESTS: "false"
         run: |
           ./scripts/test/e2e-ingress-modes.sh
+          ./scripts/test/e2e-prd-authoring.sh
           ./scripts/test/e2e-environment-modes.sh
           ./scripts/test/e2e-skill-mounts.sh
 
       - name: Upload ingress/environment e2e artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-e2e-ingress-environment-artifacts
@@ -301,6 +302,7 @@ jobs:
             echo "- \`e2e-single-loop-report.json\`"
             echo "- \`e2e-concurrent-summary.txt\`"
             echo "- \`e2e-ingress-summary.txt\`"
+            echo "- \`e2e-prd-authoring-summary.txt\`"
             echo "- \`e2e-environment-summary.txt\`"
             echo "- \`e2e-skill-mounts-summary.txt\`"
           } >> "$GITHUB_STEP_SUMMARY"

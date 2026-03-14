@@ -1,0 +1,23 @@
+{
+  "projectId": "smith",
+  "environment": "dev",
+  "interfaces": [
+    {
+      "type": "cli"
+    },
+    {
+      "type": "api",
+      "baseUrl": "http://localhost:3000"
+    },
+    {
+      "type": "ui",
+      "baseUrl": "http://localhost:3000"
+    }
+  ],
+  "capabilities": [
+    "api",
+    "cli",
+    "ui",
+    "chat"
+  ]
+}

@@ -57,6 +57,7 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 
 ## Operations Notes
 
+- [PRD Authoring Workflow](prd-authoring-workflow.md)
 - [Loop Ingress and CLI](loop-ingress-and-cli.md)
 - [Loop Environment Profile](loop-environment-profiles.md)
 - [Multi-Provider Skill Mount Abstraction](multi-provider-skill-mount-abstraction.md)
@@ -70,4 +71,3 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [Staging Soak/Chaos Runbook](staging-soak-chaos-runbook.md)
 - [Test Matrix and Failure Injection](test-matrix-and-failure-injection.md)
 - [Go-Native Test Harness Strategy](test-harness-strategy.md)
-- [Operator Console UI Style Contract](ui-style-pod-visualizer.md)
