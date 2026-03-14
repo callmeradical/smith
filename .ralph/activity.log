@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-14 01:05:47 | run=20260314-005446-82373 | iter=1 | mode=build | story=US-001 | duration=661s | status=success
 - 2026-03-09 05:59:49 | run=20260309-043236-60668 | iter=6 | mode=build | story=US-006 | duration=832s | status=success
 - 2026-03-09 05:45:55 | run=20260309-043236-60668 | iter=5 | mode=build | story=US-005 | duration=734s | status=success
 - 2026-03-09 05:33:39 | run=20260309-043236-60668 | iter=4 | mode=build | story=US-004 | duration=1467s | status=success
@@ -55,3 +56,8 @@
 [2026-03-14 01:00:58] Verification finished for US-001: go test and build passed; acceptance and act exposed unrelated baseline/environment failures
 [2026-03-14 01:03:38] Updated US-001 progress entry
 [2026-03-14 01:04:39] Finalized US-001 commits and verified clean working tree
+[2026-03-14 01:05:47] ITERATION 1 end (duration=661s)
+[2026-03-14 01:05:50] ITERATION 2 start (mode=build story=US-002)
+[2026-03-14 01:06:45] Completed code audit of current PRD model and draft-only markdown parser
+[2026-03-14 01:09:26] Implemented shared PRD markdown normalizer and fixture-based model tests for US-002
+[2026-03-14 01:10:36] Ran full verification gates for US-002; investigating repository-level acceptance failures

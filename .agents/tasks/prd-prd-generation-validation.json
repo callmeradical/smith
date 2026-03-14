@@ -164,7 +164,7 @@
     {
       "id": "US-001",
       "title": "Define canonical PRD validation and diagnostic contracts",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [],
       "description": "As a Smith maintainer, I want a shared canonical PRD validation contract so CLI and API workflows can evaluate the same document structure and produce the same diagnostics.",
       "acceptanceCriteria": [
@@ -175,13 +175,13 @@
         "Unit tests cover valid documents, malformed documents, duplicate IDs, bad dependencies, and missing quality gates."
       ],
       "startedAt": "2026-03-14T04:54:46.813609+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-14T04:54:46.814167+00:00"
+      "completedAt": "2026-03-14T05:05:48.135008+00:00",
+      "updatedAt": "2026-03-14T05:05:48.133740+00:00"
     },
     {
       "id": "US-002",
       "title": "Normalize markdown PRDs into canonical JSON",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-001"
       ],
@@ -192,7 +192,10 @@
         "Example: a markdown PRD containing explicit story sections and quality gates produces canonical JSON with matching story IDs, ordering, and gate commands.",
         "Negative case: markdown missing required canonical content such as any usable stories or any quality gates produces a failed validation report with suggested fixes.",
         "Fixture-based tests cover well-formed markdown, partially structured markdown, and malformed markdown inputs."
-      ]
+      ],
+      "startedAt": "2026-03-14T05:05:50.201896+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-14T05:05:50.202105+00:00"
     },
     {
       "id": "US-003",
