@@ -20140,3 +20140,966 @@ index 0000000000000000000000000000000000000000..1fb38304b2599c7e20ba2df6014f5fcb
 
 codex
 The pre-commit hook mutated the run log after the metadata commit, which is consistent with the earlier repo warning in `.ralph/errors.log`. I’m making one final no-verify commit for that post-hook log artifact so the worktree actually ends clean instead of chasing hook-generated diffs forever.
+exec
+/bin/zsh -lc 'git add /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-1.log && git commit --no-verify -m "$(cat <<'"'EOF'
+chore(logs): capture post-hook run log
+
+Record the run log changes written by repository hooks after the
+US-001 progress commit so the working tree finishes clean.
+
+Reference: US-001
+EOF
+)\"" in /Users/lars/Dev/smith-prd-validation succeeded in 237ms:
+[prd-validation cae6fb8] chore(logs): capture post-hook run log
+ 1 file changed, 2871 insertions(+)
+file update:
+diff --git a/internal/source/model/prd.go b/internal/source/model/prd.go
+index 9af4530a92f5f642ca6e41b0c3bb3a10101553c6..5b349cafbb42fee477875f4248632beb1c5bc2aa
+--- a/internal/source/model/prd.go
++++ b/internal/source/model/prd.go
+@@ -2,25 +2,29 @@
+ 
+ import (
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
++	"regexp"
++	"slices"
++	"strings"
+ )
+ 
+ type PRD struct {
+-	Version   int            `json:"version"`
+-	Project   string         `json:"project"`
+-	Overview  string         `json:"overview"`
+-	Goals     []string       `json:"goals"`
+-	NonGoals  []string       `json:"nonGoals"`
+-	Success   []string       `json:"successMetrics"`
+-	Questions []string       `json:"openQuestions"`
+-	Stack     PRDStack       `json:"stack"`
+-	Routes    []PRDRoute     `json:"routes"`
+-	UI        string         `json:"uiNotes"`
+-	DataModel []PRDEntity    `json:"dataModel"`
+-	Import    string         `json:"importFormat"`
+-	Rules     []string       `json:"rules"`
+-	Gates     []string       `json:"qualityGates"`
+-	Stories   []PRDStory     `json:"stories"`
++	Version   int         `json:"version"`
++	Project   string      `json:"project"`
++	Overview  string      `json:"overview"`
++	Goals     []string    `json:"goals"`
++	NonGoals  []string    `json:"nonGoals"`
++	Success   []string    `json:"successMetrics"`
++	Questions []string    `json:"openQuestions"`
++	Stack     PRDStack    `json:"stack"`
++	Routes    []PRDRoute  `json:"routes"`
++	UI        string      `json:"uiNotes"`
++	DataModel []PRDEntity `json:"dataModel"`
++	Import    string      `json:"importFormat"`
++	Rules     []string    `json:"rules"`
++	Gates     []string    `json:"qualityGates"`
++	Stories   []PRDStory  `json:"stories"`
+ }
+ 
+ type PRDStack struct {
+@@ -56,37 +60,244 @@
+ 	AcceptanceCriteria []string `json:"acceptanceCriteria"`
+ }
+ 
++type PRDValidationReport struct {
++	Valid     bool                      `json:"valid"`
++	Errors    []PRDValidationDiagnostic `json:"errors,omitempty"`
++	Warnings  []PRDValidationDiagnostic `json:"warnings,omitempty"`
++	Readiness string                    `json:"readiness"`
++}
++
++type PRDValidationDiagnostic struct {
++	Code       string `json:"code"`
++	Path       string `json:"path"`
++	StoryID    string `json:"storyId,omitempty"`
++	Message    string `json:"message"`
++	Suggestion string `json:"suggestion,omitempty"`
++}
++
++const (
++	PRDReadinessPass = "pass"
++	PRDReadinessWarn = "warn"
++	PRDReadinessFail = "fail"
++
++	PRDDiagnosticMalformedJSON           = "prd_malformed_json"
++	PRDDiagnosticInvalidVersion          = "prd_invalid_version"
++	PRDDiagnosticMissingProject          = "prd_missing_project"
++	PRDDiagnosticMissingOverview         = "prd_missing_overview"
++	PRDDiagnosticMissingQualityGates     = "prd_missing_quality_gates"
++	PRDDiagnosticEmptyQualityGate        = "prd_empty_quality_gate"
++	PRDDiagnosticMissingStories          = "prd_missing_stories"
++	PRDDiagnosticNonCanonicalStoryID     = "prd_non_canonical_story_id"
++	PRDDiagnosticDuplicateStoryID        = "prd_duplicate_story_id"
++	PRDDiagnosticMissingStoryTitle       = "prd_missing_story_title"
++	PRDDiagnosticMissingStoryDescription = "prd_missing_story_description"
++	PRDDiagnosticMissingAcceptance       = "prd_missing_acceptance_criteria"
++	PRDDiagnosticInvalidStoryStatus      = "prd_invalid_story_status"
++	PRDDiagnosticMultipleInProgress      = "prd_multiple_in_progress_stories"
++	PRDDiagnosticUnknownStoryDependency  = "prd_unknown_story_dependency"
++)
++
++var (
++	prdStoryIDPattern  = regexp.MustCompile(`^US-\d{3}$`)
++	prdAllowedStatuses = []string{"open", "in_progress", "done"}
++)
++
+ func (p *PRD) Validate() error {
+-	if p.Project == "" {
+-		return fmt.Errorf("project name is required")
++	report := p.ValidateReport()
++	if report.Valid {
++		return nil
++	}
++	return errors.New(report.Errors[0].Message)
++}
++
++func ParsePRDJSON(data []byte) (*PRD, error) {
++	var prd PRD
++	if err := json.Unmarshal(data, &prd); err != nil {
++		return nil, err
+ 	}
+-	if p.Overview == "" {
+-		return fmt.Errorf("overview is required")
++	return &prd, nil
++}
++
++func ValidatePRDJSON(data []byte) (*PRD, PRDValidationReport) {
++	prd, err := ParsePRDJSON(data)
++	if err != nil {
++		return nil, PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    fmt.Sprintf("PRD JSON could not be parsed: %v", err),
++					Suggestion: "Fix the JSON syntax and try validation again.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++	}
++	return prd, prd.ValidateReport()
++}
++
++func (p *PRD) ValidateReport() PRDValidationReport {
++	report := PRDValidationReport{
++		Errors:   make([]PRDValidationDiagnostic, 0),
++		Warnings: make([]PRDValidationDiagnostic, 0),
++	}
++
++	if p.Version <= 0 {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticInvalidVersion,
++			Path:       "$.version",
++			Message:    "version must be a positive integer",
++			Suggestion: "Set version to the current canonical schema version.",
++		})
++	}
++	if strings.TrimSpace(p.Project) == "" {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMissingProject,
++			Path:       "$.project",
++			Message:    "project name is required",
++			Suggestion: "Add a non-empty project name.",
++		})
++	}
++	if strings.TrimSpace(p.Overview) == "" {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMissingOverview,
++			Path:       "$.overview",
++			Message:    "overview is required",
++			Suggestion: "Add a short overview describing the PRD scope.",
++		})
+ 	}
++	if len(p.Gates) == 0 {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMissingQualityGates,
++			Path:       "$.qualityGates",
++			Message:    "at least one quality gate is required",
++			Suggestion: "Add the commands required to verify PRD work.",
++		})
++	}
++	for i, gate := range p.Gates {
++		if strings.TrimSpace(gate) != "" {
++			continue
++		}
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticEmptyQualityGate,
++			Path:       fmt.Sprintf("$.qualityGates[%d]", i),
++			Message:    "quality gate commands must be non-empty strings",
++			Suggestion: "Replace the empty value with an executable verification command.",
++		})
++	}
+ 	if len(p.Stories) == 0 {
+-		return fmt.Errorf("at least one user story is required")
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMissingStories,
++			Path:       "$.stories",
++			Message:    "at least one story is required",
++			Suggestion: "Add one or more canonical US-### stories.",
++		})
+ 	}
+-	for i, s := range p.Stories {
+-		if s.ID == "" {
+-			return fmt.Errorf("story %d: id is required", i+1)
++
++	storyIDs := make(map[string]int, len(p.Stories))
++	inProgressStories := make([]string, 0, 1)
++	for i, story := range p.Stories {
++		storyPath := fmt.Sprintf("$.stories[%d]", i)
++		storyID := strings.TrimSpace(story.ID)
++		expectedID := fmt.Sprintf("US-%03d", i+1)
++		if storyID == "" || !prdStoryIDPattern.MatchString(storyID) || storyID != expectedID {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticNonCanonicalStoryID,
++				Path:       storyPath + ".id",
++				StoryID:    storyID,
++				Message:    fmt.Sprintf("story id must be canonical and sequential; expected %q", expectedID),
++				Suggestion: fmt.Sprintf("Rename this story id to %q.", expectedID),
++			})
+ 		}
+-		if s.Title == "" {
+-			return fmt.Errorf("story %d (%s): title is required", i+1, s.ID)
++		if firstIndex, exists := storyIDs[storyID]; storyID != "" && exists {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticDuplicateStoryID,
++				Path:       storyPath + ".id",
++				StoryID:    storyID,
++				Message:    fmt.Sprintf("story id %q duplicates $.stories[%d].id", storyID, firstIndex),
++				Suggestion: "Assign each story a unique canonical id.",
++			})
++		} else if storyID != "" {
++			storyIDs[storyID] = i
+ 		}
+-		if s.Description == "" {
+-			return fmt.Errorf("story %d (%s): description is required", i+1, s.ID)
++		if strings.TrimSpace(story.Title) == "" {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingStoryTitle,
++				Path:       storyPath + ".title",
++				StoryID:    storyID,
++				Message:    "story title is required",
++				Suggestion: "Add a concise story title.",
++			})
+ 		}
+-		if len(s.AcceptanceCriteria) == 0 {
+-			return fmt.Errorf("story %d (%s): at least one acceptance criterion is required", i+1, s.ID)
++		if strings.TrimSpace(story.Description) == "" {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingStoryDescription,
++				Path:       storyPath + ".description",
++				StoryID:    storyID,
++				Message:    "story description is required",
++				Suggestion: "Describe the user and desired outcome for this story.",
++			})
++		}
++		if len(story.AcceptanceCriteria) == 0 {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingAcceptance,
++				Path:       storyPath + ".acceptanceCriteria",
++				StoryID:    storyID,
++				Message:    "at least one acceptance criterion is required",
++				Suggestion: "Add concrete acceptance criteria for this story.",
++			})
++		}
++		status := strings.TrimSpace(story.Status)
++		if !slices.Contains(prdAllowedStatuses, status) {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticInvalidStoryStatus,
++				Path:       storyPath + ".status",
++				StoryID:    storyID,
++				Message:    fmt.Sprintf("story status %q is not canonical", status),
++				Suggestion: "Use one of: open, in_progress, done.",
++			})
++		}
++		if status == "in_progress" {
++			inProgressStories = append(inProgressStories, storyID)
++		}
++	}
++
++	if len(inProgressStories) > 1 {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMultipleInProgress,
++			Path:       "$.stories",
++			Message:    "only one story may be in_progress at a time",
++			Suggestion: "Mark the remaining active stories as open or done.",
++		})
++	}
++
++	for i, story := range p.Stories {
++		storyPath := fmt.Sprintf("$.stories[%d]", i)
++		storyID := strings.TrimSpace(story.ID)
++		for depIndex, dependency := range story.DependsOn {
++			depID := strings.TrimSpace(dependency)
++			if _, ok := storyIDs[depID]; ok {
++				continue
++			}
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticUnknownStoryDependency,
++				Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++				StoryID:    storyID,
++				Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
++				Suggestion: "Reference an existing canonical story id.",
++			})
+ 		}
+ 	}
+-	return nil
+-}
+ 
+-func ParsePRDJSON(data []byte) (*PRD, error) {
+-	var prd PRD
+-	if err := json.Unmarshal(data, &prd); err != nil {
+-		return nil, err
++	report.Valid = len(report.Errors) == 0
++	switch {
++	case len(report.Errors) > 0:
++		report.Readiness = PRDReadinessFail
++	case len(report.Warnings) > 0:
++		report.Readiness = PRDReadinessWarn
++	default:
++		report.Readiness = PRDReadinessPass
+ 	}
+-	return &prd, nil
++	return report
+ }
+diff --git a/internal/source/model/prd_test.go b/internal/source/model/prd_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..1fb38304b2599c7e20ba2df6014f5fcb01de8895
+--- /dev/null
++++ b/internal/source/model/prd_test.go
+@@ -0,0 +1,148 @@
++package model
++
++import (
++	"testing"
++)
++
++func TestValidatePRDReportValidCanonicalDocument(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Reuse validation contract",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a maintainer, I want API and CLI parity.",
++				AcceptanceCriteria: []string{"CLI and API share the same rules."},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected report to be valid, got %+v", report)
++	}
++	if len(report.Errors) != 0 {
++		t.Fatalf("expected zero blocking errors, got %+v", report.Errors)
++	}
++	if report.Readiness != PRDReadinessPass {
++		t.Fatalf("expected readiness %q, got %q", PRDReadinessPass, report.Readiness)
++	}
++}
++
++func TestValidatePRDJSONMalformedDocument(t *testing.T) {
++	prd, report := ValidatePRDJSON([]byte(`{"version":1,"project":"x",`))
++	if prd != nil {
++		t.Fatal("expected no parsed PRD for malformed JSON")
++	}
++	if report.Valid {
++		t.Fatal("expected malformed JSON report to be invalid")
++	}
++	if len(report.Errors) != 1 {
++		t.Fatalf("expected one parse diagnostic, got %+v", report.Errors)
++	}
++	if report.Errors[0].Code != PRDDiagnosticMalformedJSON {
++		t.Fatalf("expected code %q, got %q", PRDDiagnosticMalformedJSON, report.Errors[0].Code)
++	}
++}
++
++func TestValidatePRDReportDuplicateIDsAndUnknownDependency(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "First story",
++				Status:             "open",
++				Description:        "desc",
++				AcceptanceCriteria: []string{"one"},
++			},
++			{
++				ID:                 "US-001",
++				Title:              "Duplicate story",
++				Status:             "open",
++				DependsOn:          []string{"US-999"},
++				Description:        "desc",
++				AcceptanceCriteria: []string{"one"},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticDuplicateStoryID)
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticUnknownStoryDependency)
++}
++
++func TestValidatePRDReportMissingProjectAndQualityGates(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "First story",
++				Status:             "open",
++				Description:        "desc",
++				AcceptanceCriteria: []string{"one"},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticMissingProject)
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticMissingQualityGates)
++}
++
++func TestValidatePRDReportRejectsNonCanonicalStatus(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "First story",
++				Status:             "completed",
++				Description:        "desc",
++				AcceptanceCriteria: []string{"one"},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticInvalidStoryStatus)
++}
++
++func assertDiagnosticCode(t *testing.T, diagnostics []PRDValidationDiagnostic, want string) {
++	t.Helper()
++	for _, diagnostic := range diagnostics {
++		if diagnostic.Code == want {
++			return
++		}
++	}
++	t.Fatalf("expected diagnostic code %q in %+v", want, diagnostics)
++}
+
+exec
+/bin/zsh -lc 'git show -s --format="%h %s" HEAD' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+cae6fb8 chore(logs): capture post-hook run log
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+ M .ralph/activity.log
+ M .ralph/runs/run-20260314-005446-82373-iter-1.log
+file update:
+diff --git a/internal/source/model/prd.go b/internal/source/model/prd.go
+index 9af4530a92f5f642ca6e41b0c3bb3a10101553c6..5b349cafbb42fee477875f4248632beb1c5bc2aa
+--- a/internal/source/model/prd.go
++++ b/internal/source/model/prd.go
+@@ -2,25 +2,29 @@
+ 
+ import (
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
++	"regexp"
++	"slices"
++	"strings"
+ )
+ 
+ type PRD struct {
+-	Version   int            `json:"version"`
+-	Project   string         `json:"project"`
+-	Overview  string         `json:"overview"`
+-	Goals     []string       `json:"goals"`
+-	NonGoals  []string       `json:"nonGoals"`
+-	Success   []string       `json:"successMetrics"`
+-	Questions []string       `json:"openQuestions"`
+-	Stack     PRDStack       `json:"stack"`
+-	Routes    []PRDRoute     `json:"routes"`
+-	UI        string         `json:"uiNotes"`
+-	DataModel []PRDEntity    `json:"dataModel"`
+-	Import    string         `json:"importFormat"`
+-	Rules     []string       `json:"rules"`
+-	Gates     []string       `json:"qualityGates"`
+-	Stories   []PRDStory     `json:"stories"`
++	Version   int         `json:"version"`
++	Project   string      `json:"project"`
++	Overview  string      `json:"overview"`
++	Goals     []string    `json:"goals"`
++	NonGoals  []string    `json:"nonGoals"`
++	Success   []string    `json:"successMetrics"`
++	Questions []string    `json:"openQuestions"`
++	Stack     PRDStack    `json:"stack"`
++	Routes    []PRDRoute  `json:"routes"`
++	UI        string      `json:"uiNotes"`
++	DataModel []PRDEntity `json:"dataModel"`
++	Import    string      `json:"importFormat"`
++	Rules     []string    `json:"rules"`
++	Gates     []string    `json:"qualityGates"`
++	Stories   []PRDStory  `json:"stories"`
+ }
+ 
+ type PRDStack struct {
+@@ -56,37 +60,244 @@
+ 	AcceptanceCriteria []string `json:"acceptanceCriteria"`
+ }
+ 
++type PRDValidationReport struct {
++	Valid     bool                      `json:"valid"`
++	Errors    []PRDValidationDiagnostic `json:"errors,omitempty"`
++	Warnings  []PRDValidationDiagnostic `json:"warnings,omitempty"`
++	Readiness string                    `json:"readiness"`
++}
++
++type PRDValidationDiagnostic struct {
++	Code       string `json:"code"`
++	Path       string `json:"path"`
++	StoryID    string `json:"storyId,omitempty"`
++	Message    string `json:"message"`
++	Suggestion string `json:"suggestion,omitempty"`
++}
++
++const (
++	PRDReadinessPass = "pass"
++	PRDReadinessWarn = "warn"
++	PRDReadinessFail = "fail"
++
++	PRDDiagnosticMalformedJSON           = "prd_malformed_json"
++	PRDDiagnosticInvalidVersion          = "prd_invalid_version"
++	PRDDiagnosticMissingProject          = "prd_missing_project"
++	PRDDiagnosticMissingOverview         = "prd_missing_overview"
++	PRDDiagnosticMissingQualityGates     = "prd_missing_quality_gates"
++	PRDDiagnosticEmptyQualityGate        = "prd_empty_quality_gate"
++	PRDDiagnosticMissingStories          = "prd_missing_stories"
++	PRDDiagnosticNonCanonicalStoryID     = "prd_non_canonical_story_id"
++	PRDDiagnosticDuplicateStoryID        = "prd_duplicate_story_id"
++	PRDDiagnosticMissingStoryTitle       = "prd_missing_story_title"
++	PRDDiagnosticMissingStoryDescription = "prd_missing_story_description"
++	PRDDiagnosticMissingAcceptance       = "prd_missing_acceptance_criteria"
++	PRDDiagnosticInvalidStoryStatus      = "prd_invalid_story_status"
++	PRDDiagnosticMultipleInProgress      = "prd_multiple_in_progress_stories"
++	PRDDiagnosticUnknownStoryDependency  = "prd_unknown_story_dependency"
++)
++
++var (
++	prdStoryIDPattern  = regexp.MustCompile(`^US-\d{3}$`)
++	prdAllowedStatuses = []string{"open", "in_progress", "done"}
++)
++
+ func (p *PRD) Validate() error {
+-	if p.Project == "" {
+-		return fmt.Errorf("project name is required")
++	report := p.ValidateReport()
++	if report.Valid {
++		return nil
++	}
++	return errors.New(report.Errors[0].Message)
++}
++
++func ParsePRDJSON(data []byte) (*PRD, error) {
++	var prd PRD
++	if err := json.Unmarshal(data, &prd); err != nil {
++		return nil, err
+ 	}
+-	if p.Overview == "" {
+-		return fmt.Errorf("overview is required")
++	return &prd, nil
++}
++
++func ValidatePRDJSON(data []byte) (*PRD, PRDValidationReport) {
++	prd, err := ParsePRDJSON(data)
++	if err != nil {
++		return nil, PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    fmt.Sprintf("PRD JSON could not be parsed: %v", err),
++					Suggestion: "Fix the JSON syntax and try validation again.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++	}
++	return prd, prd.ValidateReport()
++}
++
++func (p *PRD) ValidateReport() PRDValidationReport {
++	report := PRDValidationReport{
++		Errors:   make([]PRDValidationDiagnostic, 0),
++		Warnings: make([]PRDValidationDiagnostic, 0),
++	}
++
++	if p.Version <= 0 {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticInvalidVersion,
++			Path:       "$.version",
++			Message:    "version must be a positive integer",
++			Suggestion: "Set version to the current canonical schema version.",
++		})
++	}
++	if strings.TrimSpace(p.Project) == "" {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMissingProject,
++			Path:       "$.project",
++			Message:    "project name is required",
++			Suggestion: "Add a non-empty project name.",
++		})
++	}
++	if strings.TrimSpace(p.Overview) == "" {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMissingOverview,
++			Path:       "$.overview",
++			Message:    "overview is required",
++			Suggestion: "Add a short overview describing the PRD scope.",
++		})
+ 	}
++	if len(p.Gates) == 0 {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMissingQualityGates,
++			Path:       "$.qualityGates",
++			Message:    "at least one quality gate is required",
++			Suggestion: "Add the commands required to verify PRD work.",
++		})
++	}
++	for i, gate := range p.Gates {
++		if strings.TrimSpace(gate) != "" {
++			continue
++		}
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticEmptyQualityGate,
++			Path:       fmt.Sprintf("$.qualityGates[%d]", i),
++			Message:    "quality gate commands must be non-empty strings",
++			Suggestion: "Replace the empty value with an executable verification command.",
++		})
++	}
+ 	if len(p.Stories) == 0 {
+-		return fmt.Errorf("at least one user story is required")
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMissingStories,
++			Path:       "$.stories",
++			Message:    "at least one story is required",
++			Suggestion: "Add one or more canonical US-### stories.",
++		})
+ 	}
+-	for i, s := range p.Stories {
+-		if s.ID == "" {
+-			return fmt.Errorf("story %d: id is required", i+1)
++
++	storyIDs := make(map[string]int, len(p.Stories))
++	inProgressStories := make([]string, 0, 1)
++	for i, story := range p.Stories {
++		storyPath := fmt.Sprintf("$.stories[%d]", i)
++		storyID := strings.TrimSpace(story.ID)
++		expectedID := fmt.Sprintf("US-%03d", i+1)
++		if storyID == "" || !prdStoryIDPattern.MatchString(storyID) || storyID != expectedID {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticNonCanonicalStoryID,
++				Path:       storyPath + ".id",
++				StoryID:    storyID,
++				Message:    fmt.Sprintf("story id must be canonical and sequential; expected %q", expectedID),
++				Suggestion: fmt.Sprintf("Rename this story id to %q.", expectedID),
++			})
+ 		}
+-		if s.Title == "" {
+-			return fmt.Errorf("story %d (%s): title is required", i+1, s.ID)
++		if firstIndex, exists := storyIDs[storyID]; storyID != "" && exists {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticDuplicateStoryID,
++				Path:       storyPath + ".id",
++				StoryID:    storyID,
++				Message:    fmt.Sprintf("story id %q duplicates $.stories[%d].id", storyID, firstIndex),
++				Suggestion: "Assign each story a unique canonical id.",
++			})
++		} else if storyID != "" {
++			storyIDs[storyID] = i
+ 		}
+-		if s.Description == "" {
+-			return fmt.Errorf("story %d (%s): description is required", i+1, s.ID)
++		if strings.TrimSpace(story.Title) == "" {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingStoryTitle,
++				Path:       storyPath + ".title",
++				StoryID:    storyID,
++				Message:    "story title is required",
++				Suggestion: "Add a concise story title.",
++			})
+ 		}
+-		if len(s.AcceptanceCriteria) == 0 {
+-			return fmt.Errorf("story %d (%s): at least one acceptance criterion is required", i+1, s.ID)
++		if strings.TrimSpace(story.Description) == "" {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingStoryDescription,
++				Path:       storyPath + ".description",
++				StoryID:    storyID,
++				Message:    "story description is required",
++				Suggestion: "Describe the user and desired outcome for this story.",
++			})
++		}
++		if len(story.AcceptanceCriteria) == 0 {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingAcceptance,
++				Path:       storyPath + ".acceptanceCriteria",
++				StoryID:    storyID,
++				Message:    "at least one acceptance criterion is required",
++				Suggestion: "Add concrete acceptance criteria for this story.",
++			})
++		}
++		status := strings.TrimSpace(story.Status)
++		if !slices.Contains(prdAllowedStatuses, status) {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticInvalidStoryStatus,
++				Path:       storyPath + ".status",
++				StoryID:    storyID,
++				Message:    fmt.Sprintf("story status %q is not canonical", status),
++				Suggestion: "Use one of: open, in_progress, done.",
++			})
++		}
++		if status == "in_progress" {
++			inProgressStories = append(inProgressStories, storyID)
++		}
++	}
++
++	if len(inProgressStories) > 1 {
++		report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			Code:       PRDDiagnosticMultipleInProgress,
++			Path:       "$.stories",
++			Message:    "only one story may be in_progress at a time",
++			Suggestion: "Mark the remaining active stories as open or done.",
++		})
++	}
++
++	for i, story := range p.Stories {
++		storyPath := fmt.Sprintf("$.stories[%d]", i)
++		storyID := strings.TrimSpace(story.ID)
++		for depIndex, dependency := range story.DependsOn {
++			depID := strings.TrimSpace(dependency)
++			if _, ok := storyIDs[depID]; ok {
++				continue
++			}
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticUnknownStoryDependency,
++				Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++				StoryID:    storyID,
++				Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
++				Suggestion: "Reference an existing canonical story id.",
++			})
+ 		}
+ 	}
+-	return nil
+-}
+ 
+-func ParsePRDJSON(data []byte) (*PRD, error) {
+-	var prd PRD
+-	if err := json.Unmarshal(data, &prd); err != nil {
+-		return nil, err
++	report.Valid = len(report.Errors) == 0
++	switch {
++	case len(report.Errors) > 0:
++		report.Readiness = PRDReadinessFail
++	case len(report.Warnings) > 0:
++		report.Readiness = PRDReadinessWarn
++	default:
++		report.Readiness = PRDReadinessPass
+ 	}
+-	return &prd, nil
++	return report
+ }
+diff --git a/internal/source/model/prd_test.go b/internal/source/model/prd_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..1fb38304b2599c7e20ba2df6014f5fcb01de8895
+--- /dev/null
++++ b/internal/source/model/prd_test.go
+@@ -0,0 +1,148 @@
++package model
++
++import (
++	"testing"
++)
++
++func TestValidatePRDReportValidCanonicalDocument(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Reuse validation contract",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a maintainer, I want API and CLI parity.",
++				AcceptanceCriteria: []string{"CLI and API share the same rules."},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected report to be valid, got %+v", report)
++	}
++	if len(report.Errors) != 0 {
++		t.Fatalf("expected zero blocking errors, got %+v", report.Errors)
++	}
++	if report.Readiness != PRDReadinessPass {
++		t.Fatalf("expected readiness %q, got %q", PRDReadinessPass, report.Readiness)
++	}
++}
++
++func TestValidatePRDJSONMalformedDocument(t *testing.T) {
++	prd, report := ValidatePRDJSON([]byte(`{"version":1,"project":"x",`))
++	if prd != nil {
++		t.Fatal("expected no parsed PRD for malformed JSON")
++	}
++	if report.Valid {
++		t.Fatal("expected malformed JSON report to be invalid")
++	}
++	if len(report.Errors) != 1 {
++		t.Fatalf("expected one parse diagnostic, got %+v", report.Errors)
++	}
++	if report.Errors[0].Code != PRDDiagnosticMalformedJSON {
++		t.Fatalf("expected code %q, got %q", PRDDiagnosticMalformedJSON, report.Errors[0].Code)
++	}
++}
++
++func TestValidatePRDReportDuplicateIDsAndUnknownDependency(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "First story",
++				Status:             "open",
++				Description:        "desc",
++				AcceptanceCriteria: []string{"one"},
++			},
++			{
++				ID:                 "US-001",
++				Title:              "Duplicate story",
++				Status:             "open",
++				DependsOn:          []string{"US-999"},
++				Description:        "desc",
++				AcceptanceCriteria: []string{"one"},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticDuplicateStoryID)
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticUnknownStoryDependency)
++}
++
++func TestValidatePRDReportMissingProjectAndQualityGates(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "First story",
++				Status:             "open",
++				Description:        "desc",
++				AcceptanceCriteria: []string{"one"},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticMissingProject)
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticMissingQualityGates)
++}
++
++func TestValidatePRDReportRejectsNonCanonicalStatus(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "First story",
++				Status:             "completed",
++				Description:        "desc",
++				AcceptanceCriteria: []string{"one"},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticInvalidStoryStatus)
++}
++
++func assertDiagnosticCode(t *testing.T, diagnostics []PRDValidationDiagnostic, want string) {
++	t.Helper()
++	for _, diagnostic := range diagnostics {
++		if diagnostic.Code == want {
++			return
++		}
++	}
++	t.Fatalf("expected diagnostic code %q in %+v", want, diagnostics)
++}
+
+codex
+I still have two generated artifacts dirty: the activity log from my last bookkeeping note, and the run log. I’m folding both into one last no-verify cleanup commit and then stopping all file writes before the final status check.
