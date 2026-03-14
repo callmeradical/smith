@@ -1,6 +1,7 @@
 # Activity Log
 
 ## Run Summary
+- 2026-03-14 01:33:50 | run=20260314-005446-82373 | iter=3 | mode=build | story=US-003 | duration=772s | status=success
 - 2026-03-14 01:20:56 | run=20260314-005446-82373 | iter=2 | mode=build | story=US-002 | duration=906s | status=success
 - 2026-03-14 01:05:47 | run=20260314-005446-82373 | iter=1 | mode=build | story=US-001 | duration=661s | status=success
 - 2026-03-09 05:59:49 | run=20260309-043236-60668 | iter=6 | mode=build | story=US-006 | duration=832s | status=success
@@ -69,3 +70,9 @@
 [2026-03-14 01:23:14] Implemented model-level PRD markdown export and round-trip tests
 [2026-03-14 01:30:34] Completed verification for US-003; recording results and preparing progress entry
 [2026-03-14 01:32:23] Updated US-003 progress entry with commit and verification results
+[2026-03-14 01:33:50] ITERATION 3 end (duration=772s)
+[2026-03-14 01:33:52] ITERATION 4 start (mode=build story=US-004)
+[2026-03-14 01:35:30] US-004 audit complete; implementing smith PRD CLI workflows
+[2026-03-14 01:37:28] US-004 code and CLI tests updated; running targeted verification
+[2026-03-14 01:38:31] US-004 targeted tests passed; formatting before full verification
+[2026-03-14 01:45:48] US-004 verification complete; reviewing and preparing commit/progress update

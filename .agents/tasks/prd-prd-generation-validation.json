@@ -200,7 +200,7 @@
     {
       "id": "US-003",
       "title": "Render stable markdown from canonical PRD JSON",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-001",
         "US-002"
@@ -214,13 +214,13 @@
         "Round-trip tests verify JSON to markdown to JSON preservation for story IDs, dependency ordering, and quality gates."
       ],
       "startedAt": "2026-03-14T05:20:58.837869+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-14T05:20:58.838070+00:00"
+      "completedAt": "2026-03-14T05:33:50.769983+00:00",
+      "updatedAt": "2026-03-14T05:33:50.769337+00:00"
     },
     {
       "id": "US-004",
       "title": "Add CLI workflows for generate import export and validate",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-001",
         "US-002",
@@ -233,7 +233,10 @@
         "Example: `smith --prd --from-markdown docs/feature.md --out .agents/tasks/prd.json` writes canonical JSON and prints a success message referencing the saved path.",
         "Negative case: `smith --prd validate .agents/tasks/prd.json` exits non-zero and prints machine-readable diagnostics when the PRD is not execution-ready.",
         "CLI tests cover argument validation, default output paths, success flows, and failure exit codes."
-      ]
+      ],
+      "startedAt": "2026-03-14T05:33:52.843520+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-14T05:33:52.843752+00:00"
     },
     {
       "id": "US-005",
