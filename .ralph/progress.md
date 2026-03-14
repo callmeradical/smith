@@ -5,6 +5,52 @@ Started: Mon Mar  9 04:32:36 EDT 2026
 - (add reusable patterns here)
 
 ---
+## [2026-03-14 02:06:40 EDT] - US-005: Block non-ready PRDs during ingress and execution handoff
+Thread: ses_719242
+Run: 20260314-005446-82373 (iteration 5)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-5.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-5.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 0159a5d feat(validation): block non-ready PRD ingress
+- Post-commit status: `.agents/tasks/prd-prd-generation-validation.json` remains modified by loop-managed story state
+- Verification:
+  - Command: command -v act && act --version && command -v docker && docker --version -> PASS
+  - Command: go test ./internal/source/model ./internal/source/ingress ./cmd/smith-api ./cmd/smithctl ./internal/source/e2e -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .ralph/.tmp/prompt-20260314-005446-82373-5.md
+  - .ralph/.tmp/story-20260314-005446-82373-5.json
+  - .ralph/.tmp/story-20260314-005446-82373-5.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-4.log
+  - .ralph/runs/run-20260314-005446-82373-iter-4.md
+  - .ralph/runs/run-20260314-005446-82373-iter-5.log
+  - cmd/smith-api/main.go
+  - cmd/smith-api/main_test.go
+  - cmd/smithctl/main.go
+  - cmd/smithctl/main_test.go
+  - internal/source/e2e/ingress_modes_test.go
+  - internal/source/ingress/ingress.go
+  - internal/source/ingress/ingress_test.go
+  - internal/source/model/prd.go
+  - internal/source/model/prd_test.go
+- What was implemented
+  - Routed PRD ingress, document build handoff, and loop creation with `workspace_prd_json` through the shared canonical PRD validator before any loop draft or workspace PRD artifact is created.
+  - Added structured validation rejection payloads for API callers and preserved those JSON diagnostics in `smithctl` output so CLI validation and API rejection reasons stay aligned.
+  - Added oversized-story readiness enforcement plus tests covering accepted canonical ingress, rejected non-ready PRDs, blocked workspace handoffs, and CLI/API parity.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Converting validated canonical PRDs into drafts in one helper keeps markdown ingress, JSON ingress, and document build behavior aligned without duplicating story metadata mapping.
+  - Gotchas encountered
+  - `cmd/` paths are ignored by the repo’s gitignore rules, so story commits touching `cmd/smith-api` or `cmd/smithctl` require `git add -f`.
+  - Useful context
+  - `./scripts/validate-acceptance.sh` still fails on existing unrelated acceptance checks, and `make ci-local-act` completes lint, Go tests, frontend build, and Playwright execution but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable locally.
+---
 ## [2026-03-14 01:46:19 EDT] - US-004: Add CLI workflows for generate import export and validate
 Thread: ses_78d535
 Run: 20260314-005446-82373 (iteration 4)
