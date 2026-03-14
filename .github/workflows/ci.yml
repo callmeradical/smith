@@ -270,6 +270,7 @@ jobs:
           SMITH_ENABLE_CLUSTER_TESTS: "false"
         run: |
           ./scripts/test/e2e-ingress-modes.sh
+          ./scripts/test/e2e-prd-authoring.sh
           ./scripts/test/e2e-environment-modes.sh
           ./scripts/test/e2e-skill-mounts.sh
 
@@ -301,6 +302,7 @@ jobs:
             echo "- \`e2e-single-loop-report.json\`"
             echo "- \`e2e-concurrent-summary.txt\`"
             echo "- \`e2e-ingress-summary.txt\`"
+            echo "- \`e2e-prd-authoring-summary.txt\`"
             echo "- \`e2e-environment-summary.txt\`"
             echo "- \`e2e-skill-mounts-summary.txt\`"
           } >> "$GITHUB_STEP_SUMMARY"

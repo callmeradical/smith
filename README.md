@@ -177,3 +177,5 @@ smith --prd "Build issue-driven loop execution with terminal attach support" --o
 ```
 
 If a PRD already exists at `.agents/tasks/prd.json`, replica issue/prompt workflows skip PRD generation and move straight to iterative build.
+
+For the canonical markdown import, JSON validation, markdown export, and ingress workflow, see [docs/prd-authoring-workflow.md](docs/prd-authoring-workflow.md).

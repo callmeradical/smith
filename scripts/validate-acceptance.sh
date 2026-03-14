@@ -388,6 +388,26 @@ expect_rg "RETIRE_AFTER=2026-06-30" "scripts/test/e2e-ingress-modes.sh" "Ingress
 expect_rg "RETIRE_AFTER=2026-06-30" "scripts/test/e2e-environment-modes.sh" "Environment shell wrapper marked transitional with retirement date"
 expect_rg "RETIRE_AFTER=2026-06-30" "scripts/test/e2e-skill-mounts.sh" "Skill shell wrapper marked transitional with retirement date"
 
+section "US-007 | PRD authoring workflow documentation and verification"
+expect_file "docs/prd-authoring-workflow.md" "PRD authoring workflow doc exists"
+expect_file "docs/examples/prd-authoring/valid-prd.md" "Valid PRD markdown fixture exists"
+expect_file "docs/examples/prd-authoring/invalid-prd.json" "Invalid PRD JSON fixture exists"
+expect_file "internal/source/e2e/prd_authoring_workflow_test.go" "PRD authoring workflow Go e2e test exists"
+expect_file "scripts/test/e2e-prd-authoring.sh" "PRD authoring workflow wrapper script exists"
+expect_rg "Canonical JSON Contract" "docs/prd-authoring-workflow.md" "Doc explains canonical JSON expectations"
+expect_rg "Markdown Authoring Rules" "docs/prd-authoring-workflow.md" "Doc explains markdown authoring rules"
+expect_rg "smith --prd --from-markdown" "docs/prd-authoring-workflow.md" "Doc includes markdown import CLI example"
+expect_rg "smith --prd validate" "docs/prd-authoring-workflow.md" "Doc includes validation CLI example"
+expect_rg "smithctl --output json prd submit" "docs/prd-authoring-workflow.md" "Doc includes ingress CLI example"
+expect_rg "prd_missing_quality_gates" "docs/prd-authoring-workflow.md" "Doc includes exact invalid PRD diagnostic code"
+expect_rg "TestPRDAuthoringWorkflowEndToEnd" "internal/source/e2e/prd_authoring_workflow_test.go" "PRD workflow e2e test case is defined"
+expect_rg "e2e-prd-authoring.sh" "scripts/test/run-matrix.sh" "PRD authoring e2e included in run-matrix"
+expect_rg "e2e-prd-authoring.sh" ".github/workflows/ci.yml" "CI workflow runs PRD authoring e2e wrapper"
+expect_rg "e2e-prd-authoring-summary.txt" ".github/workflows/ci.yml" "CI summary includes PRD authoring e2e artifact"
+if check_command go "Go toolchain is available for PRD authoring e2e validation"; then
+  run_check "PRD authoring e2e wrapper passes" ./scripts/test/e2e-prd-authoring.sh
+fi
+
 section "td-66d043 | Makefile test targets for integration and e2e loops"
 expect_rg "^test: test-matrix" "Makefile" "Default make test target routes to test-matrix"
 expect_rg "^test-integration:" "Makefile" "Makefile exposes test-integration target"
