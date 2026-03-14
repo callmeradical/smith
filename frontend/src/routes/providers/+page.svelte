@@ -55,7 +55,7 @@
           <div class="mt-auto pt-6 border-t border-gray-900">
             <div class="flex items-center justify-between">
               <Button 
-                color="none" 
+                color="alternative" 
                 class="flex items-center bg-[#86BC25] text-black hover:bg-[#6b961d] font-bold uppercase text-[9px] tracking-widest px-6 py-2 rounded-none transition-all h-7"
                 onclick={() => openConfig(provider)}
               >

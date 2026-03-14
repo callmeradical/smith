@@ -58,13 +58,11 @@
 
 <Drawer 
   placement="right" 
-  transitionType="fly" 
-  {transitionParams} 
   bind:hidden={isHidden} 
   outsideclose={true}
   id="provider-editor-drawer" 
-  width="w-[450px]" 
-  class="fixed top-0 right-0 bg-black border-l border-gray-800 z-50 overflow-y-auto h-full m-0 shadow-2xl p-0"
+  width="default" 
+  class="fixed top-0 right-0 bg-black border-l border-gray-800 z-50 overflow-y-auto h-full m-0 shadow-2xl p-0 w-[450px]"
 >
   <div class="flex flex-col h-full relative">
     <!-- Header -->
@@ -115,7 +113,7 @@
       <!-- Footer Actions -->
       <div class="pt-10 pb-20 border-t border-gray-900 flex justify-end gap-4 mt-auto">
         <Button color="alternative" size="sm" class="rounded-none font-bold uppercase text-[10px] tracking-widest border-gray-700 bg-slate-900 text-gray-300 hover:bg-slate-700 px-6" onclick={onClose} disabled={busy}>Cancel</Button>
-        <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest rounded-none px-8 py-2 hover:bg-[#a1e02c]" type="submit" disabled={busy}>
+        <Button color="alternative" class="bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest rounded-none px-8 py-2 hover:bg-[#a1e02c]" type="submit" disabled={busy}>
           <CheckOutline size="xs" class="mr-2" />
           Update Credentials
         </Button>

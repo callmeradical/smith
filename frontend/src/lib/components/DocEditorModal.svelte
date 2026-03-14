@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Modal, Button, Label, Input, Select, Textarea, Toolbar, ToolbarButton, ToolbarGroup, Badge } from 'flowbite-svelte';
-  import { CloudArrowUpOutline, CloseOutline, BoldOutline, ItalicOutline, ListOutline } from 'flowbite-svelte-icons';
+  import { CloudArrowUpOutline, CloseOutline, LetterBoldOutline, LetterItalicOutline, ListOutline } from 'flowbite-svelte-icons';
   import { marked } from 'marked';
 
 	interface Props {
@@ -90,8 +90,8 @@
           >
             <Toolbar slot="header" embedded class="bg-black border-b border-gray-800 rounded-none">
               <ToolbarGroup>
-                <ToolbarButton name="Bold" class="text-gray-400 hover:text-white" onclick={() => content += '**bold**'}><BoldOutline size="sm" /></ToolbarButton>
-                <ToolbarButton name="Italic" class="text-gray-400 hover:text-white" onclick={() => content += '_italic_'}><ItalicOutline size="sm" /></ToolbarButton>
+                <ToolbarButton name="Bold" class="text-gray-400 hover:text-white" onclick={() => content += '**bold**'}><LetterBoldOutline size="sm" /></ToolbarButton>
+                <ToolbarButton name="Italic" class="text-gray-400 hover:text-white" onclick={() => content += '_italic_'}><LetterItalicOutline size="sm" /></ToolbarButton>
                 <ToolbarButton name="List" class="text-gray-400 hover:text-white" onclick={() => content += '\n- '}><ListOutline size="sm" /></ToolbarButton>
               </ToolbarGroup>
             </Toolbar>
@@ -107,7 +107,7 @@
 
   <svelte:fragment slot="footer">
     <Button color="alternative" class="rounded-none border-gray-700 font-bold uppercase text-[10px] tracking-widest" onclick={onClose}>Cancel</Button>
-    <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest px-8 py-2 rounded-none transition-all ml-auto" onclick={handleSave}>
+    <Button color="alternative" class="bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest px-8 py-2 rounded-none transition-all ml-auto" onclick={handleSave}>
       <CloudArrowUpOutline size="sm" class="mr-2" />
       Save Document
     </Button>

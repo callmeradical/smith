@@ -2,7 +2,7 @@ package replica
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -662,7 +662,7 @@ func sanitizeKubernetesLabelValue(raw string) string {
 	if len(out) <= maxLen {
 		return out
 	}
-	sum := sha1.Sum([]byte(out))
+	sum := sha256.Sum256([]byte(out))
 	suffix := hex.EncodeToString(sum[:])[:8]
 	keep := maxLen - 1 - len(suffix)
 	if keep < 1 {

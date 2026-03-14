@@ -33,7 +33,7 @@
 
 <!-- Inline Actions Header -->
 <div class="flex justify-end gap-2 -mt-14 mb-8 relative z-50 px-4">
-  <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7 rounded-none" onclick={openNewProject}>
+  <Button color="alternative" class="bg-[#86BC25] text-black font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7 rounded-none" onclick={openNewProject}>
     <PlusOutline size="xs" class="mr-1.5" />
     New Project
   </Button>
@@ -82,7 +82,7 @@
 
             <div class="mt-auto pt-4 border-t border-gray-900 flex justify-between items-center">
               <div class="flex gap-2">
-                <Badge color="dark" class="bg-slate-800 text-gray-400 text-[10px] rounded-none">{project.github_user || 'no-user'}</Badge>
+                <Badge color="gray" class="bg-slate-800 text-gray-400 text-[10px] rounded-none">{project.github_user || 'no-user'}</Badge>
               </div>
               <div class="text-[10px] font-mono text-gray-600 uppercase font-bold tracking-widest">
                 RT: {project.runtime_image ? 'custom' : 'default'}

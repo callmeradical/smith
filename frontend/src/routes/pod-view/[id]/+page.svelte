@@ -86,7 +86,7 @@
 </div>
 
 <div class="px-4">
-  <Journal loopID={id}>
+  <Journal loopID={id || ""}>
     <div class="pod-command-row bg-black border border-gray-800 rounded-none p-2 flex items-center gap-3">
       <div class="flex items-center gap-2 pl-2 text-[#86BC25]">
         <TerminalOutline size="xs" />
@@ -101,7 +101,7 @@
         size="sm"
         class="bg-transparent border-none text-white font-mono flex-1 focus:ring-0 rounded-none"
       />
-      <Button size="xs" color="none" class="bg-[#86BC25] text-black font-bold uppercase px-4 rounded-none h-7 text-[10px]" onclick={runCommand} disabled={busy || !command}>
+      <Button size="xs" color="alternative" class="bg-[#86BC25] text-black font-bold uppercase px-4 rounded-none h-7 text-[10px]" onclick={runCommand} disabled={busy || !command}>
         {busy ? '...' : 'Execute'}
       </Button>
     </div>

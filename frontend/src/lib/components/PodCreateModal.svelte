@@ -173,7 +173,7 @@
           <div class="w-8 h-1 rounded-full {step > i ? 'bg-[#86BC25]' : 'bg-slate-800'}"></div>
         {/each}
       </div>
-      <Badge color="dark" class="text-[10px] uppercase font-bold tracking-wider rounded-none bg-slate-800 text-gray-400">Step {step} of {maxStep}</Badge>
+      <Badge color="gray" class="text-[10px] uppercase font-bold tracking-wider rounded-none bg-slate-800 text-gray-400">Step {step} of {maxStep}</Badge>
     </div>
 
     {#if step === 1}
@@ -274,7 +274,7 @@
             onkeydown={(e) => e.key === 'Enter' && sendChatMessage()}
             class="bg-slate-900 border-gray-800 text-white rounded-none"
           />
-          <Button color="none" class="bg-[#86BC25] text-black px-4 rounded-none" onclick={sendChatMessage} disabled={!chatSocket || !chatInput}>
+          <Button color="alternative" class="bg-[#86BC25] text-black px-4 rounded-none" onclick={sendChatMessage} disabled={!chatSocket || !chatInput}>
             <PaperPlaneOutline size="sm" />
           </Button>
         </div>
@@ -289,11 +289,11 @@
         <ArrowLeftOutline size="sm" class="mr-2" /> Back
       </Button>
       {#if step < maxStep}
-        <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-xs px-6 py-2 rounded-none transition-all" onclick={nextStep}>
+        <Button color="alternative" class="bg-[#86BC25] text-black font-bold uppercase text-xs px-6 py-2 rounded-none transition-all" onclick={nextStep}>
           Next <ArrowRightOutline size="sm" class="ml-2" />
         </Button>
       {:else}
-        <Button color="none" class="bg-[#86BC25] text-black font-bold uppercase text-xs px-6 py-2 rounded-none transition-all" onclick={submit} disabled={busy || (isInteractive && !finalPRD)}>
+        <Button color="alternative" class="bg-[#86BC25] text-black font-bold uppercase text-xs px-6 py-2 rounded-none transition-all" onclick={submit} disabled={busy || (isInteractive && !finalPRD)}>
           <RocketOutline size="sm" class="mr-2" /> Create Loop
         </Button>
       {/if}

@@ -9,6 +9,6 @@
     "test:frontend:debug": "playwright test --debug"
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.0"
+    "@playwright/test": "1.50.1"
   }
 }

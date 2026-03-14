@@ -133,7 +133,7 @@
     {#if finalContent}
       <div class="p-3 bg-[#86BC25]/10 border border-[#86BC25]/30 rounded-none mb-4 flex justify-between items-center">
         <Badge color="green" class="bg-[#86BC25] text-black font-bold">Document Ready</Badge>
-        <Button size="xs" color="none" class="bg-[#86BC25] text-black font-bold px-4 py-1" onclick={handleFinalize}>Review & Save</Button>
+        <Button size="xs" color="alternative" class="bg-[#86BC25] text-black font-bold px-4 py-1" onclick={handleFinalize}>Review & Save</Button>
       </div>
     {/if}
 
@@ -146,7 +146,7 @@
         onkeydown={(e) => e.key === 'Enter' && sendChatMessage()}
         class="bg-slate-900 border-gray-800 text-white rounded-none"
       />
-      <Button color="none" class="bg-[#86BC25] text-black px-4 rounded-none" onclick={sendChatMessage} disabled={!chatSocket || !chatInput || starting}>
+      <Button color="alternative" class="bg-[#86BC25] text-black px-4 rounded-none" onclick={sendChatMessage} disabled={!chatSocket || !chatInput || starting}>
         <PaperPlaneOutline size="sm" />
       </Button>
     </div>
