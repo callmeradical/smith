@@ -51,6 +51,46 @@ Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-00544
   - Useful context
   - `./scripts/validate-acceptance.sh` still fails on existing unrelated acceptance checks, and `make ci-local-act` completes lint, Go tests, frontend build, and Playwright execution but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable locally.
 ---
+## [2026-03-14 02:23:04 EDT] - US-006: Add execution-readiness linting for Ralph-sized stories
+Thread: ses_5e63cb
+Run: 20260314-005446-82373 (iteration 6)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 4a35ae6 feat(validation): add PRD readiness linting
+- Post-commit status: `.agents/tasks/prd-prd-generation-validation.json`, `.ralph/errors.log`, and prior-iteration run artifacts remain modified outside this story
+- Verification:
+  - Command: act --version -> PASS
+  - Command: docker --version -> PASS
+  - Command: go test ./internal/source/model ./cmd/smith -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .ralph/.tmp/prompt-20260314-005446-82373-6.md
+  - .ralph/.tmp/story-20260314-005446-82373-6.json
+  - .ralph/.tmp/story-20260314-005446-82373-6.md
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-6.log
+  - .ralph/runs/run-20260314-005446-82373-iter-6.md
+  - cmd/smith-api/main_test.go
+  - cmd/smith/main_test.go
+  - internal/source/model/prd.go
+  - internal/source/model/prd_test.go
+- What was implemented
+  - Added execution-readiness linting in the shared PRD validator for likely oversized stories, weak acceptance criteria, missing negative cases, bundled CLI/API/UI rewrites without dependency ordering, and dependencies that point forward in story order.
+  - Split readiness diagnostics into warnings versus blocking errors so automation consumers can distinguish clarification work from loop-blocking issues while keeping diagnostic codes stable.
+  - Added tests for pass, warning-only, and blocking readiness cases, plus CLI validation behavior and ingress severity alignment.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Shared readiness linting in `internal/source/model/prd.go` keeps CLI and API behavior aligned without duplicating execution-scope heuristics.
+  - Gotchas encountered
+  - `cmd/` paths are ignored by repo gitignore rules, so touched CLI/API files must be staged with `git add -f`.
+  - Useful context
+  - `./scripts/validate-acceptance.sh` still fails on unrelated acceptance checks, and `make ci-local-act` reaches passing lint, Go tests, frontend build, and Playwright execution but fails artifact upload under local `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable.
+---
 ## [2026-03-14 01:46:19 EDT] - US-004: Add CLI workflows for generate import export and validate
 Thread: ses_78d535
 Run: 20260314-005446-82373 (iteration 4)
