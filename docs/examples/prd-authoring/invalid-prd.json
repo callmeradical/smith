@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "project": "Smith PRD Workflow Validation",
+  "overview": "Document exact diagnostics for invalid PRDs.",
+  "qualityGates": [],
+  "stories": []
+}

@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "total": 7,
+  "remaining": 1,
+  "quality_gates": [
+    "go test ./...",
+    "./scripts/validate-acceptance.sh",
+    "make ci-local-act"
+  ],
+  "id": "US-007",
+  "title": "Document and verify the PRD authoring workflow end to end"
+}

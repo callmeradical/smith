@@ -12,6 +12,7 @@ SMITH_API_IMAGE ?= ghcr.io/smith/api:v0.1.0
 SMITH_REPLICA_IMAGE ?= ghcr.io/smith/replica:v0.1.0
 SMITH_CONSOLE_IMAGE ?= ghcr.io/smith/console:v0.1.0
 SMITH_TEST_ARTIFACTS_DIR ?= /tmp/smith-test-artifacts
+ACT ?= act
 SMITH_FIXTURE_DIR ?= /tmp/smith-test-repo
 SMITH_K3D_CLUSTER_NAME ?= smith-int
 SMITH_LOCAL_CORE_IMAGE ?= smith-core:local
@@ -275,18 +276,38 @@ ci-local: ## Run local CI-equivalent checks
 	$(MAKE) docs-check
 
 ci-local-act: ## Run core CI jobs locally using 'act' (requires 'act' and Docker)
-	@if ! command -v act >/dev/null 2>&1; then \
+	@if ! command -v "$(ACT)" >/dev/null 2>&1; then \
 		echo "ERROR: 'act' is not installed."; \
 		echo "HINT: install it with 'brew install act' or from https://github.com/nektos/act"; \
 		exit 1; \
 	fi
 	@echo "[act] running CI jobs..."
-	act -j lint-and-check
-	act -j go-unit-tests
-	act -j node-unit-tests
-	act -j playwright-tests
-	act -j acceptance-tests
-	act -j test-matrix
+	$(ACT) -j lint-and-check
+	$(ACT) -j go-unit-tests
+	$(ACT) -j node-unit-tests
+	$(ACT) -j playwright-tests
+	$(ACT) -j acceptance-tests
+	$(ACT) -j test-matrix
+
+hooks-run-pre-commit: ## Run the local pre-commit hook workload via act
+	@if ! command -v "$(ACT)" >/dev/null 2>&1; then \
+		echo "ERROR: 'act' is not installed."; \
+		echo "HINT: install it with 'brew install act' or from https://github.com/nektos/act"; \
+		exit 1; \
+	fi
+	@echo "[act] running pre-commit hook workload..."
+	$(ACT) -j lint-and-check
+
+hooks-run-pre-push: ## Run the local pre-push hook workload via act
+	@if ! command -v "$(ACT)" >/dev/null 2>&1; then \
+		echo "ERROR: 'act' is not installed."; \
+		echo "HINT: install it with 'brew install act' or from https://github.com/nektos/act"; \
+		exit 1; \
+	fi
+	@echo "[act] running pre-push hook workload..."
+	$(ACT) -j go-unit-tests
+	$(ACT) -j node-unit-tests
+	$(ACT) -j playwright-tests
 
 hooks-install: ## Install repository git hooks from .githooks
 	git config core.hooksPath .githooks

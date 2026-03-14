@@ -13,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"smith/internal/source/ingress"
+	"smith/internal/source/model"
 )
 
 type ingressLoop struct {
@@ -113,14 +116,32 @@ func TestIngressModesLoopCreationAndExecution(t *testing.T) {
 	t.Run("prd ingress", func(t *testing.T) {
 		dir := t.TempDir()
 		prdPath := filepath.Join(dir, "prd.md")
-		markdown := "# Sample PRD\n\n## Tasks\n- [ ] Ship ingress e2e\n"
+		markdown := strings.Join([]string{
+			"# Sample PRD",
+			"",
+			"## Overview",
+			"",
+			"Validate ingress before loop creation.",
+			"",
+			"## Quality Gates",
+			"- go test ./...",
+			"",
+			"## Stories",
+			"",
+			"### US-001: Ship ingress e2e",
+			"",
+			"As an operator, I want validated PRD ingress.",
+			"",
+			"#### Acceptance Criteria",
+			"- Ingress creates a loop draft.",
+		}, "\n")
 		if err := os.WriteFile(prdPath, []byte(markdown), 0o600); err != nil {
 			t.Fatalf("write prd: %v", err)
 		}
 
 		out := runSmithctl(t, server.URL, "--output", "json", "prd", "submit", "--file", prdPath, "--source-ref", "docs/prd-ingress.md")
 		loopID := mustGetIngressLoopID(t, out)
-		assertLoopGet(t, server.URL, loopID, "prd_task", "docs/prd-ingress.md#task-1", "synced")
+		assertLoopGet(t, server.URL, loopID, "prd_story", "docs/prd-ingress.md#US-001", "synced")
 	})
 
 	t.Run("interactive ingress", func(t *testing.T) {
@@ -135,6 +156,51 @@ func TestIngressModesLoopCreationAndExecution(t *testing.T) {
 		assertLoopGet(t, server.URL, loopID, "interactive", "terminal/session-01", "synced")
 		if h.attachCount() != 1 {
 			t.Fatalf("expected interactive attach tracking count 1, got %d", h.attachCount())
+		}
+	})
+
+	t.Run("prd validation parity", func(t *testing.T) {
+		dir := t.TempDir()
+		prdPath := filepath.Join(dir, "invalid-prd.json")
+		content := `{
+			"version": 1,
+			"project": "Validation",
+			"overview": "Canonical PRD validation",
+			"qualityGates": [],
+			"stories": [
+				{
+					"id": "US-001",
+					"title": "Oversized story",
+					"status": "open",
+					"description": "As an operator, I want a story that packs too much work into one iteration.",
+					"acceptanceCriteria": ["one","two","three","four","five","six"]
+				}
+			]
+		}`
+		if err := os.WriteFile(prdPath, []byte(content), 0o600); err != nil {
+			t.Fatalf("write prd: %v", err)
+		}
+
+		validateOut := runSmithValidate(t, prdPath)
+		submitOut, stderr, code := runSmithctlWithExitCode(server.URL, "--output", "json", "prd", "submit", "--file", prdPath)
+		if code != 1 {
+			t.Fatalf("expected smithctl submit to fail, got code=%d stderr=%s stdout=%s", code, stderr, string(submitOut))
+		}
+
+		var cliReport map[string]any
+		if err := json.Unmarshal(validateOut, &cliReport); err != nil {
+			t.Fatalf("decode smith validate output: %v\n%s", err, string(validateOut))
+		}
+		var apiBody map[string]any
+		if err := json.Unmarshal(submitOut, &apiBody); err != nil {
+			t.Fatalf("decode smithctl submit output: %v\n%s", err, string(submitOut))
+		}
+		report, ok := apiBody["report"]
+		if !ok {
+			t.Fatalf("expected API rejection report in %s", string(submitOut))
+		}
+		if !reportsEqual(cliReport, report) {
+			t.Fatalf("expected CLI validation and API rejection parity\ncli=%s\napi=%s", string(validateOut), string(submitOut))
 		}
 	})
 }
@@ -197,7 +263,10 @@ func (h *ingressHarness) handleGitHubIngress(t *testing.T, w http.ResponseWriter
 func (h *ingressHarness) handlePRDIngress(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	t.Helper()
 	var req struct {
-		SourceRef string `json:"source_ref"`
+		Format    string          `json:"format"`
+		SourceRef string          `json:"source_ref"`
+		Markdown  string          `json:"markdown"`
+		PRD       json.RawMessage `json:"prd"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -205,19 +274,57 @@ func (h *ingressHarness) handlePRDIngress(t *testing.T, w http.ResponseWriter, r
 	}
 	sourceRef := strings.TrimSpace(req.SourceRef)
 	if sourceRef == "" {
-		sourceRef = "prd:markdown"
+		sourceRef = "prd:canonical"
 	}
-	loopSourceRef := sourceRef + "#task-1"
-	id := h.newLoop("prd_task", loopSourceRef, "prd")
-	writeJSONResponse(t, w, http.StatusOK, map[string]any{
-		"results": []map[string]any{{
-			"item_index": 0,
+	format := strings.ToLower(strings.TrimSpace(req.Format))
+	if format == "" {
+		if strings.TrimSpace(req.Markdown) != "" {
+			format = "markdown"
+		} else {
+			format = "json"
+		}
+	}
+
+	var (
+		drafts []ingress.LoopDraft
+		report model.PRDValidationReport
+	)
+	switch format {
+	case "markdown", "md":
+		prd, validation := model.ValidatePRDMarkdown([]byte(req.Markdown))
+		report = validation
+		if report.Valid {
+			drafts = ingress.CanonicalPRDToDrafts(prd, sourceRef, nil)
+		}
+	case "json":
+		prd, validation := model.ValidatePRDJSON(req.PRD)
+		report = validation
+		if report.Valid {
+			drafts = ingress.CanonicalPRDToDrafts(prd, sourceRef, nil)
+		}
+	default:
+		http.Error(w, "format must be markdown or json", http.StatusBadRequest)
+		return
+	}
+	if !report.Valid {
+		writeJSONResponse(t, w, http.StatusUnprocessableEntity, map[string]any{
+			"error":  "prd failed readiness validation",
+			"report": report,
+		})
+		return
+	}
+	results := make([]map[string]any, 0, len(drafts))
+	for i, draft := range drafts {
+		id := h.newLoop(draft.SourceType, draft.SourceRef, "prd")
+		results = append(results, map[string]any{
+			"item_index": i,
 			"loop_id":    id,
-			"source_ref": loopSourceRef,
+			"source_ref": draft.SourceRef,
 			"status":     "synced",
 			"created":    true,
-		}},
-	})
+		})
+	}
+	writeJSONResponse(t, w, http.StatusOK, map[string]any{"results": results})
 }
 
 func (h *ingressHarness) handleLoopGet(w http.ResponseWriter, r *http.Request) {
@@ -348,6 +455,34 @@ func runSmithctlWithExitCode(serverURL string, args ...string) ([]byte, string, 
 		}
 	}
 	return stdout.Bytes(), stderr.String(), code
+}
+
+func runSmithValidate(t *testing.T, path string) []byte {
+	t.Helper()
+	cmd := exec.Command("go", "run", "./cmd/smith", "--prd", "validate", path)
+	cmd.Dir = filepath.Clean(filepath.Join(filepath.Dir(mustCallerFile()), "../../.."))
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+			t.Fatalf("smith validate failed unexpectedly: %v\nstderr:\n%s\nstdout:\n%s", err, stderr.String(), stdout.String())
+		}
+	}
+	return stdout.Bytes()
+}
+
+func reportsEqual(left any, right any) bool {
+	leftJSON, err := json.Marshal(left)
+	if err != nil {
+		return false
+	}
+	rightJSON, err := json.Marshal(right)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(leftJSON, rightJSON)
 }
 
 func mustCallerFile() string {

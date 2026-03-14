@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "total": 7,
+  "remaining": 3,
+  "quality_gates": [
+    "go test ./...",
+    "./scripts/validate-acceptance.sh",
+    "make ci-local-act"
+  ],
+  "id": "US-005",
+  "title": "Block non-ready PRDs during ingress and execution handoff"
+}

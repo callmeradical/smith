@@ -29,6 +29,176 @@ func TestIngressSummary(t *testing.T) {
 	}
 }
 
+func TestHandleIngressPRDAcceptsCanonicalPRD(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingress/prd", strings.NewReader(`{
+		"format":"json",
+		"source_ref":"docs/prd.json",
+		"prd":{
+			"version":1,
+			"project":"Validation",
+			"overview":"Canonical PRD validation",
+			"qualityGates":["go test ./..."],
+			"stories":[
+				{
+					"id":"US-001",
+					"title":"Define validation contract",
+					"status":"open",
+					"description":"As a maintainer, I want shared validation.",
+					"acceptanceCriteria":["Validation report is shared."]
+				}
+			]
+		}
+	}`))
+	s.handleIngressPRD(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 1 {
+		t.Fatalf("expected one created loop, got %d", len(states))
+	}
+	anomaly, found, err := ms.GetAnomaly(context.Background(), states[0].Record.LoopID)
+	if err != nil {
+		t.Fatalf("get anomaly: %v", err)
+	}
+	if !found {
+		t.Fatal("expected anomaly for created loop")
+	}
+	if anomaly.SourceType != "prd_story" || anomaly.SourceRef != "docs/prd.json#US-001" {
+		t.Fatalf("unexpected created anomaly: %+v", anomaly)
+	}
+	if anomaly.Metadata["prd_story_id"] != "US-001" {
+		t.Fatalf("expected prd_story_id metadata, got %#v", anomaly.Metadata)
+	}
+}
+
+func TestHandleIngressPRDRejectsInvalidCanonicalPRD(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingress/prd", strings.NewReader(`{
+		"format":"json",
+		"source_ref":"docs/prd.json",
+		"prd":{
+			"version":1,
+			"project":"Validation",
+			"overview":"Canonical PRD validation",
+			"qualityGates":[],
+			"stories":[
+				{
+					"id":"US-001",
+					"title":"Oversized story",
+					"status":"open",
+					"description":"As an operator, I want a story that packs too much into one iteration.",
+					"acceptanceCriteria":["one","two","three","four","five","six"]
+				}
+			]
+		}
+	}`))
+	s.handleIngressPRD(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error  string                    `json:"error"`
+		Report model.PRDValidationReport `json:"report"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Error == "" || body.Report.Valid {
+		t.Fatalf("expected validation failure payload, got %+v", body)
+	}
+	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticMissingQualityGates)
+	assertDiagnosticCodeInReport(t, body.Report.Warnings, model.PRDDiagnosticOversizedStory)
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("expected no created loops, got %d", len(states))
+	}
+}
+
+func TestHandleLoopCreateRejectsInvalidWorkspacePRD(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
+		"title":"Loop from supplied PRD",
+		"description":"Loop request from supplied PRD JSON",
+		"source_type":"prompt",
+		"source_ref":"prompt:smithctl",
+		"metadata":{
+			"workspace_prd_json":"{\"version\":1,\"project\":\"Validation\",\"overview\":\"Canonical PRD validation\",\"qualityGates\":[],\"stories\":[]}",
+			"workspace_prd_path":".agents/tasks/prd.json"
+		}
+	}`))
+	s.handleLoopCreate(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Status           string                    `json:"status"`
+		ValidationReport model.PRDValidationReport `json:"validation_report"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Status != "error" || body.ValidationReport.Valid {
+		t.Fatalf("expected validation failure result, got %+v", body)
+	}
+	assertDiagnosticCodeInReport(t, body.ValidationReport.Errors, model.PRDDiagnosticMissingQualityGates)
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("expected no created loops, got %d", len(states))
+	}
+}
+
+func TestHandleDocumentBuildRejectsInvalidPRD(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+	if err := ms.PutDocument(context.Background(), model.Document{
+		ID:        "doc-1",
+		ProjectID: "proj-1",
+		Title:     "Invalid PRD",
+		Content:   `{"version":1,"project":"Validation","overview":"Canonical PRD validation","qualityGates":[],"stories":[]}`,
+		Format:    "json",
+	}); err != nil {
+		t.Fatalf("put document: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/documents/doc-1/build", strings.NewReader(`{}`))
+	s.handleDocumentByID(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("expected no created loops, got %d", len(states))
+	}
+}
+
 func TestPresetCatalogSupportsCRUDAndPolicy(t *testing.T) {
 	catalog := newPresetCatalog("team-default")
 	if !catalog.Has("team-default") {
@@ -1082,6 +1252,25 @@ func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, ter
 	if metadata["runtime_target_ref"] != runtimeRef {
 		t.Fatalf("expected runtime_target_ref %q, got %q", runtimeRef, metadata["runtime_target_ref"])
 	}
+}
+
+func newPRDValidationTestServer(ms *store.MemStore) *server {
+	return &server{
+		store:       ms,
+		presets:     newPresetCatalog("standard"),
+		term:        newTerminalSessionStore(),
+		skillPolicy: model.SkillPolicy{},
+	}
+}
+
+func assertDiagnosticCodeInReport(t *testing.T, diagnostics []model.PRDValidationDiagnostic, want string) {
+	t.Helper()
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == want {
+			return
+		}
+	}
+	t.Fatalf("expected diagnostic code %q in %+v", want, diagnostics)
 }
 
 type fakeRuntimePodReader struct {

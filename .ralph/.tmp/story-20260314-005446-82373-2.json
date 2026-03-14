@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "total": 7,
+  "remaining": 6,
+  "quality_gates": [
+    "go test ./...",
+    "./scripts/validate-acceptance.sh",
+    "make ci-local-act"
+  ],
+  "id": "US-002",
+  "title": "Normalize markdown PRDs into canonical JSON"
+}

@@ -56,6 +56,17 @@ type apiClient struct {
 	http    *http.Client
 }
 
+type apiError struct {
+	Method     string
+	Path       string
+	StatusCode int
+	Body       []byte
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("%s %s returned %d: %s", e.Method, e.Path, e.StatusCode, strings.TrimSpace(string(e.Body)))
+}
+
 type stringMapFlag map[string]string
 
 func (s *stringMapFlag) String() string {
@@ -608,24 +619,20 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 				fmt.Fprintf(stderr, "invalid json prd payload: %v\n", err)
 				return 1
 			}
-			if asMap, ok := parsed.(map[string]any); ok {
-				if tasks, hasTasks := asMap["tasks"]; hasTasks {
-					payload["tasks"] = tasks
-				} else {
-					payload["tasks"] = []any{}
-				}
-			} else if asSlice, ok := parsed.([]any); ok {
-				payload["tasks"] = asSlice
-			} else {
-				fmt.Fprintln(stderr, "json prd payload must be an object or array")
+			if _, ok := parsed.(map[string]any); !ok {
+				fmt.Fprintln(stderr, "json prd payload must be a canonical object")
 				return 1
 			}
+			payload["prd"] = parsed
 		default:
 			fmt.Fprintln(stderr, "--format must be markdown or json")
 			return 2
 		}
 		var out any
 		if err := client.doJSON(http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
+			if writeStructuredAPIError(err, output, stdout, stderr) {
+				return 1
+			}
 			fmt.Fprintf(stderr, "loop create failed: %v\n", err)
 			return 1
 		}
@@ -723,6 +730,9 @@ func cmdLoopCreate(client *apiClient, output string, args []string, stdout, stde
 	}
 	var out any
 	if err := client.doJSON(http.MethodPost, "/v1/loops", payload, &out); err != nil {
+		if writeStructuredAPIError(err, output, stdout, stderr) {
+			return 1
+		}
 		fmt.Fprintf(stderr, "loop create failed: %v\n", err)
 		return 1
 	}
@@ -1190,15 +1200,16 @@ func cmdPRDSubmit(client *apiClient, output string, args []string, stdout, stder
 			fmt.Fprintln(stderr, "json prd payload must be an object")
 			return 1
 		}
-		if tasks, ok := asMap["tasks"]; ok {
-			payload["tasks"] = tasks
-		}
+		payload["prd"] = asMap
 	default:
 		fmt.Fprintln(stderr, "--format must be markdown or json")
 		return 2
 	}
 	var out any
 	if err := client.doJSON(http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
+		if writeStructuredAPIError(err, output, stdout, stderr) {
+			return 1
+		}
 		fmt.Fprintf(stderr, "prd submit failed: %v\n", err)
 		return 1
 	}
@@ -1320,6 +1331,19 @@ func normalizePRDSubmitOutput(out any) any {
 	return asMap
 }
 
+func writeStructuredAPIError(err error, output string, stdout, stderr io.Writer) bool {
+	var apiErr *apiError
+	if !errors.As(err, &apiErr) || len(apiErr.Body) == 0 || !json.Valid(apiErr.Body) {
+		return false
+	}
+	if output == "json" {
+		_, _ = stdout.Write(append(bytes.TrimSpace(apiErr.Body), '\n'))
+		return true
+	}
+	fmt.Fprintln(stderr, string(bytes.TrimSpace(apiErr.Body)))
+	return true
+}
+
 func (c *apiClient) doJSON(method, path string, body any, out any) error {
 	var payload io.Reader
 	if body != nil {
@@ -1346,7 +1370,12 @@ func (c *apiClient) doJSON(method, path string, body any, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return fmt.Errorf("%s %s returned %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(raw)))
+		return &apiError{
+			Method:     method,
+			Path:       path,
+			StatusCode: resp.StatusCode,
+			Body:       raw,
+		}
 	}
 	if out == nil {
 		return nil
