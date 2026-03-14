@@ -236,3 +236,41 @@ Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043
   - Useful context
     - Terminal command API returns structured error codes for validation/auth/rate-limit failures but attach runtime conflicts currently return text error messages.
 ---
+## [2026-03-14 01:03:56 EDT] - US-001: Define canonical PRD validation and diagnostic contracts
+Thread: ses_b56b86
+Run: 20260314-005446-82373 (iteration 1)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-1.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-1.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 3d0c98f feat(validation): add canonical PRD diagnostics
+- Post-commit status: `clean`
+- Verification:
+  - Command: make build -> PASS
+  - Command: go test ./internal/source/model/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-1.md
+  - .ralph/.tmp/story-20260314-005446-82373-1.json
+  - .ralph/.tmp/story-20260314-005446-82373-1.md
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-1.log
+  - internal/source/model/prd.go
+  - internal/source/model/prd_test.go
+- What was implemented
+  - Added shared PRD validation report and diagnostic types with stable codes, JSON-style paths, optional story references, readiness, and suggested fixes.
+  - Expanded PRD validation to enforce canonical top-level fields, sequential `US-###` story IDs, duplicate detection, dependency reference checks, quality gate presence, and canonical story statuses.
+  - Added `ValidatePRDJSON` so malformed JSON returns a machine-readable blocking diagnostic instead of only a raw parse error.
+  - Added unit coverage for valid PRDs, malformed JSON, duplicate IDs, unknown dependencies, missing project and quality gates, and invalid statuses.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - `internal/source/model` is the right shared package for PRD contracts because ingress and future CLI/API flows can consume it without pulling in higher-level workflow code.
+  - Gotchas encountered
+  - Repo-level verification currently includes unrelated baseline failures in `./scripts/validate-acceptance.sh`, and `act` can fail or mutate run logs during hooks, so `git status --porcelain` must be checked again after each commit.
+  - Useful context
+  - Existing canonical PRD task files in this repo currently use `open`, `in_progress`, and `done` statuses; the validator now treats that set as canonical.
+---
