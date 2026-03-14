@@ -9,30 +9,70 @@ import (
 )
 
 func TestExecuteSuccess(t *testing.T) {
-	store := &fakeStore{}
-	git := &fakeGit{commitSHA: "abc123"}
-	p := NewProtocol(store, git)
+        store := &fakeStore{}
+        git := &fakeGit{commitSHA: "abc123"}
+        p := NewProtocol(store, git)
 
-	result, err := p.Execute(context.Background(), CommitRequest{
-		LoopID:        "loop-1",
-		CorrelationID: "corr-1",
-		FinalDiff:     "diff",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Outcome != OutcomeSynced {
-		t.Fatalf("expected synced outcome, got %q", result.Outcome)
-	}
-	if result.CommitSHA != "abc123" {
-		t.Fatalf("unexpected commit sha %q", result.CommitSHA)
-	}
-	assertHasPhase(t, store.phases, PhasePrepared)
-	assertHasPhase(t, store.phases, PhaseCodeCommitted)
-	assertHasPhase(t, store.phases, PhaseStateCommitted)
+        result, err := p.Execute(context.Background(), CommitRequest{
+                LoopID:        "loop-1",
+                CorrelationID: "corr-1",
+                FinalDiff:     "diff",
+        })
+        if err != nil {
+                t.Fatalf("unexpected error: %v", err)
+        }
+        if result.Outcome != OutcomeSynced {
+                t.Fatalf("expected synced outcome, got %q", result.Outcome)
+        }
+        if result.CommitSHA != "abc123" {
+                t.Fatalf("unexpected commit sha %q", result.CommitSHA)
+        }
+        assertHasPhase(t, store.phases, PhasePrepared)
+        assertHasPhase(t, store.phases, PhaseCodeCommitted)
+        assertHasPhase(t, store.phases, PhaseStateCommitted)
+}
+
+func TestExecuteSuccessWithPullRequest(t *testing.T) {
+        store := &fakeStore{}
+        git := &fakeGit{commitSHA: "abc123", prURL: "https://github.com/pr/1"}
+        p := NewProtocol(store, git)
+
+        result, err := p.Execute(context.Background(), CommitRequest{
+                LoopID:        "loop-pr",
+                CorrelationID: "corr-pr",
+                FinalDiff:     "diff",
+                PullRequest:   true,
+                PRTitle:       "Title",
+                PRBody:        "Body",
+        })
+        if err != nil {
+                t.Fatalf("unexpected error: %v", err)
+        }
+        if git.prCalls != 1 {
+                t.Fatalf("expected one PR call, got %d", git.prCalls)
+        }
+        if result.Outcome != OutcomeSynced {
+                t.Fatalf("expected synced outcome, got %q", result.Outcome)
+        }
+        assertHasPhase(t, store.phases, PhasePrepared)
+        assertHasPhase(t, store.phases, PhaseCodeCommitted)
+        assertHasPhase(t, store.phases, PhaseStateCommitted)
+
+        // Verify PR URL journaled
+        foundPR := false
+        for _, journal := range store.phases {
+                if journal.Metadata != nil && journal.Metadata["pr_url"] == "https://github.com/pr/1" {
+                        foundPR = true
+                        break
+                }
+        }
+        if !foundPR {
+                t.Fatal("PR URL not found in journal")
+        }
 }
 
 func TestExecuteCommitFailureIsRetryable(t *testing.T) {
+
 	store := &fakeStore{}
 	git := &fakeGit{commitErr: errors.New("push failed")}
 	p := NewProtocol(store, git)
@@ -156,25 +196,43 @@ func (f *fakeStore) SetStateSynced(_ context.Context, _ string, _ string) error 
 }
 
 func (f *fakeStore) SetStateUnresolved(_ context.Context, _ string, reason string) error {
-	f.unresolvedReason = reason
-	return nil
+        f.unresolvedReason = reason
+        return nil
+}
+
+func (f *fakeStore) AppendJournal(_ context.Context, entry model.JournalEntry) error {
+        f.phases = append(f.phases, entry)
+        return nil
 }
 
 type fakeGit struct {
-	commitSHA   string
-	commitErr   error
-	revertErr   error
-	revertCalls int
+
+        commitSHA   string
+        commitErr   error
+        prURL       string
+        prErr       error
+        prCalls     int
+        revertErr   error
+        revertCalls int
 }
 
 func (f *fakeGit) CommitAndPush(_ context.Context, _ string, _ string) (string, error) {
-	if f.commitErr != nil {
-		return "", f.commitErr
-	}
-	return f.commitSHA, nil
+        if f.commitErr != nil {
+                return "", f.commitErr
+        }
+        return f.commitSHA, nil
+}
+
+func (f *fakeGit) CreatePullRequest(_ context.Context, _ string, _ string, _ string, _ string) (string, error) {
+        f.prCalls++
+        if f.prErr != nil {
+                return "", f.prErr
+        }
+        return f.prURL, nil
 }
 
 func (f *fakeGit) Revert(_ context.Context, _ string, _ string) error {
+
 	f.revertCalls++
 	return f.revertErr
 }

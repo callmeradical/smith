@@ -48,13 +48,15 @@ func (r PhaseRecord) ToJournal() model.JournalEntry {
 }
 
 type CommitRequest struct {
-	LoopID        string
-	CorrelationID string
-	FinalDiff     string
+        LoopID        string
+        CorrelationID string
+        FinalDiff     string
+        PullRequest   bool
+        PRTitle       string
+        PRBody        string
 }
 
 type Outcome string
-
 const (
 	OutcomeSynced               Outcome = "synced"
 	OutcomeRetryable            Outcome = "retryable"
@@ -67,21 +69,21 @@ type CommitResult struct {
 }
 
 type PhaseStore interface {
-	RecordPhase(ctx context.Context, record model.JournalEntry) error
-	SetStateSynced(ctx context.Context, loopID string, commitSHA string) error
-	SetStateUnresolved(ctx context.Context, loopID string, reason string) error
+        RecordPhase(ctx context.Context, record model.JournalEntry) error
+        SetStateSynced(ctx context.Context, loopID string, commitSHA string) error
+        SetStateUnresolved(ctx context.Context, loopID string, reason string) error
+        AppendJournal(ctx context.Context, entry model.JournalEntry) error
 }
-
 type GitWriter interface {
-	CommitAndPush(ctx context.Context, loopID string, finalDiff string) (string, error)
-	Revert(ctx context.Context, loopID string, commitSHA string) error
+        CommitAndPush(ctx context.Context, loopID string, finalDiff string) (string, error)
+        CreatePullRequest(ctx context.Context, loopID string, commitSHA string, title string, body string) (string, error)
+        Revert(ctx context.Context, loopID string, commitSHA string) error
 }
 
 type Protocol struct {
-	store PhaseStore
-	git   GitWriter
+        store PhaseStore
+        git   GitWriter
 }
-
 func NewProtocol(store PhaseStore, git GitWriter) *Protocol {
 	return &Protocol{
 		store: store,
@@ -111,15 +113,47 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 	}
 
 	if err := p.store.RecordPhase(ctx, PhaseRecord{
-		LoopID:      req.LoopID,
-		Phase:       PhaseCodeCommitted,
-		CommitSHA:   commitSHA,
-		Description: "code commit pushed",
+	        LoopID:      req.LoopID,
+	        Phase:       PhaseCodeCommitted,
+	        CommitSHA:   commitSHA,
+	        Description: "code commit pushed",
 	}.ToJournal()); err != nil {
-		return CommitResult{}, err
+	        return CommitResult{}, err
+	}
+
+	if req.PullRequest {
+	        prURL, err := p.git.CreatePullRequest(ctx, req.LoopID, commitSHA, req.PRTitle, req.PRBody)
+	        if err != nil {
+	                _ = p.store.AppendJournal(ctx, model.JournalEntry{
+	                        LoopID:        req.LoopID,
+	                        Phase:         "completion",
+	                        Level:         "warn",
+	                        ActorType:     "replica",
+	                        ActorID:       "smith-replica",
+	                        Message:       "pull request creation failed; proceeding with commit only",
+	                        CorrelationID: req.CorrelationID,
+	                        Metadata: map[string]string{
+	                                "error": err.Error(),
+	                        },
+	                })
+	        } else {
+	                _ = p.store.AppendJournal(ctx, model.JournalEntry{
+	                        LoopID:        req.LoopID,
+	                        Phase:         "completion",
+	                        Level:         "info",
+	                        ActorType:     "replica",
+	                        ActorID:       "smith-replica",
+	                        Message:       "pull request created: " + prURL,
+	                        CorrelationID: req.CorrelationID,
+	                        Metadata: map[string]string{
+	                                "pr_url": prURL,
+	                        },
+	                })
+	        }
 	}
 
 	if err := p.store.SetStateSynced(ctx, req.LoopID, commitSHA); err != nil {
+
 		_ = p.store.RecordPhase(ctx, PhaseRecord{
 			LoopID:      req.LoopID,
 			Phase:       PhaseCompensationNeed,

@@ -225,6 +225,12 @@ func TestLoadLoopExecutionConfigFromEnvStage(t *testing.T) {
         if cfg.Stage != "prd" {
                 t.Fatalf("expected stage prd, got %q", cfg.Stage)
         }
+
+        t.Setenv("SMITH_LOOP_STAGE", "tech_planning")
+        cfg = loadLoopExecutionConfigFromEnv()
+        if cfg.Stage != "tech_planning" {
+                t.Fatalf("expected stage tech_planning, got %q", cfg.Stage)
+        }
 }
 
 func TestLoadLoopExecutionConfigFromEnvRejectsInvalidValues(t *testing.T) {
