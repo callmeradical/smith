@@ -1,9 +1,9 @@
 # Implementation Plan: End-to-End Smith Autonomous Loop
 
 ## Phase 1: Ingress and PRD Generation
-- [ ] Task: Implement GitHub issue ingress for the Smith loop.
-    - [ ] Define the GitHub issue webhook handler.
-    - [ ] Create a new Smith loop entry in etcd when an issue is received.
+- [x] Task: Implement GitHub issue ingress for the Smith loop. [6e5d9af]
+    - [x] Define the GitHub issue webhook handler.
+    - [x] Create a new Smith loop entry in etcd when an issue is received.
 - [ ] Task: Create a Smith Replica worker for PRD generation.
     - [ ] Define the Replica configuration for the PRD generation stage.
     - [ ] Implement the logic to retrieve the issue content from etcd.
