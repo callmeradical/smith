@@ -407,7 +407,6 @@ Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043
     - Long-running hooks and run logging can mutate `.ralph/runs/*` after a commit; always re-check status and finalize with a cleanup commit.
   - Useful context
     - Terminal command API returns structured error codes for validation/auth/rate-limit failures but attach runtime conflicts currently return text error messages.
----
 ## [2026-03-14 01:03:56 EDT] - US-001: Define canonical PRD validation and diagnostic contracts
 Thread: ses_b56b86
 Run: 20260314-005446-82373 (iteration 1)
@@ -486,4 +485,45 @@ Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-00544
   - The repo pre-commit hook rewrites the active run log after successful commits, so a final bookkeeping commit is needed to restore a clean working tree.
   - Useful context
   - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in existing CI/Makefile tasks, and `make ci-local-act` reaches passing Playwright execution locally but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
+---
+## [2026-03-14 02:40:05 EDT] - US-007: Document and verify the PRD authoring workflow end to end
+Thread: 
+Run: 20260314-005446-82373 (iteration 7)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-7.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-7.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 7dc183c docs(prd): add authoring workflow coverage
+- Post-commit status: `clean`
+- Verification:
+  - Command: go test ./internal/source/e2e -run TestPRDAuthoringWorkflowEndToEnd -count=1 -> PASS
+  - Command: ./scripts/test/e2e-prd-authoring.sh -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .github/workflows/ci.yml
+  - README.md
+  - docs/examples/prd-authoring/invalid-prd.json
+  - docs/examples/prd-authoring/valid-prd.md
+  - docs/index.md
+  - docs/prd-authoring-workflow.md
+  - internal/source/e2e/prd_authoring_workflow_test.go
+  - scripts/test/e2e-prd-authoring.sh
+  - scripts/test/run-matrix.sh
+  - scripts/validate-acceptance.sh
+- What was implemented
+  - Added a repository guide for canonical PRD JSON expectations, markdown authoring rules, validation semantics, CLI examples, and the blocked invalid-path behavior.
+  - Added shared valid and invalid PRD fixtures that document the happy path from markdown authoring to `.agents/tasks/prd.json` and the exact diagnostics for blocked ingress.
+  - Added end-to-end Go coverage plus a wrapper script that exercise markdown import, JSON validation, markdown export, canonical ingress, and invalid ingress parity with the shared validator.
+  - Wired the PRD authoring workflow into run-matrix, the CI ingress/environment job, and `validate-acceptance` so the documented workflow is checked in repo automation.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Reusing docs fixtures in the Go e2e test keeps the published workflow and executable verification synchronized.
+  - Gotchas encountered
+  - A PRD that is `valid=true` can still be `readiness=warn`; the happy-path fixture needed an explicit negative-case acceptance criterion to reach `readiness=pass`.
+  - `make ci-local-act` still fails under `act` at Playwright artifact upload because `ACTIONS_RUNTIME_TOKEN` is unavailable in the local `act` environment even though the browser tests themselves pass.
+  - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in older CI/Makefile expectations outside US-007.
+  - Useful context
+  - The dedicated wrapper script is `./scripts/test/e2e-prd-authoring.sh`, and the main executable test is `TestPRDAuthoringWorkflowEndToEnd` in `internal/source/e2e`.
 ---
