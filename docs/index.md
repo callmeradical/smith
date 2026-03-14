@@ -57,6 +57,7 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 
 ## Operations Notes
 
+- [smithctl Installation and Usage](smithctl-installation-and-usage.md)
 - [Loop Ingress and CLI](loop-ingress-and-cli.md)
 - [Loop Environment Profile](loop-environment-profiles.md)
 - [Multi-Provider Skill Mount Abstraction](multi-provider-skill-mount-abstraction.md)

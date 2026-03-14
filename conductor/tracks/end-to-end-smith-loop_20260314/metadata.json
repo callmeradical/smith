@@ -1,8 +1,0 @@
-{
-  "track_id": "end-to-end-smith-loop_20260314",
-  "type": "feature",
-  "status": "new",
-  "created_at": "2026-03-14T10:00:00Z",
-  "updated_at": "2026-03-14T10:00:00Z",
-  "description": "We want to implement a working loop all the way from PRD generation to submitting the pull request"
-}
