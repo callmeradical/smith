@@ -6,7 +6,7 @@ on:
       - main
       - acceptance-tests
     tags:
-      - 'v*'
+      - "v*"
   pull_request:
     branches:
       - main
@@ -34,8 +34,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -71,24 +71,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'go', 'javascript-typescript' ]
+        language: ["go", "javascript-typescript"]
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: ${{ matrix.language }}
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
 
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
 
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:${{matrix.language}}"
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
 
   # ─── Stage 2: Unit tests (Parallel) ───────────────────────────
   go-unit-tests:
@@ -116,8 +116,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: cd frontend && npm install --silent
@@ -135,8 +135,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: |
@@ -389,7 +389,7 @@ jobs:
           output: trivy-results-${{ matrix.image }}.json
           ignore-unfixed: true
           severity: CRITICAL
-          exit-code: '0'
+          exit-code: "0"
 
       - name: Upload Trivy scan results
         if: always()
@@ -405,7 +405,7 @@ jobs:
           script: |
             const fs = require('fs');
             const resultsPath = 'trivy-results-${{ matrix.image }}.json';
-            
+
             if (!fs.existsSync(resultsPath)) {
               console.log('Trivy results file not found. Scan may have failed to run.');
               return;
@@ -413,7 +413,7 @@ jobs:
 
             const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
             const vulnerabilities = results.Results ? results.Results.flatMap(r => r.Vulnerabilities || []) : [];
-            
+
             if (vulnerabilities.length === 0) {
               console.log('No vulnerabilities found.');
               return;
@@ -421,7 +421,7 @@ jobs:
 
             const title = `Security: CRITICAL vulnerabilities found in smith-${{ matrix.image }}`;
             let body = `Trivy found **${vulnerabilities.length}** critical vulnerabilities in **smith-${{ matrix.image }}:ci**.\n\n`;
-            
+
             for (const vuln of vulnerabilities) {
               body += `### ${vuln.VulnerabilityID} (${vuln.PkgName})\n`;
               body += `- **Installed Version:** ${vuln.InstalledVersion}\n`;
