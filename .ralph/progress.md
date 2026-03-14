@@ -5,6 +5,52 @@ Started: Mon Mar  9 04:32:36 EDT 2026
 - (add reusable patterns here)
 
 ---
+## [2026-03-14 01:16:27 EDT] - US-002: Normalize markdown PRDs into canonical JSON
+Thread: ses_006d2d
+Run: 20260314-005446-82373 (iteration 2)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-2.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-2.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 518f0a3 feat(validation): normalize PRD markdown imports
+- Post-commit status: `pending progress/log commit`
+- Verification:
+  - Command: go test ./internal/source/model -run 'Test(ParsePRDMarkdownFixtures|ParsePRDMarkdownPartialStructure|ValidatePRDMarkdownMalformedFixture|ValidatePRDReport|ValidatePRDJSONMalformedDocument)' -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: npm --prefix frontend run build -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-2.md
+  - .ralph/.tmp/story-20260314-005446-82373-2.json
+  - .ralph/.tmp/story-20260314-005446-82373-2.md
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-1.log
+  - .ralph/runs/run-20260314-005446-82373-iter-1.md
+  - .ralph/runs/run-20260314-005446-82373-iter-2.log
+  - AGENTS.md
+  - internal/source/model/prd_markdown.go
+  - internal/source/model/prd_markdown_test.go
+  - internal/source/model/testdata/prd_markdown/malformed.md
+  - internal/source/model/testdata/prd_markdown/partial.md
+  - internal/source/model/testdata/prd_markdown/well_formed.expected.json
+  - internal/source/model/testdata/prd_markdown/well_formed.md
+- What was implemented
+  - Added a shared markdown PRD normalizer in `internal/source/model` that maps supported headings into canonical PRD JSON fields and preserves ordered canonical stories, dependencies, statuses, rules, and quality gates.
+  - Added `ValidatePRDMarkdown` so markdown import flows can immediately return the same machine-readable validation report used for canonical JSON.
+  - Added fixture-based model tests covering a well-formed PRD, a partially structured markdown PRD, and a malformed markdown document that fails validation with suggested fixes for missing stories and quality gates.
+  - Updated `AGENTS.md` with the repo-local frontend install/build requirement discovered during verification.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Shared PRD import logic belongs in `internal/source/model`; it keeps later CLI and API work from re-implementing markdown semantics in ingress-specific code.
+  - Gotchas encountered
+  - Story detection in list-based markdown must treat labeled metadata like `Depends on:` as story details, not as new story headers.
+  - Repo-level verification still has unrelated failures: `./scripts/validate-acceptance.sh` reports existing acceptance gaps, local `npm --prefix frontend run build` fails until `frontend` dependencies are installed, and `make ci-local-act` fails in the Playwright artifact upload step because `ACTIONS_RUNTIME_TOKEN` is unavailable under local `act`.
+  - Useful context
+  - The local `act` Playwright job eventually ran the browser suite successfully; the failing step was post-test artifact upload, not the UI tests themselves.
+---
 ## [2026-03-09 04:41:52 EDT] - US-001: Resolve runtime pod/container for a loop
 Thread: ses_e20a4f
 Run: 20260309-043236-60668 (iteration 1)
