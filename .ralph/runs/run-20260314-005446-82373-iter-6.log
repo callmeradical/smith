@@ -24824,3 +24824,1997 @@ index f8c555fcee1e89b8f783b479529b626e13966ace..5bc28ab0a7106732da9ea2fdd6ce25c5
  
  func assertDiagnosticCode(t *testing.T, diagnostics []PRDValidationDiagnostic, want string) {
 
+exec
+/bin/zsh -lc 'git add .ralph/.tmp/prompt-20260314-005446-82373-6.md .ralph/.tmp/story-20260314-005446-82373-6.json .ralph/.tmp/story-20260314-005446-82373-6.md .ralph/activity.log .ralph/progress.md .ralph/runs/run-20260314-005446-82373-iter-6.log .ralph/runs/run-20260314-005446-82373-iter-6.md && git commit -m "chore(validation): record US-006 run artifacts"' in /Users/lars/Dev/smith-prd-validationfile update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index 99f80568a7969370719be348e1e1a33f49eb2c0f..d0058c120d74d484312c52c642dd33e72f1bf503
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -51,6 +51,46 @@
+   - Useful context
+   - `./scripts/validate-acceptance.sh` still fails on existing unrelated acceptance checks, and `make ci-local-act` completes lint, Go tests, frontend build, and Playwright execution but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable locally.
+ ---
++## [2026-03-14 02:23:04 EDT] - US-006: Add execution-readiness linting for Ralph-sized stories
++Thread: ses_5e63cb
++Run: 20260314-005446-82373 (iteration 6)
++Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
++Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.md
++- Guardrails reviewed: yes
++- No-commit run: false
++- Commit: 4a35ae6 feat(validation): add PRD readiness linting
++- Post-commit status: `.agents/tasks/prd-prd-generation-validation.json`, `.ralph/errors.log`, and prior-iteration run artifacts remain modified outside this story
++- Verification:
++  - Command: act --version -> PASS
++  - Command: docker --version -> PASS
++  - Command: go test ./internal/source/model ./cmd/smith -> PASS
++  - Command: go test ./... -> PASS
++  - Command: ./scripts/validate-acceptance.sh -> FAIL
++  - Command: make ci-local-act -> FAIL
++- Files changed:
++  - .ralph/.tmp/prompt-20260314-005446-82373-6.md
++  - .ralph/.tmp/story-20260314-005446-82373-6.json
++  - .ralph/.tmp/story-20260314-005446-82373-6.md
++  - .ralph/activity.log
++  - .ralph/progress.md
++  - .ralph/runs/run-20260314-005446-82373-iter-6.log
++  - .ralph/runs/run-20260314-005446-82373-iter-6.md
++  - cmd/smith-api/main_test.go
++  - cmd/smith/main_test.go
++  - internal/source/model/prd.go
++  - internal/source/model/prd_test.go
++- What was implemented
++  - Added execution-readiness linting in the shared PRD validator for likely oversized stories, weak acceptance criteria, missing negative cases, bundled CLI/API/UI rewrites without dependency ordering, and dependencies that point forward in story order.
++  - Split readiness diagnostics into warnings versus blocking errors so automation consumers can distinguish clarification work from loop-blocking issues while keeping diagnostic codes stable.
++  - Added tests for pass, warning-only, and blocking readiness cases, plus CLI validation behavior and ingress severity alignment.
++- **Learnings for future iterations:**
++  - Patterns discovered
++  - Shared readiness linting in `internal/source/model/prd.go` keeps CLI and API behavior aligned without duplicating execution-scope heuristics.
++  - Gotchas encountered
++  - `cmd/` paths are ignored by repo gitignore rules, so touched CLI/API files must be staged with `git add -f`.
++  - Useful context
++  - `./scripts/validate-acceptance.sh` still fails on unrelated acceptance checks, and `make ci-local-act` reaches passing lint, Go tests, frontend build, and Playwright execution but fails artifact upload under local `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable.
++---
+ ## [2026-03-14 01:46:19 EDT] - US-004: Add CLI workflows for generate import export and validate
+ Thread: ses_78d535
+ Run: 20260314-005446-82373 (iteration 4)
+diff --git a/.ralph/runs/run-20260314-005446-82373-iter-6.md b/.ralph/runs/run-20260314-005446-82373-iter-6.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e4e746b636e86f8515674587d37de49f3f82e2e
+--- /dev/null
++++ b/.ralph/runs/run-20260314-005446-82373-iter-6.md
+@@ -0,0 +1,39 @@
++# Ralph Run Summary
++
++- Run ID: 20260314-005446-82373
++- Iteration: 6
++- Mode: build
++- Story: US-006: Add execution-readiness linting for Ralph-sized stories
++- Started: 2026-03-14 02:09:12
++- Ended: 2026-03-14 02:23:04
++- Duration: 832s
++- Status: success
++- Log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
++
++## Git
++- Head (before): e2a1ed7a009720c5fb2fee25a39c049daa401962
++- Head (after): 4a35ae6876698d0e6834a7ae3051ef71cdb74cb9
++
++### Commits
++- 4a35ae6 feat(validation): add PRD readiness linting
++
++### Changed Files (commit)
++- .ralph/.tmp/prompt-20260314-005446-82373-6.md
++- .ralph/.tmp/story-20260314-005446-82373-6.json
++- .ralph/.tmp/story-20260314-005446-82373-6.md
++- .ralph/activity.log
++- .ralph/progress.md
++- .ralph/runs/run-20260314-005446-82373-iter-6.log
++- .ralph/runs/run-20260314-005446-82373-iter-6.md
++- cmd/smith-api/main_test.go
++- cmd/smith/main_test.go
++- internal/source/model/prd.go
++- internal/source/model/prd_test.go
++
++### Verification
++- `act --version` -> PASS
++- `docker --version` -> PASS
++- `go test ./internal/source/model ./cmd/smith` -> PASS
++- `go test ./...` -> PASS
++- `./scripts/validate-acceptance.sh` -> FAIL (existing unrelated acceptance checks)
++- `make ci-local-act` -> FAIL (`playwright-tests` artifact upload under local `act` requires `ACTIONS_RUNTIME_TOKEN`)
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 7bc7a8779e57c3205c2d1acc79668cca7de6dba0..0f3f7c0890db6134bbc317eba8da07d3258cd31b
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -120,7 +120,7 @@
+ 		t.Fatalf("expected validation failure payload, got %+v", body)
+ 	}
+ 	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticMissingQualityGates)
+-	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticOversizedStory)
++	assertDiagnosticCodeInReport(t, body.Report.Warnings, model.PRDDiagnosticOversizedStory)
+ 	states, err := ms.ListStates(context.Background())
+ 	if err != nil {
+ 		t.Fatalf("list states: %v", err)
+diff --git a/cmd/smith/main_test.go b/cmd/smith/main_test.go
+index 30020656d917b1df285f7332771f5a84cac229f5..c735b4df763da3cafbe8ee83d15665e2e94fe0b3
+--- a/cmd/smith/main_test.go
++++ b/cmd/smith/main_test.go
+@@ -236,6 +236,55 @@
+ 	}
+ }
+ 
++func TestRunValidateWarningOnlyPRDReturnsZero(t *testing.T) {
++	dir := t.TempDir()
++	jsonPath := filepath.Join(dir, "prd.json")
++	prd := `{
++  "version": 1,
++  "project": "Smith PRD Validation",
++  "overview": "Canonical PRD validation",
++  "qualityGates": ["go test ./..."],
++  "stories": [
++    {
++      "id": "US-001",
++      "title": "Clarify readiness warnings",
++      "status": "open",
++      "description": "As a maintainer, I want warning-only lint results preserved.",
++      "acceptanceCriteria": ["UI works as expected."]
++    }
++  ]
++}`
++	if err := os.WriteFile(jsonPath, []byte(prd), 0o644); err != nil {
++		t.Fatalf("write prd json: %v", err)
++	}
++
++	var stdout, stderr bytes.Buffer
++	code := run([]string{"--prd", "validate", jsonPath}, strings.NewReader(""), &stdout, &stderr)
++	if code != 0 {
++		t.Fatalf("expected validation warning code=0, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
++	}
++
++	var report struct {
++		Valid     bool   `json:"valid"`
++		Readiness string `json:"readiness"`
++		Warnings  []struct {
++			Code string `json:"code"`
++		} `json:"warnings"`
++	}
++	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
++		t.Fatalf("expected machine-readable JSON diagnostics: %v\nstdout=%s", err, stdout.String())
++	}
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to be valid, got %+v", report)
++	}
++	if report.Readiness != "warn" {
++		t.Fatalf("expected readiness warn, got %+v", report)
++	}
++	if len(report.Warnings) == 0 {
++		t.Fatalf("expected warning diagnostics, got %+v", report)
++	}
++}
++
+ func TestRunRejectsInvalidExportArguments(t *testing.T) {
+ 	var stdout, stderr bytes.Buffer
+ 	code := run([]string{"--prd", "--to-markdown", "prd.md"}, strings.NewReader(""), &stdout, &stderr)
+diff --git a/internal/source/model/prd.go b/internal/source/model/prd.go
+index 2a18690272b065349403579bdae594d7a595de16..9cc9186b39cfcd503c6c3f91d6343c391914a1d5
+--- a/internal/source/model/prd.go
++++ b/internal/source/model/prd.go
+@@ -96,11 +96,20 @@
+ 	PRDDiagnosticMultipleInProgress      = "prd_multiple_in_progress_stories"
+ 	PRDDiagnosticUnknownStoryDependency  = "prd_unknown_story_dependency"
+ 	PRDDiagnosticOversizedStory          = "prd_oversized_story"
++	PRDDiagnosticWeakAcceptance          = "prd_weak_acceptance_criteria"
++	PRDDiagnosticMissingNegativeCase     = "prd_missing_negative_case"
++	PRDDiagnosticFutureStoryDependency   = "prd_future_story_dependency"
++	PRDDiagnosticBundledStorySurfaces    = "prd_bundled_story_surfaces"
+ )
+ 
+ var (
+ 	prdStoryIDPattern  = regexp.MustCompile(`^US-\d{3}$`)
+ 	prdAllowedStatuses = []string{"open", "in_progress", "done"}
++	prdNegativeCaseRE  = regexp.MustCompile(`\b(invalid|missing|reject(?:s|ed)?|error(?:s)?|fail(?:s|ed|ure)?|without|cannot|can't|does not|prevent(?:s|ed)?|negative case|malformed|den(?:y|ies|ied)|empty|unknown|unauthorized)\b`)
++	prdWeakCriterionRE = regexp.MustCompile(`\b(works?(?: as expected)?|handles?(?: edge cases)?|supports?|appropriate|proper(?:ly)?|correct(?:ly)?|improve|enhance|clean(?: ?up)?|better|nice to have|user-friendly|robust|seamless)\b`)
++	prdCLISurfaceRE    = regexp.MustCompile(`\b(cli|command|terminal|flag)\b`)
++	prdAPISurfaceRE    = regexp.MustCompile(`\b(api|http|endpoint|handler|server)\b`)
++	prdUISurfaceRE     = regexp.MustCompile(`\b(ui|ux|frontend|front-end|page|component|screen)\b`)
+ )
+ 
+ const (
+@@ -255,11 +264,35 @@
+ 			})
+ 		}
+ 		storySize := len(strings.TrimSpace(story.Title)) + len(strings.TrimSpace(story.Description))
++		hasNegativeCase := false
+ 		for _, criterion := range story.AcceptanceCriteria {
+-			storySize += len(strings.TrimSpace(criterion))
++			trimmedCriterion := strings.TrimSpace(criterion)
++			storySize += len(trimmedCriterion)
++			if prdNegativeCaseRE.MatchString(strings.ToLower(trimmedCriterion)) {
++				hasNegativeCase = true
++			}
++			if criterionNeedsClarification(trimmedCriterion) {
++				report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticWeakAcceptance,
++					Path:       storyPath + ".acceptanceCriteria",
++					StoryID:    storyID,
++					Message:    "acceptance criteria should describe observable behavior with concrete outcomes",
++					Suggestion: "Rewrite vague criteria with concrete inputs, outputs, or user-visible results.",
++				})
++				break
++			}
++		}
++		if !hasNegativeCase {
++			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingNegativeCase,
++				Path:       storyPath + ".acceptanceCriteria",
++				StoryID:    storyID,
++				Message:    "story acceptance criteria should cover at least one negative or failure case",
++				Suggestion: "Add a criterion describing how the system rejects, blocks, or reports an invalid scenario.",
++			})
+ 		}
+ 		if len(story.AcceptanceCriteria) > maxPRDStoryAcceptanceCriteria || storySize > maxPRDStoryCharacters {
+-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
+ 				Code:    PRDDiagnosticOversizedStory,
+ 				Path:    storyPath,
+ 				StoryID: storyID,
+@@ -270,6 +303,15 @@
+ 				),
+ 			})
+ 		}
++		if bundledDeliverySurfaces(story) >= 3 && len(story.DependsOn) == 0 {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticBundledStorySurfaces,
++				Path:       storyPath,
++				StoryID:    storyID,
++				Message:    "story bundles CLI, API, and UI work without dependency ordering",
++				Suggestion: "Split the work into separate stories per surface and add dependsOn links for the execution order.",
++			})
++		}
+ 		status := strings.TrimSpace(story.Status)
+ 		if !slices.Contains(prdAllowedStatuses, status) {
+ 			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+@@ -299,16 +341,26 @@
+ 		storyID := strings.TrimSpace(story.ID)
+ 		for depIndex, dependency := range story.DependsOn {
+ 			depID := strings.TrimSpace(dependency)
+-			if _, ok := storyIDs[depID]; ok {
++			depStoryIndex, ok := storyIDs[depID]
++			if !ok {
++				report.Errors = append(report.Errors, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticUnknownStoryDependency,
++					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++					StoryID:    storyID,
++					Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
++					Suggestion: "Reference an existing canonical story id.",
++				})
+ 				continue
+ 			}
+-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+-				Code:       PRDDiagnosticUnknownStoryDependency,
+-				Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
+-				StoryID:    storyID,
+-				Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
+-				Suggestion: "Reference an existing canonical story id.",
+-			})
++			if depStoryIndex >= i {
++				report.Errors = append(report.Errors, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticFutureStoryDependency,
++					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++					StoryID:    storyID,
++					Message:    fmt.Sprintf("story dependency %q must appear before %q in story order", depID, storyID),
++					Suggestion: "Reorder the stories or update dependsOn so each dependency points to an earlier story.",
++				})
++			}
+ 		}
+ 	}
+ 
+@@ -323,3 +375,29 @@
+ 	}
+ 	return report
+ }
++
++func criterionNeedsClarification(criterion string) bool {
++	trimmed := strings.TrimSpace(criterion)
++	if trimmed == "" {
++		return false
++	}
++	lower := strings.ToLower(trimmed)
++	if prdNegativeCaseRE.MatchString(lower) {
++		return false
++	}
++	if prdWeakCriterionRE.MatchString(lower) {
++		return true
++	}
++	return len(strings.Fields(trimmed)) < 4
++}
++
++func bundledDeliverySurfaces(story PRDStory) int {
++	text := strings.ToLower(strings.Join(append(append([]string{story.Title, story.Description}, story.AcceptanceCriteria...), story.DependsOn...), " "))
++	surfaces := 0
++	for _, pattern := range []*regexp.Regexp{prdCLISurfaceRE, prdAPISurfaceRE, prdUISurfaceRE} {
++		if pattern.MatchString(text) {
++			surfaces++
++		}
++	}
++	return surfaces
++}
+diff --git a/internal/source/model/prd_test.go b/internal/source/model/prd_test.go
+index f8c555fcee1e89b8f783b479529b626e13966ace..5bc28ab0a7106732da9ea2fdd6ce25c5e7ae4485
+--- a/internal/source/model/prd_test.go
++++ b/internal/source/model/prd_test.go
+@@ -12,19 +12,25 @@
+ 		Gates:    []string{"go test ./...", "./scripts/validate-acceptance.sh"},
+ 		Stories: []PRDStory{
+ 			{
+-				ID:                 "US-001",
+-				Title:              "Define validation contract",
+-				Status:             "in_progress",
+-				Description:        "As a maintainer, I want shared validation.",
+-				AcceptanceCriteria: []string{"Validation report is shared."},
++				ID:          "US-001",
++				Title:       "Define route-aware validation contract",
++				Status:      "in_progress",
++				Description: "As a maintainer, I want shared validation for route and package changes.",
++				AcceptanceCriteria: []string{
++					"`smith --prd validate` returns machine-readable diagnostics for invalid input.",
++					"Invalid story dependencies are rejected before ingress begins.",
++				},
+ 			},
+ 			{
+-				ID:                 "US-002",
+-				Title:              "Reuse validation contract",
+-				Status:             "open",
+-				DependsOn:          []string{"US-001"},
+-				Description:        "As a maintainer, I want API and CLI parity.",
+-				AcceptanceCriteria: []string{"CLI and API share the same rules."},
++				ID:          "US-002",
++				Title:       "Reuse validation contract in package workflows",
++				Status:      "open",
++				DependsOn:   []string{"US-001"},
++				Description: "As a maintainer, I want route and package validations reused across CLI and API flows.",
++				AcceptanceCriteria: []string{
++					"CLI and API validation return the same diagnostic codes.",
++					"Requests with missing package references fail with the shared validation report.",
++				},
+ 			},
+ 		},
+ 	}
+@@ -36,6 +42,9 @@
+ 	if len(report.Errors) != 0 {
+ 		t.Fatalf("expected zero blocking errors, got %+v", report.Errors)
+ 	}
++	if len(report.Warnings) != 0 {
++		t.Fatalf("expected zero readiness warnings, got %+v", report.Warnings)
++	}
+ 	if report.Readiness != PRDReadinessPass {
+ 		t.Fatalf("expected readiness %q, got %q", PRDReadinessPass, report.Readiness)
+ 	}
+@@ -137,7 +146,7 @@
+ 	assertDiagnosticCode(t, report.Errors, PRDDiagnosticInvalidStoryStatus)
+ }
+ 
+-func TestValidatePRDReportRejectsOversizedStory(t *testing.T) {
++func TestValidatePRDReportWarnsOnOversizedStory(t *testing.T) {
+ 	prd := PRD{
+ 		Version:  1,
+ 		Project:  "Validation",
+@@ -162,10 +171,113 @@
+ 	}
+ 
+ 	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to remain valid, got %+v", report)
++	}
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticOversizedStory)
++	if report.Readiness != PRDReadinessWarn {
++		t.Fatalf("expected readiness %q, got %q", PRDReadinessWarn, report.Readiness)
++	}
++}
++
++func TestValidatePRDReportWarnsOnWeakAcceptanceAndMissingNegativeCase(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Clarify acceptance criteria",
++				Status:      "open",
++				Description: "As a maintainer, I want acceptance criteria that are execution-ready.",
++				AcceptanceCriteria: []string{
++					"UI works as expected.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to remain valid, got %+v", report)
++	}
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticWeakAcceptance)
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticMissingNegativeCase)
++}
++
++func TestValidatePRDReportRejectsBundledSurfaceRewriteWithoutDependencies(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Rewrite CLI API and UI flows together",
++				Status:      "open",
++				Description: "As an operator, I want the CLI, API, and UI rewritten in one pass.",
++				AcceptanceCriteria: []string{
++					"CLI commands render the new output shape.",
++					"API endpoints return the rewritten payloads.",
++					"UI screens render the new workflow.",
++					"Invalid requests are rejected with shared diagnostics.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
+ 	if report.Valid {
+ 		t.Fatal("expected invalid report")
+ 	}
+-	assertDiagnosticCode(t, report.Errors, PRDDiagnosticOversizedStory)
++	diagnostic := findDiagnostic(report.Errors, PRDDiagnosticBundledStorySurfaces)
++	if diagnostic.Code == "" {
++		t.Fatalf("expected diagnostic %q in %+v", PRDDiagnosticBundledStorySurfaces, report.Errors)
++	}
++	if diagnostic.Suggestion == "" {
++		t.Fatalf("expected bundled surface diagnostic to include a suggestion: %+v", diagnostic)
++	}
++}
++
++func TestValidatePRDReportRejectsFutureStoryDependency(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Build validation entrypoint",
++				Status:      "open",
++				DependsOn:   []string{"US-002"},
++				Description: "As a maintainer, I want the entrypoint implemented after the shared core.",
++				AcceptanceCriteria: []string{
++					"Validation commands call the shared package.",
++					"Invalid configuration is rejected before execution.",
++				},
++			},
++			{
++				ID:          "US-002",
++				Title:       "Build shared validation core",
++				Status:      "open",
++				Description: "As a maintainer, I want reusable readiness linting.",
++				AcceptanceCriteria: []string{
++					"Validation rules return stable diagnostic codes.",
++					"Missing dependencies are rejected before ingress.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticFutureStoryDependency)
+ }
+ 
+ func assertDiagnosticCode(t *testing.T, diagnostics []PRDValidationDiagnostic, want string) {
+
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index 99f80568a7969370719be348e1e1a33f49eb2c0f..d0058c120d74d484312c52c642dd33e72f1bf503
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -51,6 +51,46 @@
+   - Useful context
+   - `./scripts/validate-acceptance.sh` still fails on existing unrelated acceptance checks, and `make ci-local-act` completes lint, Go tests, frontend build, and Playwright execution but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable locally.
+ ---
++## [2026-03-14 02:23:04 EDT] - US-006: Add execution-readiness linting for Ralph-sized stories
++Thread: ses_5e63cb
++Run: 20260314-005446-82373 (iteration 6)
++Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
++Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.md
++- Guardrails reviewed: yes
++- No-commit run: false
++- Commit: 4a35ae6 feat(validation): add PRD readiness linting
++- Post-commit status: `.agents/tasks/prd-prd-generation-validation.json`, `.ralph/errors.log`, and prior-iteration run artifacts remain modified outside this story
++- Verification:
++  - Command: act --version -> PASS
++  - Command: docker --version -> PASS
++  - Command: go test ./internal/source/model ./cmd/smith -> PASS
++  - Command: go test ./... -> PASS
++  - Command: ./scripts/validate-acceptance.sh -> FAIL
++  - Command: make ci-local-act -> FAIL
++- Files changed:
++  - .ralph/.tmp/prompt-20260314-005446-82373-6.md
++  - .ralph/.tmp/story-20260314-005446-82373-6.json
++  - .ralph/.tmp/story-20260314-005446-82373-6.md
++  - .ralph/activity.log
++  - .ralph/progress.md
++  - .ralph/runs/run-20260314-005446-82373-iter-6.log
++  - .ralph/runs/run-20260314-005446-82373-iter-6.md
++  - cmd/smith-api/main_test.go
++  - cmd/smith/main_test.go
++  - internal/source/model/prd.go
++  - internal/source/model/prd_test.go
++- What was implemented
++  - Added execution-readiness linting in the shared PRD validator for likely oversized stories, weak acceptance criteria, missing negative cases, bundled CLI/API/UI rewrites without dependency ordering, and dependencies that point forward in story order.
++  - Split readiness diagnostics into warnings versus blocking errors so automation consumers can distinguish clarification work from loop-blocking issues while keeping diagnostic codes stable.
++  - Added tests for pass, warning-only, and blocking readiness cases, plus CLI validation behavior and ingress severity alignment.
++- **Learnings for future iterations:**
++  - Patterns discovered
++  - Shared readiness linting in `internal/source/model/prd.go` keeps CLI and API behavior aligned without duplicating execution-scope heuristics.
++  - Gotchas encountered
++  - `cmd/` paths are ignored by repo gitignore rules, so touched CLI/API files must be staged with `git add -f`.
++  - Useful context
++  - `./scripts/validate-acceptance.sh` still fails on unrelated acceptance checks, and `make ci-local-act` reaches passing lint, Go tests, frontend build, and Playwright execution but fails artifact upload under local `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable.
++---
+ ## [2026-03-14 01:46:19 EDT] - US-004: Add CLI workflows for generate import export and validate
+ Thread: ses_78d535
+ Run: 20260314-005446-82373 (iteration 4)
+diff --git a/.ralph/runs/run-20260314-005446-82373-iter-6.md b/.ralph/runs/run-20260314-005446-82373-iter-6.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e4e746b636e86f8515674587d37de49f3f82e2e
+--- /dev/null
++++ b/.ralph/runs/run-20260314-005446-82373-iter-6.md
+@@ -0,0 +1,39 @@
++# Ralph Run Summary
++
++- Run ID: 20260314-005446-82373
++- Iteration: 6
++- Mode: build
++- Story: US-006: Add execution-readiness linting for Ralph-sized stories
++- Started: 2026-03-14 02:09:12
++- Ended: 2026-03-14 02:23:04
++- Duration: 832s
++- Status: success
++- Log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
++
++## Git
++- Head (before): e2a1ed7a009720c5fb2fee25a39c049daa401962
++- Head (after): 4a35ae6876698d0e6834a7ae3051ef71cdb74cb9
++
++### Commits
++- 4a35ae6 feat(validation): add PRD readiness linting
++
++### Changed Files (commit)
++- .ralph/.tmp/prompt-20260314-005446-82373-6.md
++- .ralph/.tmp/story-20260314-005446-82373-6.json
++- .ralph/.tmp/story-20260314-005446-82373-6.md
++- .ralph/activity.log
++- .ralph/progress.md
++- .ralph/runs/run-20260314-005446-82373-iter-6.log
++- .ralph/runs/run-20260314-005446-82373-iter-6.md
++- cmd/smith-api/main_test.go
++- cmd/smith/main_test.go
++- internal/source/model/prd.go
++- internal/source/model/prd_test.go
++
++### Verification
++- `act --version` -> PASS
++- `docker --version` -> PASS
++- `go test ./internal/source/model ./cmd/smith` -> PASS
++- `go test ./...` -> PASS
++- `./scripts/validate-acceptance.sh` -> FAIL (existing unrelated acceptance checks)
++- `make ci-local-act` -> FAIL (`playwright-tests` artifact upload under local `act` requires `ACTIONS_RUNTIME_TOKEN`)
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 7bc7a8779e57c3205c2d1acc79668cca7de6dba0..0f3f7c0890db6134bbc317eba8da07d3258cd31b
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -120,7 +120,7 @@
+ 		t.Fatalf("expected validation failure payload, got %+v", body)
+ 	}
+ 	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticMissingQualityGates)
+-	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticOversizedStory)
++	assertDiagnosticCodeInReport(t, body.Report.Warnings, model.PRDDiagnosticOversizedStory)
+ 	states, err := ms.ListStates(context.Background())
+ 	if err != nil {
+ 		t.Fatalf("list states: %v", err)
+diff --git a/cmd/smith/main_test.go b/cmd/smith/main_test.go
+index 30020656d917b1df285f7332771f5a84cac229f5..c735b4df763da3cafbe8ee83d15665e2e94fe0b3
+--- a/cmd/smith/main_test.go
++++ b/cmd/smith/main_test.go
+@@ -236,6 +236,55 @@
+ 	}
+ }
+ 
++func TestRunValidateWarningOnlyPRDReturnsZero(t *testing.T) {
++	dir := t.TempDir()
++	jsonPath := filepath.Join(dir, "prd.json")
++	prd := `{
++  "version": 1,
++  "project": "Smith PRD Validation",
++  "overview": "Canonical PRD validation",
++  "qualityGates": ["go test ./..."],
++  "stories": [
++    {
++      "id": "US-001",
++      "title": "Clarify readiness warnings",
++      "status": "open",
++      "description": "As a maintainer, I want warning-only lint results preserved.",
++      "acceptanceCriteria": ["UI works as expected."]
++    }
++  ]
++}`
++	if err := os.WriteFile(jsonPath, []byte(prd), 0o644); err != nil {
++		t.Fatalf("write prd json: %v", err)
++	}
++
++	var stdout, stderr bytes.Buffer
++	code := run([]string{"--prd", "validate", jsonPath}, strings.NewReader(""), &stdout, &stderr)
++	if code != 0 {
++		t.Fatalf("expected validation warning code=0, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
++	}
++
++	var report struct {
++		Valid     bool   `json:"valid"`
++		Readiness string `json:"readiness"`
++		Warnings  []struct {
++			Code string `json:"code"`
++		} `json:"warnings"`
++	}
++	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
++		t.Fatalf("expected machine-readable JSON diagnostics: %v\nstdout=%s", err, stdout.String())
++	}
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to be valid, got %+v", report)
++	}
++	if report.Readiness != "warn" {
++		t.Fatalf("expected readiness warn, got %+v", report)
++	}
++	if len(report.Warnings) == 0 {
++		t.Fatalf("expected warning diagnostics, got %+v", report)
++	}
++}
++
+ func TestRunRejectsInvalidExportArguments(t *testing.T) {
+ 	var stdout, stderr bytes.Buffer
+ 	code := run([]string{"--prd", "--to-markdown", "prd.md"}, strings.NewReader(""), &stdout, &stderr)
+diff --git a/internal/source/model/prd.go b/internal/source/model/prd.go
+index 2a18690272b065349403579bdae594d7a595de16..9cc9186b39cfcd503c6c3f91d6343c391914a1d5
+--- a/internal/source/model/prd.go
++++ b/internal/source/model/prd.go
+@@ -96,11 +96,20 @@
+ 	PRDDiagnosticMultipleInProgress      = "prd_multiple_in_progress_stories"
+ 	PRDDiagnosticUnknownStoryDependency  = "prd_unknown_story_dependency"
+ 	PRDDiagnosticOversizedStory          = "prd_oversized_story"
++	PRDDiagnosticWeakAcceptance          = "prd_weak_acceptance_criteria"
++	PRDDiagnosticMissingNegativeCase     = "prd_missing_negative_case"
++	PRDDiagnosticFutureStoryDependency   = "prd_future_story_dependency"
++	PRDDiagnosticBundledStorySurfaces    = "prd_bundled_story_surfaces"
+ )
+ 
+ var (
+ 	prdStoryIDPattern  = regexp.MustCompile(`^US-\d{3}$`)
+ 	prdAllowedStatuses = []string{"open", "in_progress", "done"}
++	prdNegativeCaseRE  = regexp.MustCompile(`\b(invalid|missing|reject(?:s|ed)?|error(?:s)?|fail(?:s|ed|ure)?|without|cannot|can't|does not|prevent(?:s|ed)?|negative case|malformed|den(?:y|ies|ied)|empty|unknown|unauthorized)\b`)
++	prdWeakCriterionRE = regexp.MustCompile(`\b(works?(?: as expected)?|handles?(?: edge cases)?|supports?|appropriate|proper(?:ly)?|correct(?:ly)?|improve|enhance|clean(?: ?up)?|better|nice to have|user-friendly|robust|seamless)\b`)
++	prdCLISurfaceRE    = regexp.MustCompile(`\b(cli|command|terminal|flag)\b`)
++	prdAPISurfaceRE    = regexp.MustCompile(`\b(api|http|endpoint|handler|server)\b`)
++	prdUISurfaceRE     = regexp.MustCompile(`\b(ui|ux|frontend|front-end|page|component|screen)\b`)
+ )
+ 
+ const (
+@@ -255,11 +264,35 @@
+ 			})
+ 		}
+ 		storySize := len(strings.TrimSpace(story.Title)) + len(strings.TrimSpace(story.Description))
++		hasNegativeCase := false
+ 		for _, criterion := range story.AcceptanceCriteria {
+-			storySize += len(strings.TrimSpace(criterion))
++			trimmedCriterion := strings.TrimSpace(criterion)
++			storySize += len(trimmedCriterion)
++			if prdNegativeCaseRE.MatchString(strings.ToLower(trimmedCriterion)) {
++				hasNegativeCase = true
++			}
++			if criterionNeedsClarification(trimmedCriterion) {
++				report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticWeakAcceptance,
++					Path:       storyPath + ".acceptanceCriteria",
++					StoryID:    storyID,
++					Message:    "acceptance criteria should describe observable behavior with concrete outcomes",
++					Suggestion: "Rewrite vague criteria with concrete inputs, outputs, or user-visible results.",
++				})
++				break
++			}
++		}
++		if !hasNegativeCase {
++			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingNegativeCase,
++				Path:       storyPath + ".acceptanceCriteria",
++				StoryID:    storyID,
++				Message:    "story acceptance criteria should cover at least one negative or failure case",
++				Suggestion: "Add a criterion describing how the system rejects, blocks, or reports an invalid scenario.",
++			})
+ 		}
+ 		if len(story.AcceptanceCriteria) > maxPRDStoryAcceptanceCriteria || storySize > maxPRDStoryCharacters {
+-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
+ 				Code:    PRDDiagnosticOversizedStory,
+ 				Path:    storyPath,
+ 				StoryID: storyID,
+@@ -270,6 +303,15 @@
+ 				),
+ 			})
+ 		}
++		if bundledDeliverySurfaces(story) >= 3 && len(story.DependsOn) == 0 {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticBundledStorySurfaces,
++				Path:       storyPath,
++				StoryID:    storyID,
++				Message:    "story bundles CLI, API, and UI work without dependency ordering",
++				Suggestion: "Split the work into separate stories per surface and add dependsOn links for the execution order.",
++			})
++		}
+ 		status := strings.TrimSpace(story.Status)
+ 		if !slices.Contains(prdAllowedStatuses, status) {
+ 			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+@@ -299,16 +341,26 @@
+ 		storyID := strings.TrimSpace(story.ID)
+ 		for depIndex, dependency := range story.DependsOn {
+ 			depID := strings.TrimSpace(dependency)
+-			if _, ok := storyIDs[depID]; ok {
++			depStoryIndex, ok := storyIDs[depID]
++			if !ok {
++				report.Errors = append(report.Errors, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticUnknownStoryDependency,
++					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++					StoryID:    storyID,
++					Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
++					Suggestion: "Reference an existing canonical story id.",
++				})
+ 				continue
+ 			}
+-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+-				Code:       PRDDiagnosticUnknownStoryDependency,
+-				Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
+-				StoryID:    storyID,
+-				Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
+-				Suggestion: "Reference an existing canonical story id.",
+-			})
++			if depStoryIndex >= i {
++				report.Errors = append(report.Errors, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticFutureStoryDependency,
++					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++					StoryID:    storyID,
++					Message:    fmt.Sprintf("story dependency %q must appear before %q in story order", depID, storyID),
++					Suggestion: "Reorder the stories or update dependsOn so each dependency points to an earlier story.",
++				})
++			}
+ 		}
+ 	}
+ 
+@@ -323,3 +375,29 @@
+ 	}
+ 	return report
+ }
++
++func criterionNeedsClarification(criterion string) bool {
++	trimmed := strings.TrimSpace(criterion)
++	if trimmed == "" {
++		return false
++	}
++	lower := strings.ToLower(trimmed)
++	if prdNegativeCaseRE.MatchString(lower) {
++		return false
++	}
++	if prdWeakCriterionRE.MatchString(lower) {
++		return true
++	}
++	return len(strings.Fields(trimmed)) < 4
++}
++
++func bundledDeliverySurfaces(story PRDStory) int {
++	text := strings.ToLower(strings.Join(append(append([]string{story.Title, story.Description}, story.AcceptanceCriteria...), story.DependsOn...), " "))
++	surfaces := 0
++	for _, pattern := range []*regexp.Regexp{prdCLISurfaceRE, prdAPISurfaceRE, prdUISurfaceRE} {
++		if pattern.MatchString(text) {
++			surfaces++
++		}
++	}
++	return surfaces
++}
+diff --git a/internal/source/model/prd_test.go b/internal/source/model/prd_test.go
+index f8c555fcee1e89b8f783b479529b626e13966ace..5bc28ab0a7106732da9ea2fdd6ce25c5e7ae4485
+--- a/internal/source/model/prd_test.go
++++ b/internal/source/model/prd_test.go
+@@ -12,19 +12,25 @@
+ 		Gates:    []string{"go test ./...", "./scripts/validate-acceptance.sh"},
+ 		Stories: []PRDStory{
+ 			{
+-				ID:                 "US-001",
+-				Title:              "Define validation contract",
+-				Status:             "in_progress",
+-				Description:        "As a maintainer, I want shared validation.",
+-				AcceptanceCriteria: []string{"Validation report is shared."},
++				ID:          "US-001",
++				Title:       "Define route-aware validation contract",
++				Status:      "in_progress",
++				Description: "As a maintainer, I want shared validation for route and package changes.",
++				AcceptanceCriteria: []string{
++					"`smith --prd validate` returns machine-readable diagnostics for invalid input.",
++					"Invalid story dependencies are rejected before ingress begins.",
++				},
+ 			},
+ 			{
+-				ID:                 "US-002",
+-				Title:              "Reuse validation contract",
+-				Status:             "open",
+-				DependsOn:          []string{"US-001"},
+-				Description:        "As a maintainer, I want API and CLI parity.",
+-				AcceptanceCriteria: []string{"CLI and API share the same rules."},
++				ID:          "US-002",
++				Title:       "Reuse validation contract in package workflows",
++				Status:      "open",
++				DependsOn:   []string{"US-001"},
++				Description: "As a maintainer, I want route and package validations reused across CLI and API flows.",
++				AcceptanceCriteria: []string{
++					"CLI and API validation return the same diagnostic codes.",
++					"Requests with missing package references fail with the shared validation report.",
++				},
+ 			},
+ 		},
+ 	}
+@@ -36,6 +42,9 @@
+ 	if len(report.Errors) != 0 {
+ 		t.Fatalf("expected zero blocking errors, got %+v", report.Errors)
+ 	}
++	if len(report.Warnings) != 0 {
++		t.Fatalf("expected zero readiness warnings, got %+v", report.Warnings)
++	}
+ 	if report.Readiness != PRDReadinessPass {
+ 		t.Fatalf("expected readiness %q, got %q", PRDReadinessPass, report.Readiness)
+ 	}
+@@ -137,7 +146,7 @@
+ 	assertDiagnosticCode(t, report.Errors, PRDDiagnosticInvalidStoryStatus)
+ }
+ 
+-func TestValidatePRDReportRejectsOversizedStory(t *testing.T) {
++func TestValidatePRDReportWarnsOnOversizedStory(t *testing.T) {
+ 	prd := PRD{
+ 		Version:  1,
+ 		Project:  "Validation",
+@@ -162,10 +171,113 @@
+ 	}
+ 
+ 	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to remain valid, got %+v", report)
++	}
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticOversizedStory)
++	if report.Readiness != PRDReadinessWarn {
++		t.Fatalf("expected readiness %q, got %q", PRDReadinessWarn, report.Readiness)
++	}
++}
++
++func TestValidatePRDReportWarnsOnWeakAcceptanceAndMissingNegativeCase(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Clarify acceptance criteria",
++				Status:      "open",
++				Description: "As a maintainer, I want acceptance criteria that are execution-ready.",
++				AcceptanceCriteria: []string{
++					"UI works as expected.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to remain valid, got %+v", report)
++	}
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticWeakAcceptance)
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticMissingNegativeCase)
++}
++
++func TestValidatePRDReportRejectsBundledSurfaceRewriteWithoutDependencies(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Rewrite CLI API and UI flows together",
++				Status:      "open",
++				Description: "As an operator, I want the CLI, API, and UI rewritten in one pass.",
++				AcceptanceCriteria: []string{
++					"CLI commands render the new output shape.",
++					"API endpoints return the rewritten payloads.",
++					"UI screens render the new workflow.",
++					"Invalid requests are rejected with shared diagnostics.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
+ 	if report.Valid {
+ 		t.Fatal("expected invalid report")
+ 	}
+-	assertDiagnosticCode(t, report.Errors, PRDDiagnosticOversizedStory)
++	diagnostic := findDiagnostic(report.Errors, PRDDiagnosticBundledStorySurfaces)
++	if diagnostic.Code == "" {
++		t.Fatalf("expected diagnostic %q in %+v", PRDDiagnosticBundledStorySurfaces, report.Errors)
++	}
++	if diagnostic.Suggestion == "" {
++		t.Fatalf("expected bundled surface diagnostic to include a suggestion: %+v", diagnostic)
++	}
++}
++
++func TestValidatePRDReportRejectsFutureStoryDependency(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Build validation entrypoint",
++				Status:      "open",
++				DependsOn:   []string{"US-002"},
++				Description: "As a maintainer, I want the entrypoint implemented after the shared core.",
++				AcceptanceCriteria: []string{
++					"Validation commands call the shared package.",
++					"Invalid configuration is rejected before execution.",
++				},
++			},
++			{
++				ID:          "US-002",
++				Title:       "Build shared validation core",
++				Status:      "open",
++				Description: "As a maintainer, I want reusable readiness linting.",
++				AcceptanceCriteria: []string{
++					"Validation rules return stable diagnostic codes.",
++					"Missing dependencies are rejected before ingress.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticFutureStoryDependency)
+ }
+ 
+ func assertDiagnosticCode(t *testing.T, diagnostics []PRDValidationDiagnostic, want string) {
+
+ succeeded in 26.99s:
+time="2026-03-14T02:24:06-04:00" level=info msg="Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock'"
+level=warning msg= ⚠ You are using Apple M-series chip and you have not specified container architecture, you might encounter issues while running act. If so, try running it with '--container-architecture linux/amd64'. ⚠ 
+
+[CI/lint-and-check] ⭐ Run Set up job
+[CI/lint-and-check] 🚀  Start image=catthehacker/ubuntu:act-22.04
+[CI/lint-and-check]   🐳  docker pull image=catthehacker/ubuntu:act-22.04 platform= username= forcePull=true
+[CI/lint-and-check] using DockerAuthConfig authentication for docker pull
+[CI/lint-and-check]   🐳  docker create image=catthehacker/ubuntu:act-22.04 platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/lint-and-check]   🐳  docker run image=catthehacker/ubuntu:act-22.04 platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/lint-and-check]   🐳  docker exec cmd=[node --no-warnings -e console.log(process.execPath)] user= workdir=
+[CI/lint-and-check]   ✅  Success - Set up job
+[CI/lint-and-check]   ☁  git clone 'https://github.com/actions/setup-go' # ref=v5
+[CI/lint-and-check]   ☁  git clone 'https://github.com/actions/setup-node' # ref=v4
+[CI/lint-and-check]   ☁  git clone 'https://github.com/azure/setup-helm' # ref=v4
+[CI/lint-and-check] ⭐ Run Main Check out repository
+[CI/lint-and-check]   🐳  docker cp src=/Users/lars/Dev/smith-prd-validation/. dst=/Users/lars/Dev/smith-prd-validation
+[CI/lint-and-check]   ✅  Success - Main Check out repository [295.021583ms]
+[CI/lint-and-check] ⭐ Run Main Set up Go
+[CI/lint-and-check]   🐳  docker cp src=/Users/lars/.cache/act/actions-setup-go@v5/ dst=/var/run/act/actions/actions-setup-go@v5/
+[CI/lint-and-check]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.14.0/arm64/bin/node /var/run/act/actions/actions-setup-go@v5/dist/setup/index.js] user= workdir=
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index 99f80568a7969370719be348e1e1a33f49eb2c0f..d0058c120d74d484312c52c642dd33e72f1bf503
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -51,6 +51,46 @@
+   - Useful context
+   - `./scripts/validate-acceptance.sh` still fails on existing unrelated acceptance checks, and `make ci-local-act` completes lint, Go tests, frontend build, and Playwright execution but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable locally.
+ ---
++## [2026-03-14 02:23:04 EDT] - US-006: Add execution-readiness linting for Ralph-sized stories
++Thread: ses_5e63cb
++Run: 20260314-005446-82373 (iteration 6)
++Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
++Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.md
++- Guardrails reviewed: yes
++- No-commit run: false
++- Commit: 4a35ae6 feat(validation): add PRD readiness linting
++- Post-commit status: `.agents/tasks/prd-prd-generation-validation.json`, `.ralph/errors.log`, and prior-iteration run artifacts remain modified outside this story
++- Verification:
++  - Command: act --version -> PASS
++  - Command: docker --version -> PASS
++  - Command: go test ./internal/source/model ./cmd/smith -> PASS
++  - Command: go test ./... -> PASS
++  - Command: ./scripts/validate-acceptance.sh -> FAIL
++  - Command: make ci-local-act -> FAIL
++- Files changed:
++  - .ralph/.tmp/prompt-20260314-005446-82373-6.md
++  - .ralph/.tmp/story-20260314-005446-82373-6.json
++  - .ralph/.tmp/story-20260314-005446-82373-6.md
++  - .ralph/activity.log
++  - .ralph/progress.md
++  - .ralph/runs/run-20260314-005446-82373-iter-6.log
++  - .ralph/runs/run-20260314-005446-82373-iter-6.md
++  - cmd/smith-api/main_test.go
++  - cmd/smith/main_test.go
++  - internal/source/model/prd.go
++  - internal/source/model/prd_test.go
++- What was implemented
++  - Added execution-readiness linting in the shared PRD validator for likely oversized stories, weak acceptance criteria, missing negative cases, bundled CLI/API/UI rewrites without dependency ordering, and dependencies that point forward in story order.
++  - Split readiness diagnostics into warnings versus blocking errors so automation consumers can distinguish clarification work from loop-blocking issues while keeping diagnostic codes stable.
++  - Added tests for pass, warning-only, and blocking readiness cases, plus CLI validation behavior and ingress severity alignment.
++- **Learnings for future iterations:**
++  - Patterns discovered
++  - Shared readiness linting in `internal/source/model/prd.go` keeps CLI and API behavior aligned without duplicating execution-scope heuristics.
++  - Gotchas encountered
++  - `cmd/` paths are ignored by repo gitignore rules, so touched CLI/API files must be staged with `git add -f`.
++  - Useful context
++  - `./scripts/validate-acceptance.sh` still fails on unrelated acceptance checks, and `make ci-local-act` reaches passing lint, Go tests, frontend build, and Playwright execution but fails artifact upload under local `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable.
++---
+ ## [2026-03-14 01:46:19 EDT] - US-004: Add CLI workflows for generate import export and validate
+ Thread: ses_78d535
+ Run: 20260314-005446-82373 (iteration 4)
+diff --git a/.ralph/runs/run-20260314-005446-82373-iter-6.md b/.ralph/runs/run-20260314-005446-82373-iter-6.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e4e746b636e86f8515674587d37de49f3f82e2e
+--- /dev/null
++++ b/.ralph/runs/run-20260314-005446-82373-iter-6.md
+@@ -0,0 +1,39 @@
++# Ralph Run Summary
++
++- Run ID: 20260314-005446-82373
++- Iteration: 6
++- Mode: build
++- Story: US-006: Add execution-readiness linting for Ralph-sized stories
++- Started: 2026-03-14 02:09:12
++- Ended: 2026-03-14 02:23:04
++- Duration: 832s
++- Status: success
++- Log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
++
++## Git
++- Head (before): e2a1ed7a009720c5fb2fee25a39c049daa401962
++- Head (after): 4a35ae6876698d0e6834a7ae3051ef71cdb74cb9
++
++### Commits
++- 4a35ae6 feat(validation): add PRD readiness linting
++
++### Changed Files (commit)
++- .ralph/.tmp/prompt-20260314-005446-82373-6.md
++- .ralph/.tmp/story-20260314-005446-82373-6.json
++- .ralph/.tmp/story-20260314-005446-82373-6.md
++- .ralph/activity.log
++- .ralph/progress.md
++- .ralph/runs/run-20260314-005446-82373-iter-6.log
++- .ralph/runs/run-20260314-005446-82373-iter-6.md
++- cmd/smith-api/main_test.go
++- cmd/smith/main_test.go
++- internal/source/model/prd.go
++- internal/source/model/prd_test.go
++
++### Verification
++- `act --version` -> PASS
++- `docker --version` -> PASS
++- `go test ./internal/source/model ./cmd/smith` -> PASS
++- `go test ./...` -> PASS
++- `./scripts/validate-acceptance.sh` -> FAIL (existing unrelated acceptance checks)
++- `make ci-local-act` -> FAIL (`playwright-tests` artifact upload under local `act` requires `ACTIONS_RUNTIME_TOKEN`)
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 7bc7a8779e57c3205c2d1acc79668cca7de6dba0..0f3f7c0890db6134bbc317eba8da07d3258cd31b
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -120,7 +120,7 @@
+ 		t.Fatalf("expected validation failure payload, got %+v", body)
+ 	}
+ 	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticMissingQualityGates)
+-	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticOversizedStory)
++	assertDiagnosticCodeInReport(t, body.Report.Warnings, model.PRDDiagnosticOversizedStory)
+ 	states, err := ms.ListStates(context.Background())
+ 	if err != nil {
+ 		t.Fatalf("list states: %v", err)
+diff --git a/cmd/smith/main_test.go b/cmd/smith/main_test.go
+index 30020656d917b1df285f7332771f5a84cac229f5..c735b4df763da3cafbe8ee83d15665e2e94fe0b3
+--- a/cmd/smith/main_test.go
++++ b/cmd/smith/main_test.go
+@@ -236,6 +236,55 @@
+ 	}
+ }
+ 
++func TestRunValidateWarningOnlyPRDReturnsZero(t *testing.T) {
++	dir := t.TempDir()
++	jsonPath := filepath.Join(dir, "prd.json")
++	prd := `{
++  "version": 1,
++  "project": "Smith PRD Validation",
++  "overview": "Canonical PRD validation",
++  "qualityGates": ["go test ./..."],
++  "stories": [
++    {
++      "id": "US-001",
++      "title": "Clarify readiness warnings",
++      "status": "open",
++      "description": "As a maintainer, I want warning-only lint results preserved.",
++      "acceptanceCriteria": ["UI works as expected."]
++    }
++  ]
++}`
++	if err := os.WriteFile(jsonPath, []byte(prd), 0o644); err != nil {
++		t.Fatalf("write prd json: %v", err)
++	}
++
++	var stdout, stderr bytes.Buffer
++	code := run([]string{"--prd", "validate", jsonPath}, strings.NewReader(""), &stdout, &stderr)
++	if code != 0 {
++		t.Fatalf("expected validation warning code=0, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
++	}
++
++	var report struct {
++		Valid     bool   `json:"valid"`
++		Readiness string `json:"readiness"`
++		Warnings  []struct {
++			Code string `json:"code"`
++		} `json:"warnings"`
++	}
++	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
++		t.Fatalf("expected machine-readable JSON diagnostics: %v\nstdout=%s", err, stdout.String())
++	}
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to be valid, got %+v", report)
++	}
++	if report.Readiness != "warn" {
++		t.Fatalf("expected readiness warn, got %+v", report)
++	}
++	if len(report.Warnings) == 0 {
++		t.Fatalf("expected warning diagnostics, got %+v", report)
++	}
++}
++
+ func TestRunRejectsInvalidExportArguments(t *testing.T) {
+ 	var stdout, stderr bytes.Buffer
+ 	code := run([]string{"--prd", "--to-markdown", "prd.md"}, strings.NewReader(""), &stdout, &stderr)
+diff --git a/internal/source/model/prd.go b/internal/source/model/prd.go
+index 2a18690272b065349403579bdae594d7a595de16..9cc9186b39cfcd503c6c3f91d6343c391914a1d5
+--- a/internal/source/model/prd.go
++++ b/internal/source/model/prd.go
+@@ -96,11 +96,20 @@
+ 	PRDDiagnosticMultipleInProgress      = "prd_multiple_in_progress_stories"
+ 	PRDDiagnosticUnknownStoryDependency  = "prd_unknown_story_dependency"
+ 	PRDDiagnosticOversizedStory          = "prd_oversized_story"
++	PRDDiagnosticWeakAcceptance          = "prd_weak_acceptance_criteria"
++	PRDDiagnosticMissingNegativeCase     = "prd_missing_negative_case"
++	PRDDiagnosticFutureStoryDependency   = "prd_future_story_dependency"
++	PRDDiagnosticBundledStorySurfaces    = "prd_bundled_story_surfaces"
+ )
+ 
+ var (
+ 	prdStoryIDPattern  = regexp.MustCompile(`^US-\d{3}$`)
+ 	prdAllowedStatuses = []string{"open", "in_progress", "done"}
++	prdNegativeCaseRE  = regexp.MustCompile(`\b(invalid|missing|reject(?:s|ed)?|error(?:s)?|fail(?:s|ed|ure)?|without|cannot|can't|does not|prevent(?:s|ed)?|negative case|malformed|den(?:y|ies|ied)|empty|unknown|unauthorized)\b`)
++	prdWeakCriterionRE = regexp.MustCompile(`\b(works?(?: as expected)?|handles?(?: edge cases)?|supports?|appropriate|proper(?:ly)?|correct(?:ly)?|improve|enhance|clean(?: ?up)?|better|nice to have|user-friendly|robust|seamless)\b`)
++	prdCLISurfaceRE    = regexp.MustCompile(`\b(cli|command|terminal|flag)\b`)
++	prdAPISurfaceRE    = regexp.MustCompile(`\b(api|http|endpoint|handler|server)\b`)
++	prdUISurfaceRE     = regexp.MustCompile(`\b(ui|ux|frontend|front-end|page|component|screen)\b`)
+ )
+ 
+ const (
+@@ -255,11 +264,35 @@
+ 			})
+ 		}
+ 		storySize := len(strings.TrimSpace(story.Title)) + len(strings.TrimSpace(story.Description))
++		hasNegativeCase := false
+ 		for _, criterion := range story.AcceptanceCriteria {
+-			storySize += len(strings.TrimSpace(criterion))
++			trimmedCriterion := strings.TrimSpace(criterion)
++			storySize += len(trimmedCriterion)
++			if prdNegativeCaseRE.MatchString(strings.ToLower(trimmedCriterion)) {
++				hasNegativeCase = true
++			}
++			if criterionNeedsClarification(trimmedCriterion) {
++				report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticWeakAcceptance,
++					Path:       storyPath + ".acceptanceCriteria",
++					StoryID:    storyID,
++					Message:    "acceptance criteria should describe observable behavior with concrete outcomes",
++					Suggestion: "Rewrite vague criteria with concrete inputs, outputs, or user-visible results.",
++				})
++				break
++			}
++		}
++		if !hasNegativeCase {
++			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingNegativeCase,
++				Path:       storyPath + ".acceptanceCriteria",
++				StoryID:    storyID,
++				Message:    "story acceptance criteria should cover at least one negative or failure case",
++				Suggestion: "Add a criterion describing how the system rejects, blocks, or reports an invalid scenario.",
++			})
+ 		}
+ 		if len(story.AcceptanceCriteria) > maxPRDStoryAcceptanceCriteria || storySize > maxPRDStoryCharacters {
+-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
+ 				Code:    PRDDiagnosticOversizedStory,
+ 				Path:    storyPath,
+ 				StoryID: storyID,
+@@ -270,6 +303,15 @@
+ 				),
+ 			})
+ 		}
++		if bundledDeliverySurfaces(story) >= 3 && len(story.DependsOn) == 0 {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticBundledStorySurfaces,
++				Path:       storyPath,
++				StoryID:    storyID,
++				Message:    "story bundles CLI, API, and UI work without dependency ordering",
++				Suggestion: "Split the work into separate stories per surface and add dependsOn links for the execution order.",
++			})
++		}
+ 		status := strings.TrimSpace(story.Status)
+ 		if !slices.Contains(prdAllowedStatuses, status) {
+ 			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+@@ -299,16 +341,26 @@
+ 		storyID := strings.TrimSpace(story.ID)
+ 		for depIndex, dependency := range story.DependsOn {
+ 			depID := strings.TrimSpace(dependency)
+-			if _, ok := storyIDs[depID]; ok {
++			depStoryIndex, ok := storyIDs[depID]
++			if !ok {
++				report.Errors = append(report.Errors, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticUnknownStoryDependency,
++					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++					StoryID:    storyID,
++					Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
++					Suggestion: "Reference an existing canonical story id.",
++				})
+ 				continue
+ 			}
+-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+-				Code:       PRDDiagnosticUnknownStoryDependency,
+-				Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
+-				StoryID:    storyID,
+-				Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
+-				Suggestion: "Reference an existing canonical story id.",
+-			})
++			if depStoryIndex >= i {
++				report.Errors = append(report.Errors, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticFutureStoryDependency,
++					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++					StoryID:    storyID,
++					Message:    fmt.Sprintf("story dependency %q must appear before %q in story order", depID, storyID),
++					Suggestion: "Reorder the stories or update dependsOn so each dependency points to an earlier story.",
++				})
++			}
+ 		}
+ 	}
+ 
+@@ -323,3 +375,29 @@
+ 	}
+ 	return report
+ }
++
++func criterionNeedsClarification(criterion string) bool {
++	trimmed := strings.TrimSpace(criterion)
++	if trimmed == "" {
++		return false
++	}
++	lower := strings.ToLower(trimmed)
++	if prdNegativeCaseRE.MatchString(lower) {
++		return false
++	}
++	if prdWeakCriterionRE.MatchString(lower) {
++		return true
++	}
++	return len(strings.Fields(trimmed)) < 4
++}
++
++func bundledDeliverySurfaces(story PRDStory) int {
++	text := strings.ToLower(strings.Join(append(append([]string{story.Title, story.Description}, story.AcceptanceCriteria...), story.DependsOn...), " "))
++	surfaces := 0
++	for _, pattern := range []*regexp.Regexp{prdCLISurfaceRE, prdAPISurfaceRE, prdUISurfaceRE} {
++		if pattern.MatchString(text) {
++			surfaces++
++		}
++	}
++	return surfaces
++}
+diff --git a/internal/source/model/prd_test.go b/internal/source/model/prd_test.go
+index f8c555fcee1e89b8f783b479529b626e13966ace..5bc28ab0a7106732da9ea2fdd6ce25c5e7ae4485
+--- a/internal/source/model/prd_test.go
++++ b/internal/source/model/prd_test.go
+@@ -12,19 +12,25 @@
+ 		Gates:    []string{"go test ./...", "./scripts/validate-acceptance.sh"},
+ 		Stories: []PRDStory{
+ 			{
+-				ID:                 "US-001",
+-				Title:              "Define validation contract",
+-				Status:             "in_progress",
+-				Description:        "As a maintainer, I want shared validation.",
+-				AcceptanceCriteria: []string{"Validation report is shared."},
++				ID:          "US-001",
++				Title:       "Define route-aware validation contract",
++				Status:      "in_progress",
++				Description: "As a maintainer, I want shared validation for route and package changes.",
++				AcceptanceCriteria: []string{
++					"`smith --prd validate` returns machine-readable diagnostics for invalid input.",
++					"Invalid story dependencies are rejected before ingress begins.",
++				},
+ 			},
+ 			{
+-				ID:                 "US-002",
+-				Title:              "Reuse validation contract",
+-				Status:             "open",
+-				DependsOn:          []string{"US-001"},
+-				Description:        "As a maintainer, I want API and CLI parity.",
+-				AcceptanceCriteria: []string{"CLI and API share the same rules."},
++				ID:          "US-002",
++				Title:       "Reuse validation contract in package workflows",
++				Status:      "open",
++				DependsOn:   []string{"US-001"},
++				Description: "As a maintainer, I want route and package validations reused across CLI and API flows.",
++				AcceptanceCriteria: []string{
++					"CLI and API validation return the same diagnostic codes.",
++					"Requests with missing package references fail with the shared validation report.",
++				},
+ 			},
+ 		},
+ 	}
+@@ -36,6 +42,9 @@
+ 	if len(report.Errors) != 0 {
+ 		t.Fatalf("expected zero blocking errors, got %+v", report.Errors)
+ 	}
++	if len(report.Warnings) != 0 {
++		t.Fatalf("expected zero readiness warnings, got %+v", report.Warnings)
++	}
+ 	if report.Readiness != PRDReadinessPass {
+ 		t.Fatalf("expected readiness %q, got %q", PRDReadinessPass, report.Readiness)
+ 	}
+@@ -137,7 +146,7 @@
+ 	assertDiagnosticCode(t, report.Errors, PRDDiagnosticInvalidStoryStatus)
+ }
+ 
+-func TestValidatePRDReportRejectsOversizedStory(t *testing.T) {
++func TestValidatePRDReportWarnsOnOversizedStory(t *testing.T) {
+ 	prd := PRD{
+ 		Version:  1,
+ 		Project:  "Validation",
+@@ -162,10 +171,113 @@
+ 	}
+ 
+ 	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to remain valid, got %+v", report)
++	}
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticOversizedStory)
++	if report.Readiness != PRDReadinessWarn {
++		t.Fatalf("expected readiness %q, got %q", PRDReadinessWarn, report.Readiness)
++	}
++}
++
++func TestValidatePRDReportWarnsOnWeakAcceptanceAndMissingNegativeCase(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Clarify acceptance criteria",
++				Status:      "open",
++				Description: "As a maintainer, I want acceptance criteria that are execution-ready.",
++				AcceptanceCriteria: []string{
++					"UI works as expected.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to remain valid, got %+v", report)
++	}
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticWeakAcceptance)
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticMissingNegativeCase)
++}
++
++func TestValidatePRDReportRejectsBundledSurfaceRewriteWithoutDependencies(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Rewrite CLI API and UI flows together",
++				Status:      "open",
++				Description: "As an operator, I want the CLI, API, and UI rewritten in one pass.",
++				AcceptanceCriteria: []string{
++					"CLI commands render the new output shape.",
++					"API endpoints return the rewritten payloads.",
++					"UI screens render the new workflow.",
++					"Invalid requests are rejected with shared diagnostics.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
+ 	if report.Valid {
+ 		t.Fatal("expected invalid report")
+ 	}
+-	assertDiagnosticCode(t, report.Errors, PRDDiagnosticOversizedStory)
++	diagnostic := findDiagnostic(report.Errors, PRDDiagnosticBundledStorySurfaces)
++	if diagnostic.Code == "" {
++		t.Fatalf("expected diagnostic %q in %+v", PRDDiagnosticBundledStorySurfaces, report.Errors)
++	}
++	if diagnostic.Suggestion == "" {
++		t.Fatalf("expected bundled surface diagnostic to include a suggestion: %+v", diagnostic)
++	}
++}
++
++func TestValidatePRDReportRejectsFutureStoryDependency(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Build validation entrypoint",
++				Status:      "open",
++				DependsOn:   []string{"US-002"},
++				Description: "As a maintainer, I want the entrypoint implemented after the shared core.",
++				AcceptanceCriteria: []string{
++					"Validation commands call the shared package.",
++					"Invalid configuration is rejected before execution.",
++				},
++			},
++			{
++				ID:          "US-002",
++				Title:       "Build shared validation core",
++				Status:      "open",
++				Description: "As a maintainer, I want reusable readiness linting.",
++				AcceptanceCriteria: []string{
++					"Validation rules return stable diagnostic codes.",
++					"Missing dependencies are rejected before ingress.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticFutureStoryDependency)
+ }
+ 
+ func assertDiagnosticCode(t *testing.T, diagnostics []PRDValidationDiagnostic, want string) {
+
+exec
+/bin/zsh -lc 'git show -s --format="%h %s" HEAD' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+51e3edb chore(validation): record US-006 run artifacts
+exec
+/bin/zsh -lc 'git status --short' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+ M .agents/tasks/prd-prd-generation-validation.json
+ M .ralph/errors.log
+ M .ralph/runs/run-20260314-005446-82373-iter-5.log
+ M .ralph/runs/run-20260314-005446-82373-iter-6.log
+?? .ralph/runs/run-20260314-005446-82373-iter-5.md
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index 99f80568a7969370719be348e1e1a33f49eb2c0f..d0058c120d74d484312c52c642dd33e72f1bf503
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -51,6 +51,46 @@
+   - Useful context
+   - `./scripts/validate-acceptance.sh` still fails on existing unrelated acceptance checks, and `make ci-local-act` completes lint, Go tests, frontend build, and Playwright execution but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable locally.
+ ---
++## [2026-03-14 02:23:04 EDT] - US-006: Add execution-readiness linting for Ralph-sized stories
++Thread: ses_5e63cb
++Run: 20260314-005446-82373 (iteration 6)
++Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
++Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.md
++- Guardrails reviewed: yes
++- No-commit run: false
++- Commit: 4a35ae6 feat(validation): add PRD readiness linting
++- Post-commit status: `.agents/tasks/prd-prd-generation-validation.json`, `.ralph/errors.log`, and prior-iteration run artifacts remain modified outside this story
++- Verification:
++  - Command: act --version -> PASS
++  - Command: docker --version -> PASS
++  - Command: go test ./internal/source/model ./cmd/smith -> PASS
++  - Command: go test ./... -> PASS
++  - Command: ./scripts/validate-acceptance.sh -> FAIL
++  - Command: make ci-local-act -> FAIL
++- Files changed:
++  - .ralph/.tmp/prompt-20260314-005446-82373-6.md
++  - .ralph/.tmp/story-20260314-005446-82373-6.json
++  - .ralph/.tmp/story-20260314-005446-82373-6.md
++  - .ralph/activity.log
++  - .ralph/progress.md
++  - .ralph/runs/run-20260314-005446-82373-iter-6.log
++  - .ralph/runs/run-20260314-005446-82373-iter-6.md
++  - cmd/smith-api/main_test.go
++  - cmd/smith/main_test.go
++  - internal/source/model/prd.go
++  - internal/source/model/prd_test.go
++- What was implemented
++  - Added execution-readiness linting in the shared PRD validator for likely oversized stories, weak acceptance criteria, missing negative cases, bundled CLI/API/UI rewrites without dependency ordering, and dependencies that point forward in story order.
++  - Split readiness diagnostics into warnings versus blocking errors so automation consumers can distinguish clarification work from loop-blocking issues while keeping diagnostic codes stable.
++  - Added tests for pass, warning-only, and blocking readiness cases, plus CLI validation behavior and ingress severity alignment.
++- **Learnings for future iterations:**
++  - Patterns discovered
++  - Shared readiness linting in `internal/source/model/prd.go` keeps CLI and API behavior aligned without duplicating execution-scope heuristics.
++  - Gotchas encountered
++  - `cmd/` paths are ignored by repo gitignore rules, so touched CLI/API files must be staged with `git add -f`.
++  - Useful context
++  - `./scripts/validate-acceptance.sh` still fails on unrelated acceptance checks, and `make ci-local-act` reaches passing lint, Go tests, frontend build, and Playwright execution but fails artifact upload under local `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable.
++---
+ ## [2026-03-14 01:46:19 EDT] - US-004: Add CLI workflows for generate import export and validate
+ Thread: ses_78d535
+ Run: 20260314-005446-82373 (iteration 4)
+diff --git a/.ralph/runs/run-20260314-005446-82373-iter-6.md b/.ralph/runs/run-20260314-005446-82373-iter-6.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e4e746b636e86f8515674587d37de49f3f82e2e
+--- /dev/null
++++ b/.ralph/runs/run-20260314-005446-82373-iter-6.md
+@@ -0,0 +1,39 @@
++# Ralph Run Summary
++
++- Run ID: 20260314-005446-82373
++- Iteration: 6
++- Mode: build
++- Story: US-006: Add execution-readiness linting for Ralph-sized stories
++- Started: 2026-03-14 02:09:12
++- Ended: 2026-03-14 02:23:04
++- Duration: 832s
++- Status: success
++- Log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
++
++## Git
++- Head (before): e2a1ed7a009720c5fb2fee25a39c049daa401962
++- Head (after): 4a35ae6876698d0e6834a7ae3051ef71cdb74cb9
++
++### Commits
++- 4a35ae6 feat(validation): add PRD readiness linting
++
++### Changed Files (commit)
++- .ralph/.tmp/prompt-20260314-005446-82373-6.md
++- .ralph/.tmp/story-20260314-005446-82373-6.json
++- .ralph/.tmp/story-20260314-005446-82373-6.md
++- .ralph/activity.log
++- .ralph/progress.md
++- .ralph/runs/run-20260314-005446-82373-iter-6.log
++- .ralph/runs/run-20260314-005446-82373-iter-6.md
++- cmd/smith-api/main_test.go
++- cmd/smith/main_test.go
++- internal/source/model/prd.go
++- internal/source/model/prd_test.go
++
++### Verification
++- `act --version` -> PASS
++- `docker --version` -> PASS
++- `go test ./internal/source/model ./cmd/smith` -> PASS
++- `go test ./...` -> PASS
++- `./scripts/validate-acceptance.sh` -> FAIL (existing unrelated acceptance checks)
++- `make ci-local-act` -> FAIL (`playwright-tests` artifact upload under local `act` requires `ACTIONS_RUNTIME_TOKEN`)
+diff --git a/cmd/smith-api/main_test.go b/cmd/smith-api/main_test.go
+index 7bc7a8779e57c3205c2d1acc79668cca7de6dba0..0f3f7c0890db6134bbc317eba8da07d3258cd31b
+--- a/cmd/smith-api/main_test.go
++++ b/cmd/smith-api/main_test.go
+@@ -120,7 +120,7 @@
+ 		t.Fatalf("expected validation failure payload, got %+v", body)
+ 	}
+ 	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticMissingQualityGates)
+-	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticOversizedStory)
++	assertDiagnosticCodeInReport(t, body.Report.Warnings, model.PRDDiagnosticOversizedStory)
+ 	states, err := ms.ListStates(context.Background())
+ 	if err != nil {
+ 		t.Fatalf("list states: %v", err)
+diff --git a/cmd/smith/main_test.go b/cmd/smith/main_test.go
+index 30020656d917b1df285f7332771f5a84cac229f5..c735b4df763da3cafbe8ee83d15665e2e94fe0b3
+--- a/cmd/smith/main_test.go
++++ b/cmd/smith/main_test.go
+@@ -236,6 +236,55 @@
+ 	}
+ }
+ 
++func TestRunValidateWarningOnlyPRDReturnsZero(t *testing.T) {
++	dir := t.TempDir()
++	jsonPath := filepath.Join(dir, "prd.json")
++	prd := `{
++  "version": 1,
++  "project": "Smith PRD Validation",
++  "overview": "Canonical PRD validation",
++  "qualityGates": ["go test ./..."],
++  "stories": [
++    {
++      "id": "US-001",
++      "title": "Clarify readiness warnings",
++      "status": "open",
++      "description": "As a maintainer, I want warning-only lint results preserved.",
++      "acceptanceCriteria": ["UI works as expected."]
++    }
++  ]
++}`
++	if err := os.WriteFile(jsonPath, []byte(prd), 0o644); err != nil {
++		t.Fatalf("write prd json: %v", err)
++	}
++
++	var stdout, stderr bytes.Buffer
++	code := run([]string{"--prd", "validate", jsonPath}, strings.NewReader(""), &stdout, &stderr)
++	if code != 0 {
++		t.Fatalf("expected validation warning code=0, got %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
++	}
++
++	var report struct {
++		Valid     bool   `json:"valid"`
++		Readiness string `json:"readiness"`
++		Warnings  []struct {
++			Code string `json:"code"`
++		} `json:"warnings"`
++	}
++	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
++		t.Fatalf("expected machine-readable JSON diagnostics: %v\nstdout=%s", err, stdout.String())
++	}
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to be valid, got %+v", report)
++	}
++	if report.Readiness != "warn" {
++		t.Fatalf("expected readiness warn, got %+v", report)
++	}
++	if len(report.Warnings) == 0 {
++		t.Fatalf("expected warning diagnostics, got %+v", report)
++	}
++}
++
+ func TestRunRejectsInvalidExportArguments(t *testing.T) {
+ 	var stdout, stderr bytes.Buffer
+ 	code := run([]string{"--prd", "--to-markdown", "prd.md"}, strings.NewReader(""), &stdout, &stderr)
+diff --git a/internal/source/model/prd.go b/internal/source/model/prd.go
+index 2a18690272b065349403579bdae594d7a595de16..9cc9186b39cfcd503c6c3f91d6343c391914a1d5
+--- a/internal/source/model/prd.go
++++ b/internal/source/model/prd.go
+@@ -96,11 +96,20 @@
+ 	PRDDiagnosticMultipleInProgress      = "prd_multiple_in_progress_stories"
+ 	PRDDiagnosticUnknownStoryDependency  = "prd_unknown_story_dependency"
+ 	PRDDiagnosticOversizedStory          = "prd_oversized_story"
++	PRDDiagnosticWeakAcceptance          = "prd_weak_acceptance_criteria"
++	PRDDiagnosticMissingNegativeCase     = "prd_missing_negative_case"
++	PRDDiagnosticFutureStoryDependency   = "prd_future_story_dependency"
++	PRDDiagnosticBundledStorySurfaces    = "prd_bundled_story_surfaces"
+ )
+ 
+ var (
+ 	prdStoryIDPattern  = regexp.MustCompile(`^US-\d{3}$`)
+ 	prdAllowedStatuses = []string{"open", "in_progress", "done"}
++	prdNegativeCaseRE  = regexp.MustCompile(`\b(invalid|missing|reject(?:s|ed)?|error(?:s)?|fail(?:s|ed|ure)?|without|cannot|can't|does not|prevent(?:s|ed)?|negative case|malformed|den(?:y|ies|ied)|empty|unknown|unauthorized)\b`)
++	prdWeakCriterionRE = regexp.MustCompile(`\b(works?(?: as expected)?|handles?(?: edge cases)?|supports?|appropriate|proper(?:ly)?|correct(?:ly)?|improve|enhance|clean(?: ?up)?|better|nice to have|user-friendly|robust|seamless)\b`)
++	prdCLISurfaceRE    = regexp.MustCompile(`\b(cli|command|terminal|flag)\b`)
++	prdAPISurfaceRE    = regexp.MustCompile(`\b(api|http|endpoint|handler|server)\b`)
++	prdUISurfaceRE     = regexp.MustCompile(`\b(ui|ux|frontend|front-end|page|component|screen)\b`)
+ )
+ 
+ const (
+@@ -255,11 +264,35 @@
+ 			})
+ 		}
+ 		storySize := len(strings.TrimSpace(story.Title)) + len(strings.TrimSpace(story.Description))
++		hasNegativeCase := false
+ 		for _, criterion := range story.AcceptanceCriteria {
+-			storySize += len(strings.TrimSpace(criterion))
++			trimmedCriterion := strings.TrimSpace(criterion)
++			storySize += len(trimmedCriterion)
++			if prdNegativeCaseRE.MatchString(strings.ToLower(trimmedCriterion)) {
++				hasNegativeCase = true
++			}
++			if criterionNeedsClarification(trimmedCriterion) {
++				report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticWeakAcceptance,
++					Path:       storyPath + ".acceptanceCriteria",
++					StoryID:    storyID,
++					Message:    "acceptance criteria should describe observable behavior with concrete outcomes",
++					Suggestion: "Rewrite vague criteria with concrete inputs, outputs, or user-visible results.",
++				})
++				break
++			}
++		}
++		if !hasNegativeCase {
++			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticMissingNegativeCase,
++				Path:       storyPath + ".acceptanceCriteria",
++				StoryID:    storyID,
++				Message:    "story acceptance criteria should cover at least one negative or failure case",
++				Suggestion: "Add a criterion describing how the system rejects, blocks, or reports an invalid scenario.",
++			})
+ 		}
+ 		if len(story.AcceptanceCriteria) > maxPRDStoryAcceptanceCriteria || storySize > maxPRDStoryCharacters {
+-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++			report.Warnings = append(report.Warnings, PRDValidationDiagnostic{
+ 				Code:    PRDDiagnosticOversizedStory,
+ 				Path:    storyPath,
+ 				StoryID: storyID,
+@@ -270,6 +303,15 @@
+ 				),
+ 			})
+ 		}
++		if bundledDeliverySurfaces(story) >= 3 && len(story.DependsOn) == 0 {
++			report.Errors = append(report.Errors, PRDValidationDiagnostic{
++				Code:       PRDDiagnosticBundledStorySurfaces,
++				Path:       storyPath,
++				StoryID:    storyID,
++				Message:    "story bundles CLI, API, and UI work without dependency ordering",
++				Suggestion: "Split the work into separate stories per surface and add dependsOn links for the execution order.",
++			})
++		}
+ 		status := strings.TrimSpace(story.Status)
+ 		if !slices.Contains(prdAllowedStatuses, status) {
+ 			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+@@ -299,16 +341,26 @@
+ 		storyID := strings.TrimSpace(story.ID)
+ 		for depIndex, dependency := range story.DependsOn {
+ 			depID := strings.TrimSpace(dependency)
+-			if _, ok := storyIDs[depID]; ok {
++			depStoryIndex, ok := storyIDs[depID]
++			if !ok {
++				report.Errors = append(report.Errors, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticUnknownStoryDependency,
++					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++					StoryID:    storyID,
++					Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
++					Suggestion: "Reference an existing canonical story id.",
++				})
+ 				continue
+ 			}
+-			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+-				Code:       PRDDiagnosticUnknownStoryDependency,
+-				Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
+-				StoryID:    storyID,
+-				Message:    fmt.Sprintf("story dependency %q does not match any known story id", depID),
+-				Suggestion: "Reference an existing canonical story id.",
+-			})
++			if depStoryIndex >= i {
++				report.Errors = append(report.Errors, PRDValidationDiagnostic{
++					Code:       PRDDiagnosticFutureStoryDependency,
++					Path:       fmt.Sprintf("%s.dependsOn[%d]", storyPath, depIndex),
++					StoryID:    storyID,
++					Message:    fmt.Sprintf("story dependency %q must appear before %q in story order", depID, storyID),
++					Suggestion: "Reorder the stories or update dependsOn so each dependency points to an earlier story.",
++				})
++			}
+ 		}
+ 	}
+ 
+@@ -323,3 +375,29 @@
+ 	}
+ 	return report
+ }
++
++func criterionNeedsClarification(criterion string) bool {
++	trimmed := strings.TrimSpace(criterion)
++	if trimmed == "" {
++		return false
++	}
++	lower := strings.ToLower(trimmed)
++	if prdNegativeCaseRE.MatchString(lower) {
++		return false
++	}
++	if prdWeakCriterionRE.MatchString(lower) {
++		return true
++	}
++	return len(strings.Fields(trimmed)) < 4
++}
++
++func bundledDeliverySurfaces(story PRDStory) int {
++	text := strings.ToLower(strings.Join(append(append([]string{story.Title, story.Description}, story.AcceptanceCriteria...), story.DependsOn...), " "))
++	surfaces := 0
++	for _, pattern := range []*regexp.Regexp{prdCLISurfaceRE, prdAPISurfaceRE, prdUISurfaceRE} {
++		if pattern.MatchString(text) {
++			surfaces++
++		}
++	}
++	return surfaces
++}
+diff --git a/internal/source/model/prd_test.go b/internal/source/model/prd_test.go
+index f8c555fcee1e89b8f783b479529b626e13966ace..5bc28ab0a7106732da9ea2fdd6ce25c5e7ae4485
+--- a/internal/source/model/prd_test.go
++++ b/internal/source/model/prd_test.go
+@@ -12,19 +12,25 @@
+ 		Gates:    []string{"go test ./...", "./scripts/validate-acceptance.sh"},
+ 		Stories: []PRDStory{
+ 			{
+-				ID:                 "US-001",
+-				Title:              "Define validation contract",
+-				Status:             "in_progress",
+-				Description:        "As a maintainer, I want shared validation.",
+-				AcceptanceCriteria: []string{"Validation report is shared."},
++				ID:          "US-001",
++				Title:       "Define route-aware validation contract",
++				Status:      "in_progress",
++				Description: "As a maintainer, I want shared validation for route and package changes.",
++				AcceptanceCriteria: []string{
++					"`smith --prd validate` returns machine-readable diagnostics for invalid input.",
++					"Invalid story dependencies are rejected before ingress begins.",
++				},
+ 			},
+ 			{
+-				ID:                 "US-002",
+-				Title:              "Reuse validation contract",
+-				Status:             "open",
+-				DependsOn:          []string{"US-001"},
+-				Description:        "As a maintainer, I want API and CLI parity.",
+-				AcceptanceCriteria: []string{"CLI and API share the same rules."},
++				ID:          "US-002",
++				Title:       "Reuse validation contract in package workflows",
++				Status:      "open",
++				DependsOn:   []string{"US-001"},
++				Description: "As a maintainer, I want route and package validations reused across CLI and API flows.",
++				AcceptanceCriteria: []string{
++					"CLI and API validation return the same diagnostic codes.",
++					"Requests with missing package references fail with the shared validation report.",
++				},
+ 			},
+ 		},
+ 	}
+@@ -36,6 +42,9 @@
+ 	if len(report.Errors) != 0 {
+ 		t.Fatalf("expected zero blocking errors, got %+v", report.Errors)
+ 	}
++	if len(report.Warnings) != 0 {
++		t.Fatalf("expected zero readiness warnings, got %+v", report.Warnings)
++	}
+ 	if report.Readiness != PRDReadinessPass {
+ 		t.Fatalf("expected readiness %q, got %q", PRDReadinessPass, report.Readiness)
+ 	}
+@@ -137,7 +146,7 @@
+ 	assertDiagnosticCode(t, report.Errors, PRDDiagnosticInvalidStoryStatus)
+ }
+ 
+-func TestValidatePRDReportRejectsOversizedStory(t *testing.T) {
++func TestValidatePRDReportWarnsOnOversizedStory(t *testing.T) {
+ 	prd := PRD{
+ 		Version:  1,
+ 		Project:  "Validation",
+@@ -162,10 +171,113 @@
+ 	}
+ 
+ 	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to remain valid, got %+v", report)
++	}
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticOversizedStory)
++	if report.Readiness != PRDReadinessWarn {
++		t.Fatalf("expected readiness %q, got %q", PRDReadinessWarn, report.Readiness)
++	}
++}
++
++func TestValidatePRDReportWarnsOnWeakAcceptanceAndMissingNegativeCase(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Clarify acceptance criteria",
++				Status:      "open",
++				Description: "As a maintainer, I want acceptance criteria that are execution-ready.",
++				AcceptanceCriteria: []string{
++					"UI works as expected.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if !report.Valid {
++		t.Fatalf("expected warning-only report to remain valid, got %+v", report)
++	}
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticWeakAcceptance)
++	assertDiagnosticCode(t, report.Warnings, PRDDiagnosticMissingNegativeCase)
++}
++
++func TestValidatePRDReportRejectsBundledSurfaceRewriteWithoutDependencies(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Rewrite CLI API and UI flows together",
++				Status:      "open",
++				Description: "As an operator, I want the CLI, API, and UI rewritten in one pass.",
++				AcceptanceCriteria: []string{
++					"CLI commands render the new output shape.",
++					"API endpoints return the rewritten payloads.",
++					"UI screens render the new workflow.",
++					"Invalid requests are rejected with shared diagnostics.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
+ 	if report.Valid {
+ 		t.Fatal("expected invalid report")
+ 	}
+-	assertDiagnosticCode(t, report.Errors, PRDDiagnosticOversizedStory)
++	diagnostic := findDiagnostic(report.Errors, PRDDiagnosticBundledStorySurfaces)
++	if diagnostic.Code == "" {
++		t.Fatalf("expected diagnostic %q in %+v", PRDDiagnosticBundledStorySurfaces, report.Errors)
++	}
++	if diagnostic.Suggestion == "" {
++		t.Fatalf("expected bundled surface diagnostic to include a suggestion: %+v", diagnostic)
++	}
++}
++
++func TestValidatePRDReportRejectsFutureStoryDependency(t *testing.T) {
++	prd := PRD{
++		Version:  1,
++		Project:  "Validation",
++		Overview: "Canonical PRD validation",
++		Gates:    []string{"go test ./..."},
++		Stories: []PRDStory{
++			{
++				ID:          "US-001",
++				Title:       "Build validation entrypoint",
++				Status:      "open",
++				DependsOn:   []string{"US-002"},
++				Description: "As a maintainer, I want the entrypoint implemented after the shared core.",
++				AcceptanceCriteria: []string{
++					"Validation commands call the shared package.",
++					"Invalid configuration is rejected before execution.",
++				},
++			},
++			{
++				ID:          "US-002",
++				Title:       "Build shared validation core",
++				Status:      "open",
++				Description: "As a maintainer, I want reusable readiness linting.",
++				AcceptanceCriteria: []string{
++					"Validation rules return stable diagnostic codes.",
++					"Missing dependencies are rejected before ingress.",
++				},
++			},
++		},
++	}
++
++	report := prd.ValidateReport()
++	if report.Valid {
++		t.Fatal("expected invalid report")
++	}
++	assertDiagnosticCode(t, report.Errors, PRDDiagnosticFutureStoryDependency)
+ }
+ 
+ func assertDiagnosticCode(t *testing.T, diagnostics []PRDValidationDiagnostic, want string) {
+
+codex
+The post-commit hook rewrote the current iteration log, which this repo has done in prior runs as well. I’m syncing that log in one final bookkeeping commit so the US-006 artifacts are fully captured; the only remaining dirty files after that should be pre-existing loop-managed state from earlier iterations.
