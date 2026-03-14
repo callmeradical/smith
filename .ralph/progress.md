@@ -320,3 +320,44 @@ Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-00544
   - Useful context
   - Existing canonical PRD task files in this repo currently use `open`, `in_progress`, and `done` statuses; the validator now treats that set as canonical.
 ---
+## [2026-03-14 01:31:02 EDT] - US-003: Render stable markdown from canonical PRD JSON
+Thread: ses_55108c
+Run: 20260314-005446-82373 (iteration 3)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: ca25497 feat(validation): render stable PRD markdown
+- Post-commit status: `.ralph/runs/run-20260314-005446-82373-iter-3.log` modified by post-commit hook output
+- Verification:
+  - Command: act --version -> PASS
+  - Command: docker --version -> PASS
+  - Command: go test ./internal/source/model -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-3.md
+  - .ralph/.tmp/story-20260314-005446-82373-3.json
+  - .ralph/.tmp/story-20260314-005446-82373-3.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-2.log
+  - .ralph/runs/run-20260314-005446-82373-iter-2.md
+  - .ralph/runs/run-20260314-005446-82373-iter-3.log
+  - internal/source/model/prd_markdown_export.go
+  - internal/source/model/prd_markdown_test.go
+- What was implemented
+  - Added canonical PRD markdown export in `internal/source/model` with a stable section order and deterministic story rendering for status, dependencies, and acceptance criteria.
+  - Added `ExportPRDJSONToMarkdown` so JSON export validates first and returns the same validation diagnostics on invalid input instead of emitting misleading markdown.
+  - Added tests for stable markdown output, invalid-export diagnostics, and JSON to markdown to JSON round-tripping that preserves story IDs, dependency ordering, open questions, and quality gates for supported sections.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Restricting export to parser-supported sections keeps round-trip behavior deterministic without inventing lossy markdown conventions for unsupported canonical fields.
+  - Gotchas encountered
+  - The repo pre-commit hook rewrites the active run log after successful commits, so a final bookkeeping commit is needed to restore a clean working tree.
+  - Useful context
+  - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in existing CI/Makefile tasks, and `make ci-local-act` reaches passing Playwright execution locally but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
+---

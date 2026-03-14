@@ -9608,3 +9608,2359 @@ index c4cf6362e44b14e47ffc87e1f2efb55e88735988..705c025c1d9c085424a213d242bda4a3
  	t.Parallel()
  
 
+exec
+/bin/zsh -lc 'git add -A && git commit -m "feat(validation): render stable PRD markdown
+
+Add deterministic markdown export for parser-supported canonical PRD sections.
+Validate before rendering so invalid JSON returns the existing diagnostics
+instead of misleading markdown.
+
+Cover stable output and JSON->markdown->JSON round-tripping for story
+IDs, dependency ordering, and quality gates."' in /Users/lars/Dev/smith-prd-validationfile update:
+diff --git a/internal/source/model/prd_markdown_export.go b/internal/source/model/prd_markdown_export.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..6320f169ce627a4eb36e06bb79827239ee7fc8d9
+--- /dev/null
++++ b/internal/source/model/prd_markdown_export.go
+@@ -0,0 +1,100 @@
++package model
++
++import (
++	"strings"
++)
++
++// RenderMarkdown renders the parser-supported canonical PRD sections in a
++// stable markdown layout. Invalid PRDs return the same validation diagnostics
++// and no markdown output.
++func (p *PRD) RenderMarkdown() (string, PRDValidationReport) {
++	if p == nil {
++		report := PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    "PRD document is required",
++					Suggestion: "Provide a canonical PRD document before exporting markdown.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++		return "", report
++	}
++
++	report := p.ValidateReport()
++	if !report.Valid {
++		return "", report
++	}
++
++	var sections []string
++	sections = append(sections, "# "+strings.TrimSpace(p.Project))
++	sections = append(sections, "## Overview\n\n"+strings.TrimSpace(p.Overview))
++	sections = appendOptionalListSection(sections, "Goals", p.Goals)
++	sections = appendOptionalListSection(sections, "Non-Goals", p.NonGoals)
++	sections = appendOptionalListSection(sections, "Success Metrics", p.Success)
++	sections = appendOptionalListSection(sections, "Open Questions", p.Questions)
++	sections = appendOptionalListSection(sections, "Rules", p.Rules)
++	sections = appendOptionalListSection(sections, "Quality Gates", p.Gates)
++	sections = append(sections, renderStoriesSection(p.Stories))
++
++	return strings.Join(sections, "\n\n"), report
++}
++
++func ExportPRDJSONToMarkdown(data []byte) (string, PRDValidationReport) {
++	prd, report := ValidatePRDJSON(data)
++	if !report.Valid {
++		return "", report
++	}
++	return prd.RenderMarkdown()
++}
++
++func appendOptionalListSection(sections []string, title string, items []string) []string {
++	if len(items) == 0 {
++		return sections
++	}
++
++	lines := make([]string, 0, len(items)+1)
++	lines = append(lines, "## "+title)
++	for _, item := range items {
++		lines = append(lines, "- "+strings.TrimSpace(item))
++	}
++	return append(sections, strings.Join(lines, "\n"))
++}
++
++func renderStoriesSection(stories []PRDStory) string {
++	storySections := make([]string, 0, len(stories)+1)
++	storySections = append(storySections, "## Stories")
++	for _, story := range stories {
++		storySections = append(storySections, renderStory(story))
++	}
++	return strings.Join(storySections, "\n\n")
++}
++
++func renderStory(story PRDStory) string {
++	parts := []string{
++		"### " + strings.TrimSpace(story.ID) + ": " + strings.TrimSpace(story.Title),
++		strings.TrimSpace(story.Description),
++		"#### Status\n\n" + strings.TrimSpace(story.Status),
++	}
++
++	if len(story.DependsOn) > 0 {
++		dependencies := make([]string, 0, len(story.DependsOn)+1)
++		dependencies = append(dependencies, "#### Depends On")
++		for _, dependency := range story.DependsOn {
++			dependencies = append(dependencies, "- "+strings.TrimSpace(dependency))
++		}
++		parts = append(parts, strings.Join(dependencies, "\n"))
++	}
++
++	acceptance := make([]string, 0, len(story.AcceptanceCriteria)+1)
++	acceptance = append(acceptance, "#### Acceptance Criteria")
++	for _, criterion := range story.AcceptanceCriteria {
++		acceptance = append(acceptance, "- "+strings.TrimSpace(criterion))
++	}
++	parts = append(parts, strings.Join(acceptance, "\n"))
++
++	return strings.Join(parts, "\n\n")
++}
+diff --git a/internal/source/model/prd_markdown_test.go b/internal/source/model/prd_markdown_test.go
+index c4cf6362e44b14e47ffc87e1f2efb55e88735988..705c025c1d9c085424a213d242bda4a37e198607
+--- a/internal/source/model/prd_markdown_test.go
++++ b/internal/source/model/prd_markdown_test.go
+@@ -8,6 +8,186 @@
+ 	"testing"
+ )
+ 
++func TestRenderPRDMarkdownStableOutput(t *testing.T) {
++	t.Parallel()
++
++	prd := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	markdown, report := prd.RenderMarkdown()
++	if !report.Valid {
++		t.Fatalf("expected valid report, got %+v", report)
++	}
++
++	expected := `# Smith PRD Validation
++
++## Overview
++
++Normalize markdown PRDs into canonical JSON for downstream workflows.
++
++## Goals
++- Make canonical PRD JSON deterministic.
++- Preserve story ordering from markdown.
++
++## Non-Goals
++- Building a rich editor.
++
++## Success Metrics
++- Imports preserve story IDs and quality gates.
++
++## Open Questions
++- Should export omit unsupported canonical sections?
++
++## Rules
++- Canonical JSON is the source of truth.
++
++## Quality Gates
++- go test ./...
++- ./scripts/validate-acceptance.sh
++
++## Stories
++
++### US-001: Define validation contract
++
++As a maintainer, I want validation diagnostics shared across entrypoints.
++
++#### Status
++
++in_progress
++
++#### Acceptance Criteria
++- Validation returns machine-readable diagnostics.
++
++### US-002: Normalize markdown PRDs into canonical JSON
++
++As a user, I want markdown normalized into canonical PRD JSON.
++
++#### Status
++
++open
++
++#### Depends On
++- US-001
++
++#### Acceptance Criteria
++- Supported headings map into canonical JSON fields.
++- Quality gates are preserved.`
++
++	if markdown != expected {
++		t.Fatalf("rendered markdown mismatch\nactual:\n%s\n\nexpected:\n%s", markdown, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownRoundTrip(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if !report.Valid {
++		t.Fatalf("expected valid export report, got %+v", report)
++	}
++
++	actual, roundTripReport := ValidatePRDMarkdown([]byte(markdown))
++	if !roundTripReport.Valid {
++		t.Fatalf("expected round-trip markdown to validate, got %+v", roundTripReport)
++	}
++	if !reflect.DeepEqual(actual, expected) {
++		t.Fatalf("round-trip PRD mismatch\nactual: %#v\nexpected: %#v", actual, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownInvalidDocument(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "open",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if markdown != "" {
++		t.Fatalf("expected no markdown output for invalid document, got %q", markdown)
++	}
++
++	want := expected.ValidateReport()
++	if !reflect.DeepEqual(report, want) {
++		t.Fatalf("expected export diagnostics to match validation\nactual: %+v\nexpected: %+v", report, want)
++	}
++}
++
+ func TestParsePRDMarkdownFixtures(t *testing.T) {
+ 	t.Parallel()
+ 
+
+codex
+The first commit is going through the repo’s `pre-commit` hook, which re-runs the local `act` lint job. I’m letting that finish, then I’ll capture the hash, append the required progress entry, and make the final bookkeeping commit.
+file update:
+diff --git a/internal/source/model/prd_markdown_export.go b/internal/source/model/prd_markdown_export.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..6320f169ce627a4eb36e06bb79827239ee7fc8d9
+--- /dev/null
++++ b/internal/source/model/prd_markdown_export.go
+@@ -0,0 +1,100 @@
++package model
++
++import (
++	"strings"
++)
++
++// RenderMarkdown renders the parser-supported canonical PRD sections in a
++// stable markdown layout. Invalid PRDs return the same validation diagnostics
++// and no markdown output.
++func (p *PRD) RenderMarkdown() (string, PRDValidationReport) {
++	if p == nil {
++		report := PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    "PRD document is required",
++					Suggestion: "Provide a canonical PRD document before exporting markdown.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++		return "", report
++	}
++
++	report := p.ValidateReport()
++	if !report.Valid {
++		return "", report
++	}
++
++	var sections []string
++	sections = append(sections, "# "+strings.TrimSpace(p.Project))
++	sections = append(sections, "## Overview\n\n"+strings.TrimSpace(p.Overview))
++	sections = appendOptionalListSection(sections, "Goals", p.Goals)
++	sections = appendOptionalListSection(sections, "Non-Goals", p.NonGoals)
++	sections = appendOptionalListSection(sections, "Success Metrics", p.Success)
++	sections = appendOptionalListSection(sections, "Open Questions", p.Questions)
++	sections = appendOptionalListSection(sections, "Rules", p.Rules)
++	sections = appendOptionalListSection(sections, "Quality Gates", p.Gates)
++	sections = append(sections, renderStoriesSection(p.Stories))
++
++	return strings.Join(sections, "\n\n"), report
++}
++
++func ExportPRDJSONToMarkdown(data []byte) (string, PRDValidationReport) {
++	prd, report := ValidatePRDJSON(data)
++	if !report.Valid {
++		return "", report
++	}
++	return prd.RenderMarkdown()
++}
++
++func appendOptionalListSection(sections []string, title string, items []string) []string {
++	if len(items) == 0 {
++		return sections
++	}
++
++	lines := make([]string, 0, len(items)+1)
++	lines = append(lines, "## "+title)
++	for _, item := range items {
++		lines = append(lines, "- "+strings.TrimSpace(item))
++	}
++	return append(sections, strings.Join(lines, "\n"))
++}
++
++func renderStoriesSection(stories []PRDStory) string {
++	storySections := make([]string, 0, len(stories)+1)
++	storySections = append(storySections, "## Stories")
++	for _, story := range stories {
++		storySections = append(storySections, renderStory(story))
++	}
++	return strings.Join(storySections, "\n\n")
++}
++
++func renderStory(story PRDStory) string {
++	parts := []string{
++		"### " + strings.TrimSpace(story.ID) + ": " + strings.TrimSpace(story.Title),
++		strings.TrimSpace(story.Description),
++		"#### Status\n\n" + strings.TrimSpace(story.Status),
++	}
++
++	if len(story.DependsOn) > 0 {
++		dependencies := make([]string, 0, len(story.DependsOn)+1)
++		dependencies = append(dependencies, "#### Depends On")
++		for _, dependency := range story.DependsOn {
++			dependencies = append(dependencies, "- "+strings.TrimSpace(dependency))
++		}
++		parts = append(parts, strings.Join(dependencies, "\n"))
++	}
++
++	acceptance := make([]string, 0, len(story.AcceptanceCriteria)+1)
++	acceptance = append(acceptance, "#### Acceptance Criteria")
++	for _, criterion := range story.AcceptanceCriteria {
++		acceptance = append(acceptance, "- "+strings.TrimSpace(criterion))
++	}
++	parts = append(parts, strings.Join(acceptance, "\n"))
++
++	return strings.Join(parts, "\n\n")
++}
+diff --git a/internal/source/model/prd_markdown_test.go b/internal/source/model/prd_markdown_test.go
+index c4cf6362e44b14e47ffc87e1f2efb55e88735988..705c025c1d9c085424a213d242bda4a37e198607
+--- a/internal/source/model/prd_markdown_test.go
++++ b/internal/source/model/prd_markdown_test.go
+@@ -8,6 +8,186 @@
+ 	"testing"
+ )
+ 
++func TestRenderPRDMarkdownStableOutput(t *testing.T) {
++	t.Parallel()
++
++	prd := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	markdown, report := prd.RenderMarkdown()
++	if !report.Valid {
++		t.Fatalf("expected valid report, got %+v", report)
++	}
++
++	expected := `# Smith PRD Validation
++
++## Overview
++
++Normalize markdown PRDs into canonical JSON for downstream workflows.
++
++## Goals
++- Make canonical PRD JSON deterministic.
++- Preserve story ordering from markdown.
++
++## Non-Goals
++- Building a rich editor.
++
++## Success Metrics
++- Imports preserve story IDs and quality gates.
++
++## Open Questions
++- Should export omit unsupported canonical sections?
++
++## Rules
++- Canonical JSON is the source of truth.
++
++## Quality Gates
++- go test ./...
++- ./scripts/validate-acceptance.sh
++
++## Stories
++
++### US-001: Define validation contract
++
++As a maintainer, I want validation diagnostics shared across entrypoints.
++
++#### Status
++
++in_progress
++
++#### Acceptance Criteria
++- Validation returns machine-readable diagnostics.
++
++### US-002: Normalize markdown PRDs into canonical JSON
++
++As a user, I want markdown normalized into canonical PRD JSON.
++
++#### Status
++
++open
++
++#### Depends On
++- US-001
++
++#### Acceptance Criteria
++- Supported headings map into canonical JSON fields.
++- Quality gates are preserved.`
++
++	if markdown != expected {
++		t.Fatalf("rendered markdown mismatch\nactual:\n%s\n\nexpected:\n%s", markdown, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownRoundTrip(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if !report.Valid {
++		t.Fatalf("expected valid export report, got %+v", report)
++	}
++
++	actual, roundTripReport := ValidatePRDMarkdown([]byte(markdown))
++	if !roundTripReport.Valid {
++		t.Fatalf("expected round-trip markdown to validate, got %+v", roundTripReport)
++	}
++	if !reflect.DeepEqual(actual, expected) {
++		t.Fatalf("round-trip PRD mismatch\nactual: %#v\nexpected: %#v", actual, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownInvalidDocument(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "open",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if markdown != "" {
++		t.Fatalf("expected no markdown output for invalid document, got %q", markdown)
++	}
++
++	want := expected.ValidateReport()
++	if !reflect.DeepEqual(report, want) {
++		t.Fatalf("expected export diagnostics to match validation\nactual: %+v\nexpected: %+v", report, want)
++	}
++}
++
+ func TestParsePRDMarkdownFixtures(t *testing.T) {
+ 	t.Parallel()
+ 
+
+ succeeded in 39.35s:
+time="2026-03-14T01:31:09-04:00" level=info msg="Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock'"
+level=warning msg= ⚠ You are using Apple M-series chip and you have not specified container architecture, you might encounter issues while running act. If so, try running it with '--container-architecture linux/amd64'. ⚠ 
+
+time="2026-03-14T01:31:09-04:00" level=info msg="deleted cache: &{ID:82 Key:node-cache-linux-arm64-npm-e3f00d52b69f17e753dadf42eb82f4d3cd4b514693599a5ae7ba196070326ce1 Version:b3f0cb83629d634645a5146420c017462ebb5229bd60271a7a86e489a6066469 Size:48744028 Complete:true UsedAt:1773465858 CreatedAt:1773465583}" module=artifactcache
+time="2026-03-14T01:31:09-04:00" level=info msg="deleted cache: &{ID:84 Key:node-cache-linux-arm64-npm-e3f00d52b69f17e753dadf42eb82f4d3cd4b514693599a5ae7ba196070326ce1 Version:b3f0cb83629d634645a5146420c017462ebb5229bd60271a7a86e489a6066469 Size:48760824 Complete:true UsedAt:1773465887 CreatedAt:1773465871}" module=artifactcache
+time="2026-03-14T01:31:09-04:00" level=info msg="deleted cache: &{ID:86 Key:node-cache-linux-arm64-npm-e3f00d52b69f17e753dadf42eb82f4d3cd4b514693599a5ae7ba196070326ce1 Version:b3f0cb83629d634645a5146420c017462ebb5229bd60271a7a86e489a6066469 Size:48746152 Complete:true UsedAt:1773465929 CreatedAt:1773465899}" module=artifactcache
+time="2026-03-14T01:31:09-04:00" level=info msg="deleted cache: &{ID:89 Key:node-cache-linux-arm64-npm-e3f00d52b69f17e753dadf42eb82f4d3cd4b514693599a5ae7ba196070326ce1 Version:b3f0cb83629d634645a5146420c017462ebb5229bd60271a7a86e489a6066469 Size:48744034 Complete:true UsedAt:1773465950 CreatedAt:1773465942}" module=artifactcache
+time="2026-03-14T01:31:09-04:00" level=info msg="deleted cache: &{ID:91 Key:node-cache-linux-arm64-npm-e3f00d52b69f17e753dadf42eb82f4d3cd4b514693599a5ae7ba196070326ce1 Version:b3f0cb83629d634645a5146420c017462ebb5229bd60271a7a86e489a6066469 Size:48757236 Complete:true UsedAt:1773465965 CreatedAt:1773465954}" module=artifactcache
+time="2026-03-14T01:31:10-04:00" level=info msg="deleted cache: &{ID:83 Key:setup-go-linux-arm64-ubuntu20-go-1.25.0-83609c9b61db9af6412898eb3ffbcfa85d546d34a9e38ae46f95406a3e48bfb3 Version:80c03ad9bc0f7552c128ae36020fe5294ef09c552e168fbe45ea237491c60cae Size:237108377 Complete:true UsedAt:1773465851 CreatedAt:1773465586}" module=artifactcache
+time="2026-03-14T01:31:10-04:00" level=info msg="deleted cache: &{ID:85 Key:setup-go-linux-arm64-ubuntu20-go-1.25.0-83609c9b61db9af6412898eb3ffbcfa85d546d34a9e38ae46f95406a3e48bfb3 Version:80c03ad9bc0f7552c128ae36020fe5294ef09c552e168fbe45ea237491c60cae Size:237679960 Complete:true UsedAt:1773465881 CreatedAt:1773465874}" module=artifactcache
+time="2026-03-14T01:31:10-04:00" level=info msg="deleted cache: &{ID:87 Key:setup-go-linux-arm64-ubuntu20-go-1.25.0-83609c9b61db9af6412898eb3ffbcfa85d546d34a9e38ae46f95406a3e48bfb3 Version:80c03ad9bc0f7552c128ae36020fe5294ef09c552e168fbe45ea237491c60cae Size:237676233 Complete:true UsedAt:1773465907 CreatedAt:1773465902}" module=artifactcache
+time="2026-03-14T01:31:10-04:00" level=info msg="deleted cache: &{ID:88 Key:setup-go-linux-arm64-ubuntu20-go-1.25.0-83609c9b61db9af6412898eb3ffbcfa85d546d34a9e38ae46f95406a3e48bfb3 Version:80c03ad9bc0f7552c128ae36020fe5294ef09c552e168fbe45ea237491c60cae Size:240056315 Complete:true UsedAt:1773465923 CreatedAt:1773465917}" module=artifactcache
+time="2026-03-14T01:31:10-04:00" level=info msg="deleted cache: &{ID:90 Key:setup-go-linux-arm64-ubuntu20-go-1.25.0-83609c9b61db9af6412898eb3ffbcfa85d546d34a9e38ae46f95406a3e48bfb3 Version:80c03ad9bc0f7552c128ae36020fe5294ef09c552e168fbe45ea237491c60cae Size:240057339 Complete:true UsedAt:1773465959 CreatedAt:1773465944}" module=artifactcache
+[CI/lint-and-check] ⭐ Run Set up job
+[CI/lint-and-check] 🚀  Start image=catthehacker/ubuntu:act-22.04
+[CI/lint-and-check]   🐳  docker pull image=catthehacker/ubuntu:act-22.04 platform= username= forcePull=true
+[CI/lint-and-check] using DockerAuthConfig authentication for docker pull
+[CI/lint-and-check]   🐳  docker create image=catthehacker/ubuntu:act-22.04 platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/lint-and-check]   🐳  docker run image=catthehacker/ubuntu:act-22.04 platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/lint-and-check]   🐳  docker exec cmd=[node --no-warnings -e console.log(process.execPath)] user= workdir=
+file update:
+diff --git a/internal/source/model/prd_markdown_export.go b/internal/source/model/prd_markdown_export.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..6320f169ce627a4eb36e06bb79827239ee7fc8d9
+--- /dev/null
++++ b/internal/source/model/prd_markdown_export.go
+@@ -0,0 +1,100 @@
++package model
++
++import (
++	"strings"
++)
++
++// RenderMarkdown renders the parser-supported canonical PRD sections in a
++// stable markdown layout. Invalid PRDs return the same validation diagnostics
++// and no markdown output.
++func (p *PRD) RenderMarkdown() (string, PRDValidationReport) {
++	if p == nil {
++		report := PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    "PRD document is required",
++					Suggestion: "Provide a canonical PRD document before exporting markdown.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++		return "", report
++	}
++
++	report := p.ValidateReport()
++	if !report.Valid {
++		return "", report
++	}
++
++	var sections []string
++	sections = append(sections, "# "+strings.TrimSpace(p.Project))
++	sections = append(sections, "## Overview\n\n"+strings.TrimSpace(p.Overview))
++	sections = appendOptionalListSection(sections, "Goals", p.Goals)
++	sections = appendOptionalListSection(sections, "Non-Goals", p.NonGoals)
++	sections = appendOptionalListSection(sections, "Success Metrics", p.Success)
++	sections = appendOptionalListSection(sections, "Open Questions", p.Questions)
++	sections = appendOptionalListSection(sections, "Rules", p.Rules)
++	sections = appendOptionalListSection(sections, "Quality Gates", p.Gates)
++	sections = append(sections, renderStoriesSection(p.Stories))
++
++	return strings.Join(sections, "\n\n"), report
++}
++
++func ExportPRDJSONToMarkdown(data []byte) (string, PRDValidationReport) {
++	prd, report := ValidatePRDJSON(data)
++	if !report.Valid {
++		return "", report
++	}
++	return prd.RenderMarkdown()
++}
++
++func appendOptionalListSection(sections []string, title string, items []string) []string {
++	if len(items) == 0 {
++		return sections
++	}
++
++	lines := make([]string, 0, len(items)+1)
++	lines = append(lines, "## "+title)
++	for _, item := range items {
++		lines = append(lines, "- "+strings.TrimSpace(item))
++	}
++	return append(sections, strings.Join(lines, "\n"))
++}
++
++func renderStoriesSection(stories []PRDStory) string {
++	storySections := make([]string, 0, len(stories)+1)
++	storySections = append(storySections, "## Stories")
++	for _, story := range stories {
++		storySections = append(storySections, renderStory(story))
++	}
++	return strings.Join(storySections, "\n\n")
++}
++
++func renderStory(story PRDStory) string {
++	parts := []string{
++		"### " + strings.TrimSpace(story.ID) + ": " + strings.TrimSpace(story.Title),
++		strings.TrimSpace(story.Description),
++		"#### Status\n\n" + strings.TrimSpace(story.Status),
++	}
++
++	if len(story.DependsOn) > 0 {
++		dependencies := make([]string, 0, len(story.DependsOn)+1)
++		dependencies = append(dependencies, "#### Depends On")
++		for _, dependency := range story.DependsOn {
++			dependencies = append(dependencies, "- "+strings.TrimSpace(dependency))
++		}
++		parts = append(parts, strings.Join(dependencies, "\n"))
++	}
++
++	acceptance := make([]string, 0, len(story.AcceptanceCriteria)+1)
++	acceptance = append(acceptance, "#### Acceptance Criteria")
++	for _, criterion := range story.AcceptanceCriteria {
++		acceptance = append(acceptance, "- "+strings.TrimSpace(criterion))
++	}
++	parts = append(parts, strings.Join(acceptance, "\n"))
++
++	return strings.Join(parts, "\n\n")
++}
+diff --git a/internal/source/model/prd_markdown_test.go b/internal/source/model/prd_markdown_test.go
+index c4cf6362e44b14e47ffc87e1f2efb55e88735988..705c025c1d9c085424a213d242bda4a37e198607
+--- a/internal/source/model/prd_markdown_test.go
++++ b/internal/source/model/prd_markdown_test.go
+@@ -8,6 +8,186 @@
+ 	"testing"
+ )
+ 
++func TestRenderPRDMarkdownStableOutput(t *testing.T) {
++	t.Parallel()
++
++	prd := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	markdown, report := prd.RenderMarkdown()
++	if !report.Valid {
++		t.Fatalf("expected valid report, got %+v", report)
++	}
++
++	expected := `# Smith PRD Validation
++
++## Overview
++
++Normalize markdown PRDs into canonical JSON for downstream workflows.
++
++## Goals
++- Make canonical PRD JSON deterministic.
++- Preserve story ordering from markdown.
++
++## Non-Goals
++- Building a rich editor.
++
++## Success Metrics
++- Imports preserve story IDs and quality gates.
++
++## Open Questions
++- Should export omit unsupported canonical sections?
++
++## Rules
++- Canonical JSON is the source of truth.
++
++## Quality Gates
++- go test ./...
++- ./scripts/validate-acceptance.sh
++
++## Stories
++
++### US-001: Define validation contract
++
++As a maintainer, I want validation diagnostics shared across entrypoints.
++
++#### Status
++
++in_progress
++
++#### Acceptance Criteria
++- Validation returns machine-readable diagnostics.
++
++### US-002: Normalize markdown PRDs into canonical JSON
++
++As a user, I want markdown normalized into canonical PRD JSON.
++
++#### Status
++
++open
++
++#### Depends On
++- US-001
++
++#### Acceptance Criteria
++- Supported headings map into canonical JSON fields.
++- Quality gates are preserved.`
++
++	if markdown != expected {
++		t.Fatalf("rendered markdown mismatch\nactual:\n%s\n\nexpected:\n%s", markdown, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownRoundTrip(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if !report.Valid {
++		t.Fatalf("expected valid export report, got %+v", report)
++	}
++
++	actual, roundTripReport := ValidatePRDMarkdown([]byte(markdown))
++	if !roundTripReport.Valid {
++		t.Fatalf("expected round-trip markdown to validate, got %+v", roundTripReport)
++	}
++	if !reflect.DeepEqual(actual, expected) {
++		t.Fatalf("round-trip PRD mismatch\nactual: %#v\nexpected: %#v", actual, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownInvalidDocument(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "open",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if markdown != "" {
++		t.Fatalf("expected no markdown output for invalid document, got %q", markdown)
++	}
++
++	want := expected.ValidateReport()
++	if !reflect.DeepEqual(report, want) {
++		t.Fatalf("expected export diagnostics to match validation\nactual: %+v\nexpected: %+v", report, want)
++	}
++}
++
+ func TestParsePRDMarkdownFixtures(t *testing.T) {
+ 	t.Parallel()
+ 
+
+exec
+/bin/zsh -lc 'git show -s --format="%h %s" HEAD' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+ca25497 feat(validation): render stable PRD markdown
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+ M .ralph/runs/run-20260314-005446-82373-iter-3.log
+exec
+/bin/zsh -lc 'tail -n 40 .ralph/progress.md' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+    - Terminal command API returns structured error codes for validation/auth/rate-limit failures but attach runtime conflicts currently return text error messages.
+---
+## [2026-03-14 01:03:56 EDT] - US-001: Define canonical PRD validation and diagnostic contracts
+Thread: ses_b56b86
+Run: 20260314-005446-82373 (iteration 1)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-1.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-1.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 3d0c98f feat(validation): add canonical PRD diagnostics
+- Post-commit status: `clean`
+- Verification:
+  - Command: make build -> PASS
+  - Command: go test ./internal/source/model/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-1.md
+file update:
+diff --git a/internal/source/model/prd_markdown_export.go b/internal/source/model/prd_markdown_export.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..6320f169ce627a4eb36e06bb79827239ee7fc8d9
+--- /dev/null
++++ b/internal/source/model/prd_markdown_export.go
+@@ -0,0 +1,100 @@
++package model
++
++import (
++	"strings"
++)
++
++// RenderMarkdown renders the parser-supported canonical PRD sections in a
++// stable markdown layout. Invalid PRDs return the same validation diagnostics
++// and no markdown output.
++func (p *PRD) RenderMarkdown() (string, PRDValidationReport) {
++	if p == nil {
++		report := PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    "PRD document is required",
++					Suggestion: "Provide a canonical PRD document before exporting markdown.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++		return "", report
++	}
++
++	report := p.ValidateReport()
++	if !report.Valid {
++		return "", report
++	}
++
++	var sections []string
++	sections = append(sections, "# "+strings.TrimSpace(p.Project))
++	sections = append(sections, "## Overview\n\n"+strings.TrimSpace(p.Overview))
++	sections = appendOptionalListSection(sections, "Goals", p.Goals)
++	sections = appendOptionalListSection(sections, "Non-Goals", p.NonGoals)
++	sections = appendOptionalListSection(sections, "Success Metrics", p.Success)
++	sections = appendOptionalListSection(sections, "Open Questions", p.Questions)
++	sections = appendOptionalListSection(sections, "Rules", p.Rules)
++	sections = appendOptionalListSection(sections, "Quality Gates", p.Gates)
++	sections = append(sections, renderStoriesSection(p.Stories))
++
++	return strings.Join(sections, "\n\n"), report
++}
++
++func ExportPRDJSONToMarkdown(data []byte) (string, PRDValidationReport) {
++	prd, report := ValidatePRDJSON(data)
++	if !report.Valid {
++		return "", report
++	}
++	return prd.RenderMarkdown()
++}
++
++func appendOptionalListSection(sections []string, title string, items []string) []string {
++	if len(items) == 0 {
++		return sections
++	}
++
++	lines := make([]string, 0, len(items)+1)
++	lines = append(lines, "## "+title)
++	for _, item := range items {
++		lines = append(lines, "- "+strings.TrimSpace(item))
++	}
++	return append(sections, strings.Join(lines, "\n"))
++}
++
++func renderStoriesSection(stories []PRDStory) string {
++	storySections := make([]string, 0, len(stories)+1)
++	storySections = append(storySections, "## Stories")
++	for _, story := range stories {
++		storySections = append(storySections, renderStory(story))
++	}
++	return strings.Join(storySections, "\n\n")
++}
++
++func renderStory(story PRDStory) string {
++	parts := []string{
++		"### " + strings.TrimSpace(story.ID) + ": " + strings.TrimSpace(story.Title),
++		strings.TrimSpace(story.Description),
++		"#### Status\n\n" + strings.TrimSpace(story.Status),
++	}
++
++	if len(story.DependsOn) > 0 {
++		dependencies := make([]string, 0, len(story.DependsOn)+1)
++		dependencies = append(dependencies, "#### Depends On")
++		for _, dependency := range story.DependsOn {
++			dependencies = append(dependencies, "- "+strings.TrimSpace(dependency))
++		}
++		parts = append(parts, strings.Join(dependencies, "\n"))
++	}
++
++	acceptance := make([]string, 0, len(story.AcceptanceCriteria)+1)
++	acceptance = append(acceptance, "#### Acceptance Criteria")
++	for _, criterion := range story.AcceptanceCriteria {
++		acceptance = append(acceptance, "- "+strings.TrimSpace(criterion))
++	}
++	parts = append(parts, strings.Join(acceptance, "\n"))
++
++	return strings.Join(parts, "\n\n")
++}
+diff --git a/internal/source/model/prd_markdown_test.go b/internal/source/model/prd_markdown_test.go
+index c4cf6362e44b14e47ffc87e1f2efb55e88735988..705c025c1d9c085424a213d242bda4a37e198607
+--- a/internal/source/model/prd_markdown_test.go
++++ b/internal/source/model/prd_markdown_test.go
+@@ -8,6 +8,186 @@
+ 	"testing"
+ )
+ 
++func TestRenderPRDMarkdownStableOutput(t *testing.T) {
++	t.Parallel()
++
++	prd := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	markdown, report := prd.RenderMarkdown()
++	if !report.Valid {
++		t.Fatalf("expected valid report, got %+v", report)
++	}
++
++	expected := `# Smith PRD Validation
++
++## Overview
++
++Normalize markdown PRDs into canonical JSON for downstream workflows.
++
++## Goals
++- Make canonical PRD JSON deterministic.
++- Preserve story ordering from markdown.
++
++## Non-Goals
++- Building a rich editor.
++
++## Success Metrics
++- Imports preserve story IDs and quality gates.
++
++## Open Questions
++- Should export omit unsupported canonical sections?
++
++## Rules
++- Canonical JSON is the source of truth.
++
++## Quality Gates
++- go test ./...
++- ./scripts/validate-acceptance.sh
++
++## Stories
++
++### US-001: Define validation contract
++
++As a maintainer, I want validation diagnostics shared across entrypoints.
++
++#### Status
++
++in_progress
++
++#### Acceptance Criteria
++- Validation returns machine-readable diagnostics.
++
++### US-002: Normalize markdown PRDs into canonical JSON
++
++As a user, I want markdown normalized into canonical PRD JSON.
++
++#### Status
++
++open
++
++#### Depends On
++- US-001
++
++#### Acceptance Criteria
++- Supported headings map into canonical JSON fields.
++- Quality gates are preserved.`
++
++	if markdown != expected {
++		t.Fatalf("rendered markdown mismatch\nactual:\n%s\n\nexpected:\n%s", markdown, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownRoundTrip(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if !report.Valid {
++		t.Fatalf("expected valid export report, got %+v", report)
++	}
++
++	actual, roundTripReport := ValidatePRDMarkdown([]byte(markdown))
++	if !roundTripReport.Valid {
++		t.Fatalf("expected round-trip markdown to validate, got %+v", roundTripReport)
++	}
++	if !reflect.DeepEqual(actual, expected) {
++		t.Fatalf("round-trip PRD mismatch\nactual: %#v\nexpected: %#v", actual, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownInvalidDocument(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "open",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if markdown != "" {
++		t.Fatalf("expected no markdown output for invalid document, got %q", markdown)
++	}
++
++	want := expected.ValidateReport()
++	if !reflect.DeepEqual(report, want) {
++		t.Fatalf("expected export diagnostics to match validation\nactual: %+v\nexpected: %+v", report, want)
++	}
++}
++
+ func TestParsePRDMarkdownFixtures(t *testing.T) {
+ 	t.Parallel()
+ 
+
+codex
+The implementation commit is in. The hook mutated the current run log afterward, so I’m recording that explicitly in the progress entry and then making one final bookkeeping commit to capture the progress entry plus the regenerated run log delta.
+file update
+M /Users/lars/Dev/smith-prd-validation/.ralph/progress.md
+@@ -322 +322,42 @@
+ ---
++## [2026-03-14 01:31:02 EDT] - US-003: Render stable markdown from canonical PRD JSON
++Thread: ses_55108c
++Run: 20260314-005446-82373 (iteration 3)
++Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.log
++Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.md
++- Guardrails reviewed: yes
++- No-commit run: false
++- Commit: ca25497 feat(validation): render stable PRD markdown
++- Post-commit status: `.ralph/runs/run-20260314-005446-82373-iter-3.log` modified by post-commit hook output
++- Verification:
++  - Command: act --version -> PASS
++  - Command: docker --version -> PASS
++  - Command: go test ./internal/source/model -> PASS
++  - Command: go test ./... -> PASS
++  - Command: ./scripts/validate-acceptance.sh -> FAIL
++  - Command: make ci-local-act -> FAIL
++- Files changed:
++  - .agents/tasks/prd-prd-generation-validation.json
++  - .ralph/.tmp/prompt-20260314-005446-82373-3.md
++  - .ralph/.tmp/story-20260314-005446-82373-3.json
++  - .ralph/.tmp/story-20260314-005446-82373-3.md
++  - .ralph/activity.log
++  - .ralph/errors.log
++  - .ralph/progress.md
++  - .ralph/runs/run-20260314-005446-82373-iter-2.log
++  - .ralph/runs/run-20260314-005446-82373-iter-2.md
++  - .ralph/runs/run-20260314-005446-82373-iter-3.log
++  - internal/source/model/prd_markdown_export.go
++  - internal/source/model/prd_markdown_test.go
++- What was implemented
++  - Added canonical PRD markdown export in `internal/source/model` with a stable section order and deterministic story rendering for status, dependencies, and acceptance criteria.
++  - Added `ExportPRDJSONToMarkdown` so JSON export validates first and returns the same validation diagnostics on invalid input instead of emitting misleading markdown.
++  - Added tests for stable markdown output, invalid-export diagnostics, and JSON to markdown to JSON round-tripping that preserves story IDs, dependency ordering, open questions, and quality gates for supported sections.
++- **Learnings for future iterations:**
++  - Patterns discovered
++  - Restricting export to parser-supported sections keeps round-trip behavior deterministic without inventing lossy markdown conventions for unsupported canonical fields.
++  - Gotchas encountered
++  - The repo pre-commit hook rewrites the active run log after successful commits, so a final bookkeeping commit is needed to restore a clean working tree.
++  - Useful context
++  - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in existing CI/Makefile tasks, and `make ci-local-act` reaches passing Playwright execution locally but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
++---
+apply_patch(auto_approved=true) exited 0 in 70ms:
+Success. Updated the following files:
+M /Users/lars/Dev/smith-prd-validation/.ralph/progress.md
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index 8797e887d665362b8e7f07b0051dccc4b5334085..d0a7a9fd463a8b509dd59d28d845e92d86cc65c3
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -320,3 +320,44 @@
+   - Useful context
+   - Existing canonical PRD task files in this repo currently use `open`, `in_progress`, and `done` statuses; the validator now treats that set as canonical.
+ ---
++## [2026-03-14 01:31:02 EDT] - US-003: Render stable markdown from canonical PRD JSON
++Thread: ses_55108c
++Run: 20260314-005446-82373 (iteration 3)
++Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.log
++Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.md
++- Guardrails reviewed: yes
++- No-commit run: false
++- Commit: ca25497 feat(validation): render stable PRD markdown
++- Post-commit status: `.ralph/runs/run-20260314-005446-82373-iter-3.log` modified by post-commit hook output
++- Verification:
++  - Command: act --version -> PASS
++  - Command: docker --version -> PASS
++  - Command: go test ./internal/source/model -> PASS
++  - Command: go test ./... -> PASS
++  - Command: ./scripts/validate-acceptance.sh -> FAIL
++  - Command: make ci-local-act -> FAIL
++- Files changed:
++  - .agents/tasks/prd-prd-generation-validation.json
++  - .ralph/.tmp/prompt-20260314-005446-82373-3.md
++  - .ralph/.tmp/story-20260314-005446-82373-3.json
++  - .ralph/.tmp/story-20260314-005446-82373-3.md
++  - .ralph/activity.log
++  - .ralph/errors.log
++  - .ralph/progress.md
++  - .ralph/runs/run-20260314-005446-82373-iter-2.log
++  - .ralph/runs/run-20260314-005446-82373-iter-2.md
++  - .ralph/runs/run-20260314-005446-82373-iter-3.log
++  - internal/source/model/prd_markdown_export.go
++  - internal/source/model/prd_markdown_test.go
++- What was implemented
++  - Added canonical PRD markdown export in `internal/source/model` with a stable section order and deterministic story rendering for status, dependencies, and acceptance criteria.
++  - Added `ExportPRDJSONToMarkdown` so JSON export validates first and returns the same validation diagnostics on invalid input instead of emitting misleading markdown.
++  - Added tests for stable markdown output, invalid-export diagnostics, and JSON to markdown to JSON round-tripping that preserves story IDs, dependency ordering, open questions, and quality gates for supported sections.
++- **Learnings for future iterations:**
++  - Patterns discovered
++  - Restricting export to parser-supported sections keeps round-trip behavior deterministic without inventing lossy markdown conventions for unsupported canonical fields.
++  - Gotchas encountered
++  - The repo pre-commit hook rewrites the active run log after successful commits, so a final bookkeeping commit is needed to restore a clean working tree.
++  - Useful context
++  - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in existing CI/Makefile tasks, and `make ci-local-act` reaches passing Playwright execution locally but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
++---
+diff --git a/internal/source/model/prd_markdown_export.go b/internal/source/model/prd_markdown_export.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..6320f169ce627a4eb36e06bb79827239ee7fc8d9
+--- /dev/null
++++ b/internal/source/model/prd_markdown_export.go
+@@ -0,0 +1,100 @@
++package model
++
++import (
++	"strings"
++)
++
++// RenderMarkdown renders the parser-supported canonical PRD sections in a
++// stable markdown layout. Invalid PRDs return the same validation diagnostics
++// and no markdown output.
++func (p *PRD) RenderMarkdown() (string, PRDValidationReport) {
++	if p == nil {
++		report := PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    "PRD document is required",
++					Suggestion: "Provide a canonical PRD document before exporting markdown.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++		return "", report
++	}
++
++	report := p.ValidateReport()
++	if !report.Valid {
++		return "", report
++	}
++
++	var sections []string
++	sections = append(sections, "# "+strings.TrimSpace(p.Project))
++	sections = append(sections, "## Overview\n\n"+strings.TrimSpace(p.Overview))
++	sections = appendOptionalListSection(sections, "Goals", p.Goals)
++	sections = appendOptionalListSection(sections, "Non-Goals", p.NonGoals)
++	sections = appendOptionalListSection(sections, "Success Metrics", p.Success)
++	sections = appendOptionalListSection(sections, "Open Questions", p.Questions)
++	sections = appendOptionalListSection(sections, "Rules", p.Rules)
++	sections = appendOptionalListSection(sections, "Quality Gates", p.Gates)
++	sections = append(sections, renderStoriesSection(p.Stories))
++
++	return strings.Join(sections, "\n\n"), report
++}
++
++func ExportPRDJSONToMarkdown(data []byte) (string, PRDValidationReport) {
++	prd, report := ValidatePRDJSON(data)
++	if !report.Valid {
++		return "", report
++	}
++	return prd.RenderMarkdown()
++}
++
++func appendOptionalListSection(sections []string, title string, items []string) []string {
++	if len(items) == 0 {
++		return sections
++	}
++
++	lines := make([]string, 0, len(items)+1)
++	lines = append(lines, "## "+title)
++	for _, item := range items {
++		lines = append(lines, "- "+strings.TrimSpace(item))
++	}
++	return append(sections, strings.Join(lines, "\n"))
++}
++
++func renderStoriesSection(stories []PRDStory) string {
++	storySections := make([]string, 0, len(stories)+1)
++	storySections = append(storySections, "## Stories")
++	for _, story := range stories {
++		storySections = append(storySections, renderStory(story))
++	}
++	return strings.Join(storySections, "\n\n")
++}
++
++func renderStory(story PRDStory) string {
++	parts := []string{
++		"### " + strings.TrimSpace(story.ID) + ": " + strings.TrimSpace(story.Title),
++		strings.TrimSpace(story.Description),
++		"#### Status\n\n" + strings.TrimSpace(story.Status),
++	}
++
++	if len(story.DependsOn) > 0 {
++		dependencies := make([]string, 0, len(story.DependsOn)+1)
++		dependencies = append(dependencies, "#### Depends On")
++		for _, dependency := range story.DependsOn {
++			dependencies = append(dependencies, "- "+strings.TrimSpace(dependency))
++		}
++		parts = append(parts, strings.Join(dependencies, "\n"))
++	}
++
++	acceptance := make([]string, 0, len(story.AcceptanceCriteria)+1)
++	acceptance = append(acceptance, "#### Acceptance Criteria")
++	for _, criterion := range story.AcceptanceCriteria {
++		acceptance = append(acceptance, "- "+strings.TrimSpace(criterion))
++	}
++	parts = append(parts, strings.Join(acceptance, "\n"))
++
++	return strings.Join(parts, "\n\n")
++}
+diff --git a/internal/source/model/prd_markdown_test.go b/internal/source/model/prd_markdown_test.go
+index c4cf6362e44b14e47ffc87e1f2efb55e88735988..705c025c1d9c085424a213d242bda4a37e198607
+--- a/internal/source/model/prd_markdown_test.go
++++ b/internal/source/model/prd_markdown_test.go
+@@ -8,6 +8,186 @@
+ 	"testing"
+ )
+ 
++func TestRenderPRDMarkdownStableOutput(t *testing.T) {
++	t.Parallel()
++
++	prd := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	markdown, report := prd.RenderMarkdown()
++	if !report.Valid {
++		t.Fatalf("expected valid report, got %+v", report)
++	}
++
++	expected := `# Smith PRD Validation
++
++## Overview
++
++Normalize markdown PRDs into canonical JSON for downstream workflows.
++
++## Goals
++- Make canonical PRD JSON deterministic.
++- Preserve story ordering from markdown.
++
++## Non-Goals
++- Building a rich editor.
++
++## Success Metrics
++- Imports preserve story IDs and quality gates.
++
++## Open Questions
++- Should export omit unsupported canonical sections?
++
++## Rules
++- Canonical JSON is the source of truth.
++
++## Quality Gates
++- go test ./...
++- ./scripts/validate-acceptance.sh
++
++## Stories
++
++### US-001: Define validation contract
++
++As a maintainer, I want validation diagnostics shared across entrypoints.
++
++#### Status
++
++in_progress
++
++#### Acceptance Criteria
++- Validation returns machine-readable diagnostics.
++
++### US-002: Normalize markdown PRDs into canonical JSON
++
++As a user, I want markdown normalized into canonical PRD JSON.
++
++#### Status
++
++open
++
++#### Depends On
++- US-001
++
++#### Acceptance Criteria
++- Supported headings map into canonical JSON fields.
++- Quality gates are preserved.`
++
++	if markdown != expected {
++		t.Fatalf("rendered markdown mismatch\nactual:\n%s\n\nexpected:\n%s", markdown, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownRoundTrip(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if !report.Valid {
++		t.Fatalf("expected valid export report, got %+v", report)
++	}
++
++	actual, roundTripReport := ValidatePRDMarkdown([]byte(markdown))
++	if !roundTripReport.Valid {
++		t.Fatalf("expected round-trip markdown to validate, got %+v", roundTripReport)
++	}
++	if !reflect.DeepEqual(actual, expected) {
++		t.Fatalf("round-trip PRD mismatch\nactual: %#v\nexpected: %#v", actual, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownInvalidDocument(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "open",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if markdown != "" {
++		t.Fatalf("expected no markdown output for invalid document, got %q", markdown)
++	}
++
++	want := expected.ValidateReport()
++	if !reflect.DeepEqual(report, want) {
++		t.Fatalf("expected export diagnostics to match validation\nactual: %+v\nexpected: %+v", report, want)
++	}
++}
++
+ func TestParsePRDMarkdownFixtures(t *testing.T) {
+ 	t.Parallel()
+ 
+
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index 8797e887d665362b8e7f07b0051dccc4b5334085..d0a7a9fd463a8b509dd59d28d845e92d86cc65c3
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -320,3 +320,44 @@
+   - Useful context
+   - Existing canonical PRD task files in this repo currently use `open`, `in_progress`, and `done` statuses; the validator now treats that set as canonical.
+ ---
++## [2026-03-14 01:31:02 EDT] - US-003: Render stable markdown from canonical PRD JSON
++Thread: ses_55108c
++Run: 20260314-005446-82373 (iteration 3)
++Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.log
++Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.md
++- Guardrails reviewed: yes
++- No-commit run: false
++- Commit: ca25497 feat(validation): render stable PRD markdown
++- Post-commit status: `.ralph/runs/run-20260314-005446-82373-iter-3.log` modified by post-commit hook output
++- Verification:
++  - Command: act --version -> PASS
++  - Command: docker --version -> PASS
++  - Command: go test ./internal/source/model -> PASS
++  - Command: go test ./... -> PASS
++  - Command: ./scripts/validate-acceptance.sh -> FAIL
++  - Command: make ci-local-act -> FAIL
++- Files changed:
++  - .agents/tasks/prd-prd-generation-validation.json
++  - .ralph/.tmp/prompt-20260314-005446-82373-3.md
++  - .ralph/.tmp/story-20260314-005446-82373-3.json
++  - .ralph/.tmp/story-20260314-005446-82373-3.md
++  - .ralph/activity.log
++  - .ralph/errors.log
++  - .ralph/progress.md
++  - .ralph/runs/run-20260314-005446-82373-iter-2.log
++  - .ralph/runs/run-20260314-005446-82373-iter-2.md
++  - .ralph/runs/run-20260314-005446-82373-iter-3.log
++  - internal/source/model/prd_markdown_export.go
++  - internal/source/model/prd_markdown_test.go
++- What was implemented
++  - Added canonical PRD markdown export in `internal/source/model` with a stable section order and deterministic story rendering for status, dependencies, and acceptance criteria.
++  - Added `ExportPRDJSONToMarkdown` so JSON export validates first and returns the same validation diagnostics on invalid input instead of emitting misleading markdown.
++  - Added tests for stable markdown output, invalid-export diagnostics, and JSON to markdown to JSON round-tripping that preserves story IDs, dependency ordering, open questions, and quality gates for supported sections.
++- **Learnings for future iterations:**
++  - Patterns discovered
++  - Restricting export to parser-supported sections keeps round-trip behavior deterministic without inventing lossy markdown conventions for unsupported canonical fields.
++  - Gotchas encountered
++  - The repo pre-commit hook rewrites the active run log after successful commits, so a final bookkeeping commit is needed to restore a clean working tree.
++  - Useful context
++  - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in existing CI/Makefile tasks, and `make ci-local-act` reaches passing Playwright execution locally but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
++---
+diff --git a/internal/source/model/prd_markdown_export.go b/internal/source/model/prd_markdown_export.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..6320f169ce627a4eb36e06bb79827239ee7fc8d9
+--- /dev/null
++++ b/internal/source/model/prd_markdown_export.go
+@@ -0,0 +1,100 @@
++package model
++
++import (
++	"strings"
++)
++
++// RenderMarkdown renders the parser-supported canonical PRD sections in a
++// stable markdown layout. Invalid PRDs return the same validation diagnostics
++// and no markdown output.
++func (p *PRD) RenderMarkdown() (string, PRDValidationReport) {
++	if p == nil {
++		report := PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    "PRD document is required",
++					Suggestion: "Provide a canonical PRD document before exporting markdown.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++		return "", report
++	}
++
++	report := p.ValidateReport()
++	if !report.Valid {
++		return "", report
++	}
++
++	var sections []string
++	sections = append(sections, "# "+strings.TrimSpace(p.Project))
++	sections = append(sections, "## Overview\n\n"+strings.TrimSpace(p.Overview))
++	sections = appendOptionalListSection(sections, "Goals", p.Goals)
++	sections = appendOptionalListSection(sections, "Non-Goals", p.NonGoals)
++	sections = appendOptionalListSection(sections, "Success Metrics", p.Success)
++	sections = appendOptionalListSection(sections, "Open Questions", p.Questions)
++	sections = appendOptionalListSection(sections, "Rules", p.Rules)
++	sections = appendOptionalListSection(sections, "Quality Gates", p.Gates)
++	sections = append(sections, renderStoriesSection(p.Stories))
++
++	return strings.Join(sections, "\n\n"), report
++}
++
++func ExportPRDJSONToMarkdown(data []byte) (string, PRDValidationReport) {
++	prd, report := ValidatePRDJSON(data)
++	if !report.Valid {
++		return "", report
++	}
++	return prd.RenderMarkdown()
++}
++
++func appendOptionalListSection(sections []string, title string, items []string) []string {
++	if len(items) == 0 {
++		return sections
++	}
++
++	lines := make([]string, 0, len(items)+1)
++	lines = append(lines, "## "+title)
++	for _, item := range items {
++		lines = append(lines, "- "+strings.TrimSpace(item))
++	}
++	return append(sections, strings.Join(lines, "\n"))
++}
++
++func renderStoriesSection(stories []PRDStory) string {
++	storySections := make([]string, 0, len(stories)+1)
++	storySections = append(storySections, "## Stories")
++	for _, story := range stories {
++		storySections = append(storySections, renderStory(story))
++	}
++	return strings.Join(storySections, "\n\n")
++}
++
++func renderStory(story PRDStory) string {
++	parts := []string{
++		"### " + strings.TrimSpace(story.ID) + ": " + strings.TrimSpace(story.Title),
++		strings.TrimSpace(story.Description),
++		"#### Status\n\n" + strings.TrimSpace(story.Status),
++	}
++
++	if len(story.DependsOn) > 0 {
++		dependencies := make([]string, 0, len(story.DependsOn)+1)
++		dependencies = append(dependencies, "#### Depends On")
++		for _, dependency := range story.DependsOn {
++			dependencies = append(dependencies, "- "+strings.TrimSpace(dependency))
++		}
++		parts = append(parts, strings.Join(dependencies, "\n"))
++	}
++
++	acceptance := make([]string, 0, len(story.AcceptanceCriteria)+1)
++	acceptance = append(acceptance, "#### Acceptance Criteria")
++	for _, criterion := range story.AcceptanceCriteria {
++		acceptance = append(acceptance, "- "+strings.TrimSpace(criterion))
++	}
++	parts = append(parts, strings.Join(acceptance, "\n"))
++
++	return strings.Join(parts, "\n\n")
++}
+diff --git a/internal/source/model/prd_markdown_test.go b/internal/source/model/prd_markdown_test.go
+index c4cf6362e44b14e47ffc87e1f2efb55e88735988..705c025c1d9c085424a213d242bda4a37e198607
+--- a/internal/source/model/prd_markdown_test.go
++++ b/internal/source/model/prd_markdown_test.go
+@@ -8,6 +8,186 @@
+ 	"testing"
+ )
+ 
++func TestRenderPRDMarkdownStableOutput(t *testing.T) {
++	t.Parallel()
++
++	prd := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	markdown, report := prd.RenderMarkdown()
++	if !report.Valid {
++		t.Fatalf("expected valid report, got %+v", report)
++	}
++
++	expected := `# Smith PRD Validation
++
++## Overview
++
++Normalize markdown PRDs into canonical JSON for downstream workflows.
++
++## Goals
++- Make canonical PRD JSON deterministic.
++- Preserve story ordering from markdown.
++
++## Non-Goals
++- Building a rich editor.
++
++## Success Metrics
++- Imports preserve story IDs and quality gates.
++
++## Open Questions
++- Should export omit unsupported canonical sections?
++
++## Rules
++- Canonical JSON is the source of truth.
++
++## Quality Gates
++- go test ./...
++- ./scripts/validate-acceptance.sh
++
++## Stories
++
++### US-001: Define validation contract
++
++As a maintainer, I want validation diagnostics shared across entrypoints.
++
++#### Status
++
++in_progress
++
++#### Acceptance Criteria
++- Validation returns machine-readable diagnostics.
++
++### US-002: Normalize markdown PRDs into canonical JSON
++
++As a user, I want markdown normalized into canonical PRD JSON.
++
++#### Status
++
++open
++
++#### Depends On
++- US-001
++
++#### Acceptance Criteria
++- Supported headings map into canonical JSON fields.
++- Quality gates are preserved.`
++
++	if markdown != expected {
++		t.Fatalf("rendered markdown mismatch\nactual:\n%s\n\nexpected:\n%s", markdown, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownRoundTrip(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if !report.Valid {
++		t.Fatalf("expected valid export report, got %+v", report)
++	}
++
++	actual, roundTripReport := ValidatePRDMarkdown([]byte(markdown))
++	if !roundTripReport.Valid {
++		t.Fatalf("expected round-trip markdown to validate, got %+v", roundTripReport)
++	}
++	if !reflect.DeepEqual(actual, expected) {
++		t.Fatalf("round-trip PRD mismatch\nactual: %#v\nexpected: %#v", actual, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownInvalidDocument(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "open",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if markdown != "" {
++		t.Fatalf("expected no markdown output for invalid document, got %q", markdown)
++	}
++
++	want := expected.ValidateReport()
++	if !reflect.DeepEqual(report, want) {
++		t.Fatalf("expected export diagnostics to match validation\nactual: %+v\nexpected: %+v", report, want)
++	}
++}
++
+ func TestParsePRDMarkdownFixtures(t *testing.T) {
+ 	t.Parallel()
+ 
+
+exec
+/bin/zsh -lc 'git status --porcelain' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+ M .ralph/progress.md
+ M .ralph/runs/run-20260314-005446-82373-iter-3.log
+exec
+/bin/zsh -lc 'ralph log "Updated US-003 progress entry with commit and verification results"' in /Users/lars/Dev/smith-prd-validation succeeded in 0ms:
+Using bundled templates: /Users/lars/.nvm/versions/node/v22.20.0/lib/node_modules/@iannuttall/ralph/.agents/ralph
+file update:
+diff --git a/.ralph/progress.md b/.ralph/progress.md
+index 8797e887d665362b8e7f07b0051dccc4b5334085..d0a7a9fd463a8b509dd59d28d845e92d86cc65c3
+--- a/.ralph/progress.md
++++ b/.ralph/progress.md
+@@ -320,3 +320,44 @@
+   - Useful context
+   - Existing canonical PRD task files in this repo currently use `open`, `in_progress`, and `done` statuses; the validator now treats that set as canonical.
+ ---
++## [2026-03-14 01:31:02 EDT] - US-003: Render stable markdown from canonical PRD JSON
++Thread: ses_55108c
++Run: 20260314-005446-82373 (iteration 3)
++Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.log
++Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.md
++- Guardrails reviewed: yes
++- No-commit run: false
++- Commit: ca25497 feat(validation): render stable PRD markdown
++- Post-commit status: `.ralph/runs/run-20260314-005446-82373-iter-3.log` modified by post-commit hook output
++- Verification:
++  - Command: act --version -> PASS
++  - Command: docker --version -> PASS
++  - Command: go test ./internal/source/model -> PASS
++  - Command: go test ./... -> PASS
++  - Command: ./scripts/validate-acceptance.sh -> FAIL
++  - Command: make ci-local-act -> FAIL
++- Files changed:
++  - .agents/tasks/prd-prd-generation-validation.json
++  - .ralph/.tmp/prompt-20260314-005446-82373-3.md
++  - .ralph/.tmp/story-20260314-005446-82373-3.json
++  - .ralph/.tmp/story-20260314-005446-82373-3.md
++  - .ralph/activity.log
++  - .ralph/errors.log
++  - .ralph/progress.md
++  - .ralph/runs/run-20260314-005446-82373-iter-2.log
++  - .ralph/runs/run-20260314-005446-82373-iter-2.md
++  - .ralph/runs/run-20260314-005446-82373-iter-3.log
++  - internal/source/model/prd_markdown_export.go
++  - internal/source/model/prd_markdown_test.go
++- What was implemented
++  - Added canonical PRD markdown export in `internal/source/model` with a stable section order and deterministic story rendering for status, dependencies, and acceptance criteria.
++  - Added `ExportPRDJSONToMarkdown` so JSON export validates first and returns the same validation diagnostics on invalid input instead of emitting misleading markdown.
++  - Added tests for stable markdown output, invalid-export diagnostics, and JSON to markdown to JSON round-tripping that preserves story IDs, dependency ordering, open questions, and quality gates for supported sections.
++- **Learnings for future iterations:**
++  - Patterns discovered
++  - Restricting export to parser-supported sections keeps round-trip behavior deterministic without inventing lossy markdown conventions for unsupported canonical fields.
++  - Gotchas encountered
++  - The repo pre-commit hook rewrites the active run log after successful commits, so a final bookkeeping commit is needed to restore a clean working tree.
++  - Useful context
++  - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in existing CI/Makefile tasks, and `make ci-local-act` reaches passing Playwright execution locally but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
++---
+diff --git a/internal/source/model/prd_markdown_export.go b/internal/source/model/prd_markdown_export.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..6320f169ce627a4eb36e06bb79827239ee7fc8d9
+--- /dev/null
++++ b/internal/source/model/prd_markdown_export.go
+@@ -0,0 +1,100 @@
++package model
++
++import (
++	"strings"
++)
++
++// RenderMarkdown renders the parser-supported canonical PRD sections in a
++// stable markdown layout. Invalid PRDs return the same validation diagnostics
++// and no markdown output.
++func (p *PRD) RenderMarkdown() (string, PRDValidationReport) {
++	if p == nil {
++		report := PRDValidationReport{
++			Valid: false,
++			Errors: []PRDValidationDiagnostic{
++				{
++					Code:       PRDDiagnosticMalformedJSON,
++					Path:       "$",
++					Message:    "PRD document is required",
++					Suggestion: "Provide a canonical PRD document before exporting markdown.",
++				},
++			},
++			Readiness: PRDReadinessFail,
++		}
++		return "", report
++	}
++
++	report := p.ValidateReport()
++	if !report.Valid {
++		return "", report
++	}
++
++	var sections []string
++	sections = append(sections, "# "+strings.TrimSpace(p.Project))
++	sections = append(sections, "## Overview\n\n"+strings.TrimSpace(p.Overview))
++	sections = appendOptionalListSection(sections, "Goals", p.Goals)
++	sections = appendOptionalListSection(sections, "Non-Goals", p.NonGoals)
++	sections = appendOptionalListSection(sections, "Success Metrics", p.Success)
++	sections = appendOptionalListSection(sections, "Open Questions", p.Questions)
++	sections = appendOptionalListSection(sections, "Rules", p.Rules)
++	sections = appendOptionalListSection(sections, "Quality Gates", p.Gates)
++	sections = append(sections, renderStoriesSection(p.Stories))
++
++	return strings.Join(sections, "\n\n"), report
++}
++
++func ExportPRDJSONToMarkdown(data []byte) (string, PRDValidationReport) {
++	prd, report := ValidatePRDJSON(data)
++	if !report.Valid {
++		return "", report
++	}
++	return prd.RenderMarkdown()
++}
++
++func appendOptionalListSection(sections []string, title string, items []string) []string {
++	if len(items) == 0 {
++		return sections
++	}
++
++	lines := make([]string, 0, len(items)+1)
++	lines = append(lines, "## "+title)
++	for _, item := range items {
++		lines = append(lines, "- "+strings.TrimSpace(item))
++	}
++	return append(sections, strings.Join(lines, "\n"))
++}
++
++func renderStoriesSection(stories []PRDStory) string {
++	storySections := make([]string, 0, len(stories)+1)
++	storySections = append(storySections, "## Stories")
++	for _, story := range stories {
++		storySections = append(storySections, renderStory(story))
++	}
++	return strings.Join(storySections, "\n\n")
++}
++
++func renderStory(story PRDStory) string {
++	parts := []string{
++		"### " + strings.TrimSpace(story.ID) + ": " + strings.TrimSpace(story.Title),
++		strings.TrimSpace(story.Description),
++		"#### Status\n\n" + strings.TrimSpace(story.Status),
++	}
++
++	if len(story.DependsOn) > 0 {
++		dependencies := make([]string, 0, len(story.DependsOn)+1)
++		dependencies = append(dependencies, "#### Depends On")
++		for _, dependency := range story.DependsOn {
++			dependencies = append(dependencies, "- "+strings.TrimSpace(dependency))
++		}
++		parts = append(parts, strings.Join(dependencies, "\n"))
++	}
++
++	acceptance := make([]string, 0, len(story.AcceptanceCriteria)+1)
++	acceptance = append(acceptance, "#### Acceptance Criteria")
++	for _, criterion := range story.AcceptanceCriteria {
++		acceptance = append(acceptance, "- "+strings.TrimSpace(criterion))
++	}
++	parts = append(parts, strings.Join(acceptance, "\n"))
++
++	return strings.Join(parts, "\n\n")
++}
+diff --git a/internal/source/model/prd_markdown_test.go b/internal/source/model/prd_markdown_test.go
+index c4cf6362e44b14e47ffc87e1f2efb55e88735988..705c025c1d9c085424a213d242bda4a37e198607
+--- a/internal/source/model/prd_markdown_test.go
++++ b/internal/source/model/prd_markdown_test.go
+@@ -8,6 +8,186 @@
+ 	"testing"
+ )
+ 
++func TestRenderPRDMarkdownStableOutput(t *testing.T) {
++	t.Parallel()
++
++	prd := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	markdown, report := prd.RenderMarkdown()
++	if !report.Valid {
++		t.Fatalf("expected valid report, got %+v", report)
++	}
++
++	expected := `# Smith PRD Validation
++
++## Overview
++
++Normalize markdown PRDs into canonical JSON for downstream workflows.
++
++## Goals
++- Make canonical PRD JSON deterministic.
++- Preserve story ordering from markdown.
++
++## Non-Goals
++- Building a rich editor.
++
++## Success Metrics
++- Imports preserve story IDs and quality gates.
++
++## Open Questions
++- Should export omit unsupported canonical sections?
++
++## Rules
++- Canonical JSON is the source of truth.
++
++## Quality Gates
++- go test ./...
++- ./scripts/validate-acceptance.sh
++
++## Stories
++
++### US-001: Define validation contract
++
++As a maintainer, I want validation diagnostics shared across entrypoints.
++
++#### Status
++
++in_progress
++
++#### Acceptance Criteria
++- Validation returns machine-readable diagnostics.
++
++### US-002: Normalize markdown PRDs into canonical JSON
++
++As a user, I want markdown normalized into canonical PRD JSON.
++
++#### Status
++
++open
++
++#### Depends On
++- US-001
++
++#### Acceptance Criteria
++- Supported headings map into canonical JSON fields.
++- Quality gates are preserved.`
++
++	if markdown != expected {
++		t.Fatalf("rendered markdown mismatch\nactual:\n%s\n\nexpected:\n%s", markdown, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownRoundTrip(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:   1,
++		Project:   "Smith PRD Validation",
++		Overview:  "Normalize markdown PRDs into canonical JSON for downstream workflows.",
++		Goals:     []string{"Make canonical PRD JSON deterministic.", "Preserve story ordering from markdown."},
++		NonGoals:  []string{"Building a rich editor."},
++		Success:   []string{"Imports preserve story IDs and quality gates."},
++		Questions: []string{"Should export omit unsupported canonical sections?"},
++		Rules:     []string{"Canonical JSON is the source of truth."},
++		Gates:     []string{"go test ./...", "./scripts/validate-acceptance.sh"},
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "in_progress",
++				Description:        "As a maintainer, I want validation diagnostics shared across entrypoints.",
++				AcceptanceCriteria: []string{"Validation returns machine-readable diagnostics."},
++			},
++			{
++				ID:                 "US-002",
++				Title:              "Normalize markdown PRDs into canonical JSON",
++				Status:             "open",
++				DependsOn:          []string{"US-001"},
++				Description:        "As a user, I want markdown normalized into canonical PRD JSON.",
++				AcceptanceCriteria: []string{"Supported headings map into canonical JSON fields.", "Quality gates are preserved."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if !report.Valid {
++		t.Fatalf("expected valid export report, got %+v", report)
++	}
++
++	actual, roundTripReport := ValidatePRDMarkdown([]byte(markdown))
++	if !roundTripReport.Valid {
++		t.Fatalf("expected round-trip markdown to validate, got %+v", roundTripReport)
++	}
++	if !reflect.DeepEqual(actual, expected) {
++		t.Fatalf("round-trip PRD mismatch\nactual: %#v\nexpected: %#v", actual, expected)
++	}
++}
++
++func TestExportPRDJSONToMarkdownInvalidDocument(t *testing.T) {
++	t.Parallel()
++
++	expected := &PRD{
++		Version:  1,
++		Overview: "Canonical PRD validation",
++		Stories: []PRDStory{
++			{
++				ID:                 "US-001",
++				Title:              "Define validation contract",
++				Status:             "open",
++				Description:        "As a maintainer, I want shared validation.",
++				AcceptanceCriteria: []string{"Validation report is shared."},
++			},
++		},
++	}
++
++	data, err := json.Marshal(expected)
++	if err != nil {
++		t.Fatalf("marshal prd: %v", err)
++	}
++
++	markdown, report := ExportPRDJSONToMarkdown(data)
++	if markdown != "" {
++		t.Fatalf("expected no markdown output for invalid document, got %q", markdown)
++	}
++
++	want := expected.ValidateReport()
++	if !reflect.DeepEqual(report, want) {
++		t.Fatalf("expected export diagnostics to match validation\nactual: %+v\nexpected: %+v", report, want)
++	}
++}
++
+ func TestParsePRDMarkdownFixtures(t *testing.T) {
+ 	t.Parallel()
+ 
+
