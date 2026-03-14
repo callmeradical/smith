@@ -70,6 +70,12 @@ Smith intentionally does not personify agents.
 
 The platform direction is informed by [Ralph](https://github.com/snarktank/ralph), [marcus/sidecar](https://github.com/marcus/sidecar), [marcus/td](https://github.com/marcus/td), and related projects, but is engineered to scale beyond a single developer machine.
 
+## Installation and Usage
+
+`smithctl` is the primary command-line tool for interacting with Smith. For detailed installation instructions and usage examples, see:
+
+- [smithctl Installation and Usage](docs/smithctl-installation-and-usage.md)
+
 ## Architecture Summary
 
 Smith is split into control-plane and data-plane components.

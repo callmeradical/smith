@@ -296,6 +296,34 @@ func TestRunRejectsInvalidExportArguments(t *testing.T) {
 	}
 }
 
+func TestRunImportRequiresPRDModeFlag(t *testing.T) {
+	dir := t.TempDir()
+	markdownPath := filepath.Join(dir, "feature.md")
+	if err := os.WriteFile(markdownPath, []byte("# Example\n"), 0o644); err != nil {
+		t.Fatalf("write markdown fixture: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--from-markdown", markdownPath}, strings.NewReader(""), &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected code=2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "supports PRD mode only") {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestRunValidateRequiresPRDModeFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"validate"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected code=2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "supports PRD mode only") {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
 func TestRunRequiresPRDModeFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"just", "text"}, strings.NewReader(""), &stdout, &stderr)

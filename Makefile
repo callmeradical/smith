@@ -23,6 +23,10 @@ SMITH_LOCAL_CHAT_IMAGE ?= smith-chat:local
 SMITH_MIN_GO_VERSION ?= 1.22.0
 SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
 SMITH_MIN_HELM_VERSION ?= 3.13.0
+BIN_DIR ?= bin
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0")
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+
 .PHONY: help \
 	doctor bootstrap \
 	cluster cluster-up cluster-down cluster-reset cluster-health \
@@ -81,7 +85,30 @@ bootstrap: ## Install missing k3d/vcluster prerequisites
 	else \
 	  echo "bootstrap: preserved existing $$HOME/.smith/config.json"; \
 	fi
+
+build: build-smithctl build-services ## Build all binaries
+
+build-smithctl: ## Build smithctl binary for current platform
+	@mkdir -p $(BIN_DIR)
+	go build -ldflags "-X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT)" -o $(BIN_DIR)/smithctl ./cmd/smithctl
+
+build-services: ## Build all service binaries
+	@mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/smith-api ./cmd/smith-api
+	go build -o $(BIN_DIR)/smith-core ./cmd/smith-core
+	go build -o $(BIN_DIR)/smith-replica ./cmd/smith-replica
+	go build -o $(BIN_DIR)/smith ./cmd/smith
+
+dist: ## Build cross-platform smithctl binaries
+	@mkdir -p dist
+	GOOS=linux GOARCH=amd64 go build -o dist/smithctl-linux-amd64 ./cmd/smithctl
+	GOOS=linux GOARCH=arm64 go build -o dist/smithctl-linux-arm64 ./cmd/smithctl
+	GOOS=darwin GOARCH=amd64 go build -o dist/smithctl-darwin-amd64 ./cmd/smithctl
+	GOOS=darwin GOARCH=arm64 go build -o dist/smithctl-darwin-arm64 ./cmd/smithctl
+	GOOS=windows GOARCH=amd64 go build -o dist/smithctl-windows-amd64.exe ./cmd/smithctl
+
 cluster: cluster-up ## Alias for cluster-up
+
 cluster-up: ## Provision local k3d + vcluster + etcd environment
 	./scripts/integration/env-up.sh
 cluster-down: ## Delete local k3d + vcluster + etcd environment

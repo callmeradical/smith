@@ -218,7 +218,23 @@ func TestLoadLoopExecutionConfigFromEnvOverrides(t *testing.T) {
 		t.Fatal("expected issue workflow disabled")
 	}
 }
+
+func TestLoadLoopExecutionConfigFromEnvStage(t *testing.T) {
+	t.Setenv("SMITH_LOOP_STAGE", "prd")
+	cfg := loadLoopExecutionConfigFromEnv()
+	if cfg.Stage != "prd" {
+		t.Fatalf("expected stage prd, got %q", cfg.Stage)
+	}
+
+	t.Setenv("SMITH_LOOP_STAGE", "tech_planning")
+	cfg = loadLoopExecutionConfigFromEnv()
+	if cfg.Stage != "tech_planning" {
+		t.Fatalf("expected stage tech_planning, got %q", cfg.Stage)
+	}
+}
+
 func TestLoadLoopExecutionConfigFromEnvRejectsInvalidValues(t *testing.T) {
+
 	t.Setenv("SMITH_LOOP_PROVIDER", "")
 	t.Setenv("SMITH_AGENT_CLI_CMD", "")
 	t.Setenv("SMITH_AGENT_CLI_CMD_CODEX", "")

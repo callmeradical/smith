@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-smithctl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build smithctl binaries
+        run: make dist
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/smithctl-linux-amd64
+            dist/smithctl-linux-arm64
+            dist/smithctl-darwin-amd64
+            dist/smithctl-darwin-arm64
+            dist/smithctl-windows-amd64.exe
+          draft: false
+          prerelease: false
+          generate_release_notes: true

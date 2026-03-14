@@ -20,6 +20,7 @@ To provide a robust, distributed, and deterministic substrate for autonomous age
 ## Key Features
 - **Control Plane:** API and Core components for managing loop lifecycles.
 - **Ingress Adapters:** Support for GitHub issues, PRDs, and direct operator requests.
+- **Autonomous Dev Loop:** End-to-end flow from GitHub issue to PRD, technical planning, TDD implementation, and PR submission.
 - **Operator CLI (smithctl):** A powerful tool for inspecting and managing loops.
 - **Operator Console:** A web-based UI for real-time monitoring and terminal interaction.
 - **Replica Workers:** Uniform, scalable execution units that perform the actual work.
