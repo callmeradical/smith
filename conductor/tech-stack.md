@@ -9,6 +9,7 @@
 - **etcd client/v3:** Interface with the authoritative state store.
 - **k8s.io/client-go:** Core library for Kubernetes interaction and resource management.
 - **gorilla/websocket:** For real-time terminal attach and console updates.
+- **gh CLI:** GitHub CLI for Pull Request creation and repository interaction.
 
 ## Frontend Frameworks and Libraries
 - **SvelteKit:** High-performance web framework for the operator console.

@@ -95,7 +95,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	positional := fs.Args()
-	if prdMode && len(positional) > 0 && strings.EqualFold(strings.TrimSpace(positional[0]), "validate") {
+	validateMode := len(positional) > 0 && strings.EqualFold(strings.TrimSpace(positional[0]), "validate")
+	if !prdMode && (strings.TrimSpace(fromMarkdown) != "" || strings.TrimSpace(fromJSON) != "" || strings.TrimSpace(toMarkdown) != "" || validateMode) {
+		fmt.Fprintln(stderr, "--prd is required for import, export, and validate workflows")
+		printHelp(stderr)
+		return 2
+	}
+	if prdMode && validateMode {
 		return runValidateWorkflow(positional[1:], stdout, stderr)
 	}
 	if strings.TrimSpace(fromMarkdown) != "" {

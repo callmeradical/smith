@@ -7,11 +7,11 @@ const SchemaVersion = SchemaVersionV1
 type LoopState string
 
 const (
-	LoopStateUnresolved  LoopState = "unresolved"
-	LoopStateRunning LoopState = "running"
-	LoopStateSynced      LoopState = "synced"
-	LoopStateFlatline    LoopState = "flatline"
-	LoopStateCancelled   LoopState = "cancelled"
+	LoopStateUnresolved LoopState = "unresolved"
+	LoopStateRunning    LoopState = "running"
+	LoopStateSynced     LoopState = "synced"
+	LoopStateFlatline   LoopState = "flatline"
+	LoopStateCancelled  LoopState = "cancelled"
 )
 
 type Anomaly struct {

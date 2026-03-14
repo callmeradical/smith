@@ -16,6 +16,7 @@ nav = [
   { "Traceability Matrix" = "requirements-traceability.md" },
   { "Deployment (Helm)" = "deployment-recommendations.md" },
   { "Agent Providers & Authentication" = "agent-provider-auth.md" },
+  { "smithctl CLI" = "smithctl-installation-and-usage.md" },
   { "Operations" = "loop-ingress-and-cli.md" }
 ]
 

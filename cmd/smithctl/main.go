@@ -21,6 +21,11 @@ import (
 
 const defaultServer = "http://127.0.0.1:8080"
 
+var (
+	Version   = "v0.0.0"
+	GitCommit = "unknown"
+)
+
 type rootFlags struct {
 	Server  string
 	Token   string
@@ -162,7 +167,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runLoop(client, cfg.Output, rest[1:], stdout, stderr)
 	case "prd":
 		return runPRD(client, cfg.Output, rest[1:], stdout, stderr)
+	case "version":
+		if cfg.Output == "json" {
+			printOutput(stdout, cfg.Output, map[string]string{
+				"version":    Version,
+				"git_commit": GitCommit,
+			})
+		} else {
+			fmt.Fprintf(stdout, "smithctl version %s (%s)\n", Version, GitCommit)
+		}
+		return 0
 	case "help", "-h", "--help":
+
 		printHelp(stdout)
 		return 0
 	default:
@@ -1554,6 +1570,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Resources:")
 	fmt.Fprintln(w, "  loop    Manage loop resources")
 	fmt.Fprintln(w, "  prd     Manage PRD resources")
+	fmt.Fprintln(w, "  version Print the version information")
+
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Examples:")
 	fmt.Fprintln(w, "  smithctl loop list")

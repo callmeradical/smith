@@ -211,6 +211,20 @@ type githubIngressRequest struct {
 	Metadata map[string]string     `json:"metadata,omitempty"`
 }
 
+type githubWebhookPayload struct {
+	Action string `json:"action"`
+	Issue  struct {
+		Number  int    `json:"number"`
+		Title   string `json:"title"`
+		Body    string `json:"body"`
+		HTMLURL string `json:"html_url"`
+		ID      int64  `json:"id"`
+	} `json:"issue"`
+	Repository struct {
+		FullName string `json:"full_name"`
+	} `json:"repository"`
+}
+
 type prdIngressRequest struct {
 	Format    string            `json:"format,omitempty"`
 	SourceRef string            `json:"source_ref,omitempty"`
@@ -623,6 +637,7 @@ func main() {
 	mux.HandleFunc("/v1/environment/presets", s.handleEnvironmentPresets)
 	mux.HandleFunc("/v1/environment/presets/", s.handleEnvironmentPresetByName)
 	mux.HandleFunc("/v1/ingress/github/issues", s.handleIngressGitHubIssues)
+	mux.HandleFunc("/v1/webhooks/github/issues", s.handleGitHubWebhook)
 	mux.HandleFunc("/v1/ingress/prd", s.handleIngressPRD)
 	mux.HandleFunc("/v1/chat/prd", s.handleChatPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
@@ -774,6 +789,57 @@ func (s *server) handleIngressGitHubIssues(w http.ResponseWriter, r *http.Reques
 		})
 	}
 	writeJSON(w, http.StatusOK, ingressSummary(results))
+}
+
+func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	event := r.Header.Get("X-GitHub-Event")
+	if event != "issues" {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "not-an-issue-event"})
+		return
+	}
+	var payload githubWebhookPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	if payload.Action != "opened" && payload.Action != "reopened" {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "not-an-opened-issue"})
+		return
+	}
+
+	issue := ingress.GitHubIssue{
+		Repository: payload.Repository.FullName,
+		Number:     payload.Issue.Number,
+		Title:      payload.Issue.Title,
+		Body:       payload.Issue.Body,
+		URL:        payload.Issue.HTMLURL,
+		ID:         strconv.FormatInt(payload.Issue.ID, 10),
+	}
+
+	draft, err := ingress.GitHubIssueToDraft(issue)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	res := s.createOneLoop(r.Context(), loopCreateRequest{
+		IdempotencyKey: draft.IdempotencyKey,
+		Title:          draft.Title,
+		Description:    draft.Description,
+		SourceType:     draft.SourceType,
+		SourceRef:      draft.SourceRef,
+		Metadata:       draft.Metadata,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":  res.Status,
+		"loop_id": res.LoopID,
+		"message": res.Message,
+	})
 }
 
 func (s *server) handleIngressPRD(w http.ResponseWriter, r *http.Request) {

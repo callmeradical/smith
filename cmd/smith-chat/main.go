@@ -237,7 +237,7 @@ func (s *server) handleStream(w http.ResponseWriter, r *http.Request, session *c
 	if err != nil {
 		log.Printf("failed to build system prompt: %v", err)
 	}
-	
+
 	// Prepend system message to temporary copy of session for engine
 	// In a real scenario, we might want to store this in the session
 	engineSession := *session
