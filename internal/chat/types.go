@@ -7,10 +7,10 @@ import (
 type SessionType string
 
 const (
-	SessionTypePRDRefinement    SessionType = "prd-refinement"
-	SessionTypeLoopAssist       SessionType = "loop-assist"
-	SessionTypeDocumentAssist   SessionType = "document-assist"
-	SessionTypeRuntimeAssist    SessionType = "runtime-assist"
+	SessionTypePRDRefinement  SessionType = "prd-refinement"
+	SessionTypeLoopAssist     SessionType = "loop-assist"
+	SessionTypeDocumentAssist SessionType = "document-assist"
+	SessionTypeRuntimeAssist  SessionType = "runtime-assist"
 )
 
 type MessageRole string

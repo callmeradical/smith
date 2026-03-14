@@ -73,19 +73,19 @@ type config struct {
 }
 
 type server struct {
-	cfg             config
-	store           store.StateStore
-	auth            *provider.AuthManager
-	projectCred     provider.ProjectCredentialStore
-	projectStore    provider.ProjectStore
-	presets         *presetCatalog
-	skillPolicy     model.SkillPolicy
-	term            *terminalSessionStore
-	runtimePods     runtimePodReader
-	podExec         podExecRunner
-	kube            kubernetes.Interface
-	restConfig      *rest.Config
-	upgrader        websocket.Upgrader
+	cfg          config
+	store        store.StateStore
+	auth         *provider.AuthManager
+	projectCred  provider.ProjectCredentialStore
+	projectStore provider.ProjectStore
+	presets      *presetCatalog
+	skillPolicy  model.SkillPolicy
+	term         *terminalSessionStore
+	runtimePods  runtimePodReader
+	podExec      podExecRunner
+	kube         kubernetes.Interface
+	restConfig   *rest.Config
+	upgrader     websocket.Upgrader
 }
 type overrideRequest struct {
 	LoopID      string          `json:"loop_id"`

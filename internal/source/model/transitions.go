@@ -2,8 +2,8 @@ package model
 
 var allowedTransitions = map[LoopState]map[LoopState]struct{}{
 	LoopStateUnresolved: {
-		LoopStateRunning: {},
-		LoopStateCancelled:   {},
+		LoopStateRunning:   {},
+		LoopStateCancelled: {},
 	},
 	LoopStateRunning: {
 		LoopStateSynced:     {},

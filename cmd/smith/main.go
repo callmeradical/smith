@@ -359,7 +359,7 @@ func runAgentChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		sendEvent(map[string]string{"type": "error", "text": "empty agent command"})
 		return 1
 	}
-	
+
 	cmd := exec.Command(fields[0], fields[1:]...)
 	agentStdin, _ := cmd.StdinPipe()
 	agentStdout, _ := cmd.StdoutPipe()
@@ -432,14 +432,14 @@ func runAgentChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		for s.Scan() {
 			text := s.Text()
 			accumulated.WriteString(text + "\n")
-			
+
 			var rpc map[string]any
 			if json.Unmarshal([]byte(text), &rpc) == nil {
 				// Handle ACP responses
 				if isACP {
 					method, _ := rpc["method"].(string)
 					id, _ := rpc["id"]
-					
+
 					// Capability negotiation response
 					if id == float64(1) {
 						sendRPC("session/new", map[string]any{

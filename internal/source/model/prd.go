@@ -6,21 +6,21 @@ import (
 )
 
 type PRD struct {
-	Version   int            `json:"version"`
-	Project   string         `json:"project"`
-	Overview  string         `json:"overview"`
-	Goals     []string       `json:"goals"`
-	NonGoals  []string       `json:"nonGoals"`
-	Success   []string       `json:"successMetrics"`
-	Questions []string       `json:"openQuestions"`
-	Stack     PRDStack       `json:"stack"`
-	Routes    []PRDRoute     `json:"routes"`
-	UI        string         `json:"uiNotes"`
-	DataModel []PRDEntity    `json:"dataModel"`
-	Import    string         `json:"importFormat"`
-	Rules     []string       `json:"rules"`
-	Gates     []string       `json:"qualityGates"`
-	Stories   []PRDStory     `json:"stories"`
+	Version   int         `json:"version"`
+	Project   string      `json:"project"`
+	Overview  string      `json:"overview"`
+	Goals     []string    `json:"goals"`
+	NonGoals  []string    `json:"nonGoals"`
+	Success   []string    `json:"successMetrics"`
+	Questions []string    `json:"openQuestions"`
+	Stack     PRDStack    `json:"stack"`
+	Routes    []PRDRoute  `json:"routes"`
+	UI        string      `json:"uiNotes"`
+	DataModel []PRDEntity `json:"dataModel"`
+	Import    string      `json:"importFormat"`
+	Rules     []string    `json:"rules"`
+	Gates     []string    `json:"qualityGates"`
+	Stories   []PRDStory  `json:"stories"`
 }
 
 type PRDStack struct {

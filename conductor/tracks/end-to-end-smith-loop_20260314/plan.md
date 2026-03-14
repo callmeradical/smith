@@ -13,30 +13,30 @@
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Ingress and PRD Generation' (Protocol in workflow.md).
 
 ## Phase 2: Technical Planning
-- [ ] Task: Create a Smith Replica worker for technical spec and plan generation.
-    - [ ] Define the Replica configuration for the technical planning stage.
-    - [ ] Implement the logic to retrieve the PRD from etcd.
-- [ ] Task: Implement the logic to generate a tech spec from the PRD.
-    - [ ] Utilize the Smith LLM integration to generate a technical specification.
-- [ ] Task: Implement the logic to generate a hierarchical implementation plan (Phases -> Tasks -> Sub-tasks).
-    - [ ] Utilize the Smith LLM integration to generate the plan.
-    - [ ] Store the technical spec and implementation plan in the Smith loop state in etcd.
+- [x] Task: Create a Smith Replica worker for technical spec and plan generation. [65434]
+    - [x] Define the Replica configuration for the technical planning stage.
+    - [x] Implement the logic to retrieve the PRD from etcd.
+- [x] Task: Implement the logic to generate a tech spec from the PRD. [65434]
+    - [x] Utilize the Smith LLM integration to generate a technical specification.
+- [x] Task: Implement the logic to generate a hierarchical implementation plan (Phases -> Tasks -> Sub-tasks). [65434]
+    - [x] Utilize the Smith LLM integration to generate the plan.
+    - [x] Store the technical spec and implementation plan in the Smith loop state in etcd.
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Technical Planning' (Protocol in workflow.md).
 
 ## Phase 3: Autonomous Implementation and TDD
-- [ ] Task: Create a Smith Replica worker for autonomous implementation.
-    - [ ] Define the Replica configuration for the implementation stage.
-    - [ ] Implement the logic to retrieve the implementation plan from etcd.
-- [ ] Task: Implement the TDD execution loop (Write Tests -> Implement -> Refactor).
-    - [ ] Integrate the TDD execution loop with the implementation plan.
-    - [ ] Execute each task and sub-task, ensuring code quality and test passing.
+- [x] Task: Create a Smith Replica worker for autonomous implementation. [65434]
+    - [x] Define the Replica configuration for the implementation stage.
+    - [x] Implement the logic to retrieve the implementation plan from etcd.
+- [x] Task: Implement the TDD execution loop (Write Tests -> Implement -> Refactor). [65434]
+    - [x] Integrate the TDD execution loop with the implementation plan.
+    - [x] Execute each task and sub-task, ensuring code quality and test passing.
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Autonomous Implementation and TDD' (Protocol in workflow.md).
 
 ## Phase 4: PR Submission and Completion
-- [ ] Task: Implement the GitHub PR submission logic in the Smith Replica.
-    - [ ] Define the logic to create a new branch and commit changes.
-    - [ ] Implement the GitHub API call to create and submit the Pull Request.
-- [ ] Task: Create a final Smith Replica worker for the PR submission stage.
-    - [ ] Define the Replica configuration for the PR submission stage.
-    - [ ] Verify the submitted PR and update the Smith loop state to completed.
+- [x] Task: Implement the GitHub PR submission logic in the Smith Replica. [65434]
+    - [x] Define the logic to create a new branch and commit changes.
+    - [x] Implement the GitHub API call to create and submit the Pull Request.
+- [x] Task: Create a final Smith Replica worker for the PR submission stage. [65434]
+    - [x] Define the Replica configuration for the PR submission stage.
+    - [x] Verify the submitted PR and update the Smith loop state to completed.
 - [ ] Task: Conductor - User Manual Verification 'Phase 4: PR Submission and Completion' (Protocol in workflow.md).
