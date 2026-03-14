@@ -181,7 +181,7 @@
     {
       "id": "US-002",
       "title": "Normalize markdown PRDs into canonical JSON",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-001"
       ],
@@ -194,13 +194,13 @@
         "Fixture-based tests cover well-formed markdown, partially structured markdown, and malformed markdown inputs."
       ],
       "startedAt": "2026-03-14T05:05:50.201896+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-14T05:05:50.202105+00:00"
+      "completedAt": "2026-03-14T05:20:56.768231+00:00",
+      "updatedAt": "2026-03-14T05:20:56.767597+00:00"
     },
     {
       "id": "US-003",
       "title": "Render stable markdown from canonical PRD JSON",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-001",
         "US-002"
@@ -212,7 +212,10 @@
         "Example: exporting a valid canonical JSON PRD yields markdown that is readable in Git and re-imports into equivalent canonical JSON for supported sections.",
         "Negative case: attempting export from invalid canonical JSON fails with the same validation diagnostics rather than writing misleading markdown.",
         "Round-trip tests verify JSON to markdown to JSON preservation for story IDs, dependency ordering, and quality gates."
-      ]
+      ],
+      "startedAt": "2026-03-14T05:20:58.837869+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-14T05:20:58.838070+00:00"
     },
     {
       "id": "US-004",
