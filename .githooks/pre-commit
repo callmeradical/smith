@@ -5,8 +5,42 @@ if [[ "${SKIP_GIT_HOOKS:-}" == "1" ]]; then
   exit 0
 fi
 
+mapfile -t changed_files < <(git diff --cached --name-only --diff-filter=ACMR)
+
+if [[ ${#changed_files[@]} -eq 0 ]]; then
+  echo "[pre-commit] no staged changes; skipping"
+  exit 0
+fi
+
+is_docs_only=true
+needs_docs_checks=false
+needs_full_ci=false
+
+for path in "${changed_files[@]}"; do
+  case "$path" in
+    docs/*|zensical.toml|scripts/docs/*|.github/workflows/docs-pages.yml)
+      needs_docs_checks=true
+      ;;
+    .github/workflows/ci.yml|.githooks/*|Makefile)
+      needs_docs_checks=true
+      needs_full_ci=true
+      is_docs_only=false
+      ;;
+    *)
+      needs_full_ci=true
+      is_docs_only=false
+      ;;
+  esac
+done
+
+if $is_docs_only && $needs_docs_checks; then
+  echo "[pre-commit] docs-only changes detected; running docs quality checks..."
+  ./scripts/docs/quality-check.sh
+  exit 0
+fi
+
 if ! command -v act >/dev/null 2>&1; then
-  echo "ERROR: 'act' is required for git hooks but was not found." >&2
+  echo "ERROR: 'act' is required for non-doc git hooks but was not found." >&2
   echo "Please install it: brew install act" >&2
   exit 1
 fi

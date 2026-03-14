@@ -56,7 +56,9 @@ jobs:
           echo "Resolved site_url=$SITE_URL"
 
       - name: Build docs
-        run: ./scripts/docs/quality-check.sh
+        run: |
+          ./scripts/docs/quality-check.sh
+          ./scripts/docs/build-public-site.py
 
       - name: Upload artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -14,6 +14,7 @@ nav = [
   { "Architecture" = "distributed-autonomous-orchestration-mvp.md" },
   { "Requirements (FR/NFR)" = "requirements-fr-nfr.md" },
   { "Traceability Matrix" = "requirements-traceability.md" },
+  { "Docs to PRD Lifecycle" = "docs-to-prd-lifecycle.md" },
   { "Deployment (Helm)" = "deployment-recommendations.md" },
   { "Agent Providers & Authentication" = "agent-provider-auth.md" },
   { "smithctl CLI" = "smithctl-installation-and-usage.md" },
