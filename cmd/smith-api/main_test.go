@@ -1125,3 +1125,76 @@ func (f *fakePodExecRunner) Execute(_ context.Context, req podExecRequest) (podE
 	f.lastRequest = req
 	return f.result, f.err
 }
+
+func TestDeriveLoopIDIsStable(t *testing.T) {
+	tests := []struct {
+		name           string
+		projectID      string
+		idempotencyKey string
+		sourceType     string
+		sourceRef      string
+	}{
+		{
+			name:           "basic",
+			projectID:      "smith",
+			idempotencyKey: "key1",
+			sourceType:     "type1",
+			sourceRef:      "ref1",
+		},
+		{
+			name:           "empty-idempotency",
+			projectID:      "smith",
+			idempotencyKey: "",
+			sourceType:     "type1",
+			sourceRef:      "ref1",
+		},
+		{
+			name:           "special-chars",
+			projectID:      "smith",
+			idempotencyKey: "key with spaces / and dots.",
+			sourceType:     "type1",
+			sourceRef:      "ref1",
+		},
+		{
+			name:           "no-project",
+			projectID:      "",
+			idempotencyKey: "key1",
+			sourceType:     "type1",
+			sourceRef:      "ref1",
+		},
+		{
+			name:           "cleaned-to-empty",
+			projectID:      "smith",
+			idempotencyKey: "!!!",
+			sourceType:     "!!!",
+			sourceRef:      "!!!",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			id1 := deriveLoopID(tc.projectID, tc.idempotencyKey, tc.sourceType, tc.sourceRef)
+			id2 := deriveLoopID(tc.projectID, tc.idempotencyKey, tc.sourceType, tc.sourceRef)
+			if id1 != id2 {
+				t.Fatalf("deriveLoopID is not stable: %q != %q", id1, id2)
+			}
+			if strings.Contains(id1, " ") {
+				t.Fatalf("generated ID contains spaces: %q", id1)
+			}
+		})
+	}
+}
+
+func TestDeriveLoopIDDifferentInputs(t *testing.T) {
+	id1 := deriveLoopID("proj1", "key1", "type1", "ref1")
+	id2 := deriveLoopID("proj1", "key2", "type1", "ref1")
+	if id1 == id2 {
+		t.Fatalf("deriveLoopID collision for different keys: %q", id1)
+	}
+
+	id3 := deriveLoopID("proj1", "", "type1", "ref1")
+	id4 := deriveLoopID("proj1", "", "type1", "ref2")
+	if id3 == id4 {
+		t.Fatalf("deriveLoopID collision for different source refs: %q", id3)
+	}
+}
