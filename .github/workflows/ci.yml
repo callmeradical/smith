@@ -151,7 +151,7 @@ jobs:
         run: make test-frontend
 
       - name: Upload Playwright artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-playwright-artifacts
@@ -181,7 +181,7 @@ jobs:
         run: ./scripts/test/run-matrix.sh
 
       - name: Upload test artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-test-artifacts
@@ -210,7 +210,7 @@ jobs:
         run: make test-acceptance-bdd
 
       - name: Upload acceptance artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-acceptance-artifacts
@@ -245,7 +245,7 @@ jobs:
         run: ${{ matrix.scenario.script }}
 
       - name: Upload scenario artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-e2e-${{ matrix.scenario.id }}-artifacts
@@ -275,7 +275,7 @@ jobs:
           ./scripts/test/e2e-skill-mounts.sh
 
       - name: Upload ingress/environment e2e artifacts
-        if: always()
+        if: ${{ always() && env.ACT != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: smith-e2e-ingress-environment-artifacts
