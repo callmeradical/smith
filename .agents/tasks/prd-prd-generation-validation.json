@@ -1,0 +1,286 @@
+{
+  "version": 1,
+  "project": "Smith PRD Generation and Validation",
+  "overview": "Add a shared PRD generation and validation workflow to Smith so any system leveraging Smith for autonomous development can turn markdown or interactive refinement into canonical Ralph-compatible JSON, validate execution readiness before loop start, and render stable markdown back from that canonical JSON when needed.",
+  "goals": [
+    "Make canonical PRD JSON the source of truth for Smith autonomous development workflows",
+    "Support markdown to JSON normalization and JSON to markdown export with stable structure",
+    "Add execution-readiness validation that blocks invalid PRDs before loop execution or ingress",
+    "Reuse the same PRD parsing and validation logic across CLI and API paths"
+  ],
+  "nonGoals": [
+    "Implementing a full rich-text PRD editor in the console",
+    "Supporting arbitrary third-party PRD schemas as canonical internal state",
+    "Auto-rewriting invalid PRDs without user review",
+    "Starting or scheduling loops as part of validation itself"
+  ],
+  "successMetrics": [
+    "A user can create a valid canonical PRD JSON file from Smith CLI prompts or markdown input without hand-editing required fields",
+    "Invalid PRDs are rejected before ingress or loop start with actionable machine-readable diagnostics",
+    "Round-trip JSON to markdown to JSON preserves story IDs, ordering, dependencies, and quality gates for supported sections",
+    "CLI and API paths use the same validation rules and produce equivalent results for the same PRD content"
+  ],
+  "openQuestions": [
+    "Should markdown export preserve only canonical sections or also retain optional prose sections that are not part of the JSON schema?",
+    "Should execution-readiness validation warn or fail when stories appear too large for a single Ralph iteration?",
+    "Should PRD validation be exposed as a dedicated API endpoint, implicit ingress behavior, or both?",
+    "What compatibility guarantees should Smith provide for future PRD schema version upgrades?"
+  ],
+  "stack": {
+    "framework": "Existing Go-based Smith codebase with shared model and ingress packages plus smith CLI",
+    "hosting": "Kubernetes-hosted Smith control plane with local CLI workflows for authoring and validation",
+    "database": "etcd remains the loop state source of truth; PRD files remain workspace artifacts",
+    "auth": "Existing Smith API auth for ingress and control operations; local CLI authoring does not require remote auth"
+  },
+  "routes": [
+    {
+      "path": "smith --prd <prompt> --out .agents/tasks/prd.json",
+      "name": "Interactive PRD Generation",
+      "purpose": "Generate canonical PRD JSON for a repository workflow"
+    },
+    {
+      "path": "smith --prd --from-markdown <path> --out .agents/tasks/prd.json",
+      "name": "Markdown Import",
+      "purpose": "Normalize markdown PRD content into canonical JSON"
+    },
+    {
+      "path": "smith --prd --from-json <path> --to-markdown <path>",
+      "name": "Markdown Export",
+      "purpose": "Render stable markdown from canonical PRD JSON"
+    },
+    {
+      "path": "smith --prd validate <path>",
+      "name": "PRD Validation",
+      "purpose": "Run schema, semantic, and execution-readiness validation against a PRD artifact"
+    },
+    {
+      "path": "POST /v1/ingress/prd",
+      "name": "PRD Ingress",
+      "purpose": "Reuse canonical PRD parsing and validation before creating loop drafts"
+    }
+  ],
+  "uiNotes": [
+    "This feature is CLI-first and API-reused rather than console-first.",
+    "Validation output must include both human-readable summaries and machine-readable diagnostics suitable for automation.",
+    "Markdown export should use a stable section order so generated diffs stay reviewable across repeated Ralph loops.",
+    "Errors should point to specific stories or fields whenever possible instead of returning only document-level failures."
+  ],
+  "dataModel": [
+    {
+      "name": "PRDDocument",
+      "fields": [
+        {
+          "name": "version",
+          "type": "int",
+          "note": "Schema version for canonical Smith PRD JSON"
+        },
+        {
+          "name": "project",
+          "type": "string",
+          "note": "Human-readable project or feature name"
+        },
+        {
+          "name": "stories",
+          "type": "[]PRDStory",
+          "note": "Ordered Ralph-sized work items with dependencies"
+        },
+        {
+          "name": "qualityGates",
+          "type": "[]string",
+          "note": "Commands required for each story and overall readiness"
+        }
+      ]
+    },
+    {
+      "name": "PRDValidationReport",
+      "fields": [
+        {
+          "name": "valid",
+          "type": "bool",
+          "note": "Overall pass or fail result"
+        },
+        {
+          "name": "errors",
+          "type": "[]ValidationDiagnostic",
+          "note": "Blocking issues with field or story references"
+        },
+        {
+          "name": "warnings",
+          "type": "[]ValidationDiagnostic",
+          "note": "Non-blocking issues such as oversized stories"
+        },
+        {
+          "name": "readiness",
+          "type": "string",
+          "note": "Execution-readiness state such as pass, warn, or fail"
+        }
+      ]
+    },
+    {
+      "name": "ValidationDiagnostic",
+      "fields": [
+        {
+          "name": "code",
+          "type": "string",
+          "note": "Stable machine-readable diagnostic identifier"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "note": "JSON path or story ID reference for the issue"
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "note": "Human-readable explanation"
+        },
+        {
+          "name": "suggestion",
+          "type": "string",
+          "note": "Recommended remediation when available"
+        }
+      ]
+    }
+  ],
+  "importFormat": "Supported authoring inputs are canonical Smith PRD JSON and structured markdown that can be normalized into the canonical JSON shape. Supported export output is stable markdown rendered from canonical JSON. Ingress and loop execution consume canonical JSON semantics even when the original authoring input was markdown.",
+  "rules": [
+    "This is an existing Smith codebase feature; work must extend current model, ingress, and smith CLI behavior rather than introducing a separate PRD service.",
+    "Canonical JSON is the source of truth for execution, validation, and round-trip export.",
+    "Markdown input must normalize into canonical JSON before any loop ingress or execution-readiness decision is made.",
+    "Validation must include schema checks, semantic checks against Smith and Ralph conventions, and execution-readiness checks.",
+    "Validation failures must block PRD ingress or loop-start handoff when the PRD is not execution-ready.",
+    "Validation output must include suggested fixes for blocking errors whenever the system can infer a safe remediation.",
+    "Round-trip markdown export must preserve story order, story IDs, dependencies, goals, non-goals, and quality gates for supported sections.",
+    "Stories must remain small enough for a single Ralph iteration; likely oversized stories should be flagged at least as warnings.",
+    "CLI and API code paths must share the same parsing and validation core to avoid drift.",
+    "PRD files written into workspaces must remain compatible with the existing `.agents/tasks/prd.json` convention."
+  ],
+  "qualityGates": [
+    "go test ./...",
+    "./scripts/validate-acceptance.sh",
+    "make ci-local-act"
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Define canonical PRD validation and diagnostic contracts",
+      "status": "in_progress",
+      "dependsOn": [],
+      "description": "As a Smith maintainer, I want a shared canonical PRD validation contract so CLI and API workflows can evaluate the same document structure and produce the same diagnostics.",
+      "acceptanceCriteria": [
+        "Add or extend a shared PRD validation package that validates required top-level fields, story IDs, dependency references, quality gates, and canonical status expectations.",
+        "Add a machine-readable validation report structure with stable diagnostic codes, field or story references, and optional suggested fixes.",
+        "Example: a canonical JSON PRD with sequential `US-001`, `US-002` stories and valid dependencies returns `valid=true` with zero blocking errors.",
+        "Negative case: a PRD with a missing project name, duplicate story IDs, or dependency on unknown `US-999` returns blocking diagnostics tied to the failing fields or stories.",
+        "Unit tests cover valid documents, malformed documents, duplicate IDs, bad dependencies, and missing quality gates."
+      ],
+      "startedAt": "2026-03-14T04:54:46.813609+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-14T04:54:46.814167+00:00"
+    },
+    {
+      "id": "US-002",
+      "title": "Normalize markdown PRDs into canonical JSON",
+      "status": "open",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As a user authoring requirements in markdown, I want Smith to normalize markdown into canonical PRD JSON so autonomous workflows can consume a deterministic structure.",
+      "acceptanceCriteria": [
+        "Implement markdown parsing that maps supported headings and task structures into the canonical PRD JSON model rather than task-only loop drafts.",
+        "Support import of goals, non-goals, success metrics, rules, quality gates, and ordered stories when those sections are present in markdown.",
+        "Example: a markdown PRD containing explicit story sections and quality gates produces canonical JSON with matching story IDs, ordering, and gate commands.",
+        "Negative case: markdown missing required canonical content such as any usable stories or any quality gates produces a failed validation report with suggested fixes.",
+        "Fixture-based tests cover well-formed markdown, partially structured markdown, and malformed markdown inputs."
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Render stable markdown from canonical PRD JSON",
+      "status": "open",
+      "dependsOn": [
+        "US-001",
+        "US-002"
+      ],
+      "description": "As a Smith user, I want canonical PRD JSON rendered back into stable markdown so the same requirements can be reviewed, edited, and shared in human-readable form.",
+      "acceptanceCriteria": [
+        "Implement markdown export from canonical JSON using a stable section order and deterministic story formatting.",
+        "Ensure exported markdown includes project overview, goals, non-goals, success metrics, rules, quality gates, and all stories with dependencies and acceptance criteria.",
+        "Example: exporting a valid canonical JSON PRD yields markdown that is readable in Git and re-imports into equivalent canonical JSON for supported sections.",
+        "Negative case: attempting export from invalid canonical JSON fails with the same validation diagnostics rather than writing misleading markdown.",
+        "Round-trip tests verify JSON to markdown to JSON preservation for story IDs, dependency ordering, and quality gates."
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Add CLI workflows for generate import export and validate",
+      "status": "open",
+      "dependsOn": [
+        "US-001",
+        "US-002",
+        "US-003"
+      ],
+      "description": "As an operator, I want the `smith --prd` workflow to generate, import, export, and validate PRDs from one CLI entrypoint so PRD authoring fits existing Smith usage.",
+      "acceptanceCriteria": [
+        "Extend the `smith` CLI so users can generate canonical PRD JSON interactively, import markdown to JSON, export JSON to markdown, and validate existing PRD artifacts.",
+        "Keep `.agents/tasks/prd.json` as the default workspace target when an explicit output path is not provided.",
+        "Example: `smith --prd --from-markdown docs/feature.md --out .agents/tasks/prd.json` writes canonical JSON and prints a success message referencing the saved path.",
+        "Negative case: `smith --prd validate .agents/tasks/prd.json` exits non-zero and prints machine-readable diagnostics when the PRD is not execution-ready.",
+        "CLI tests cover argument validation, default output paths, success flows, and failure exit codes."
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Block non-ready PRDs during ingress and execution handoff",
+      "status": "open",
+      "dependsOn": [
+        "US-001",
+        "US-002",
+        "US-004"
+      ],
+      "description": "As a Smith operator, I want invalid or non-ready PRDs blocked before ingress or loop execution so Ralph loops do not start from malformed requirements.",
+      "acceptanceCriteria": [
+        "Update PRD ingress and any PRD-to-loop handoff path to call the shared validation core before creating loop drafts or writing workspace PRD artifacts.",
+        "Return structured diagnostics to callers when the PRD fails readiness validation, including suggested fixes when available.",
+        "Example: a valid canonical PRD posted through `POST /v1/ingress/prd` is accepted and creates loop drafts with the expected metadata.",
+        "Negative case: a PRD with oversized stories, missing quality gates, or malformed dependencies is rejected before loop creation and no runtime job is scheduled from that PRD.",
+        "Integration tests cover successful ingress, validation rejection, and parity between CLI validation results and API rejection reasons."
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Add execution-readiness linting for Ralph-sized stories",
+      "status": "open",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As a PRD author, I want readiness linting that checks whether stories are appropriately scoped for a single Ralph iteration so generated work stays implementable.",
+      "acceptanceCriteria": [
+        "Add semantic checks for likely oversized stories, missing negative cases, weak acceptance criteria, and incomplete dependency ordering.",
+        "Diagnostics distinguish blocking failures from warnings and provide actionable suggestions for splitting or clarifying stories.",
+        "Example: a story with explicit route or package changes, concrete acceptance criteria, and a negative case passes readiness linting.",
+        "Negative case: a story that bundles CLI, API, and UI rewrites without dependencies is flagged with readiness diagnostics recommending story splits.",
+        "Tests cover warning-only cases, blocking cases, and stable diagnostic codes for automation consumers."
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Document and verify the PRD authoring workflow end to end",
+      "status": "open",
+      "dependsOn": [
+        "US-003",
+        "US-004",
+        "US-005",
+        "US-006"
+      ],
+      "description": "As a maintainer of systems using Smith for autonomous development, I want clear docs and end-to-end verification for PRD authoring and validation so teams can adopt the workflow consistently.",
+      "acceptanceCriteria": [
+        "Document canonical JSON expectations, markdown authoring rules, validation semantics, and CLI examples in repository docs.",
+        "Add an end-to-end fixture or script that exercises markdown import, JSON validation, markdown export, and PRD ingress using shared validation rules.",
+        "Example: documented workflow shows how a markdown PRD becomes `.agents/tasks/prd.json`, validates cleanly, and becomes eligible for autonomous execution.",
+        "Negative case: docs and fixtures include an invalid PRD example showing the exact diagnostic behavior and blocked execution path.",
+        "Verification covers the documented workflow under `go test ./...`, `./scripts/validate-acceptance.sh`, and `make ci-local-act`."
+      ]
+    }
+  ]
+}

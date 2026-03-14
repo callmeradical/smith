@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "total": 7,
+  "remaining": 7,
+  "quality_gates": [
+    "go test ./...",
+    "./scripts/validate-acceptance.sh",
+    "make ci-local-act"
+  ],
+  "id": "US-001",
+  "title": "Define canonical PRD validation and diagnostic contracts"
+}
