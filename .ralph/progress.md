@@ -5,6 +5,46 @@ Started: Mon Mar  9 04:32:36 EDT 2026
 - (add reusable patterns here)
 
 ---
+## [2026-03-14 01:46:19 EDT] - US-004: Add CLI workflows for generate import export and validate
+Thread: ses_78d535
+Run: 20260314-005446-82373 (iteration 4)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-4.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-4.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: c5e1e1b feat(validation): add smith PRD CLI workflows
+- Post-commit status: `.ralph/runs/run-20260314-005446-82373-iter-4.log` modified by post-commit hook output
+- Verification:
+  - Command: command -v act && docker --version -> PASS
+  - Command: go test ./cmd/smith -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-4.md
+  - .ralph/.tmp/story-20260314-005446-82373-4.json
+  - .ralph/.tmp/story-20260314-005446-82373-4.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-3.log
+  - .ralph/runs/run-20260314-005446-82373-iter-3.md
+  - .ralph/runs/run-20260314-005446-82373-iter-4.log
+  - cmd/smith/main.go
+  - cmd/smith/main_test.go
+- What was implemented
+  - Extended `smith --prd` so the single entrypoint now supports interactive PRD generation, markdown import to canonical JSON, canonical JSON export to markdown, and explicit validation with machine-readable JSON diagnostics.
+  - Kept `.agents/tasks/prd.json` as the default JSON output target for generation and markdown import when `--out` is omitted, and added mixed flag/positional parsing so existing `smith --prd "request" --out ...` usage still works.
+  - Added CLI test coverage for generation, default output paths, export success, invalid argument handling, and non-zero validation failures.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Reusing `internal/source/model` directly in the CLI kept import, export, and validation behavior aligned with the shared canonical contracts instead of adding CLI-only parsing rules.
+  - Gotchas encountered
+  - The repo’s commit hooks rewrite the active iteration log after commits, so a final bookkeeping commit is needed to restore a clean worktree.
+  - Useful context
+  - `./scripts/validate-acceptance.sh` still fails on unrelated existing acceptance checks, and `make ci-local-act` now reaches passing lint, Go tests, frontend build, and Playwright execution but still fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
+---
 ## [2026-03-14 01:16:27 EDT] - US-002: Normalize markdown PRDs into canonical JSON
 Thread: ses_006d2d
 Run: 20260314-005446-82373 (iteration 2)
