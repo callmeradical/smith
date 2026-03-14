@@ -40,22 +40,24 @@ type startupContext struct {
 }
 
 type loopExecutionConfig struct {
-	ProviderID           string
-	InvocationMethod     string
-	SourceType           string
-	SourceRef            string
-	MaxIterations        int
-	IterationWait        time.Duration
-	CodexCommand         string
-	PRDPath              string
-	PRDStoryCount        int
-	InteractivePRD       bool
-	InteractivePRDWait   time.Duration
-	InteractivePRDPoll   time.Duration
-	IssueWorkflowEnabled bool
+        ProviderID           string
+        InvocationMethod     string
+        SourceType           string
+        SourceRef            string
+        Stage                string
+        MaxIterations        int
+        IterationWait        time.Duration
+        CodexCommand         string
+        PRDPath              string
+        PRDStoryCount        int
+        InteractivePRD       bool
+        InteractivePRDWait   time.Duration
+        InteractivePRDPoll   time.Duration
+        IssueWorkflowEnabled bool
 }
 
 func main() {
+
 	loopID := strings.TrimSpace(os.Getenv("SMITH_LOOP_ID"))
 	if loopID == "" {
 		log.Fatal("SMITH_LOOP_ID is required")
@@ -282,47 +284,50 @@ func loadLoopExecutionConfigFromEnv() loopExecutionConfig {
 	method := normalizeInvocationMethod(os.Getenv("SMITH_LOOP_INVOCATION_METHOD"))
 	sourceType := strings.TrimSpace(os.Getenv("SMITH_LOOP_SOURCE_TYPE"))
 	sourceRef := strings.TrimSpace(os.Getenv("SMITH_LOOP_SOURCE_REF"))
+	stage := strings.TrimSpace(os.Getenv("SMITH_LOOP_STAGE"))
 	maxIterations, iterationWait := defaultLoopProfileForMethod(method)
 	codexCommand := resolveAgentCommand(providerID)
 	prdPath := strings.TrimSpace(os.Getenv("SMITH_LOOP_PRD_PATH"))
 	if prdPath == "" {
-		prdPath = defaultPRDPath
+	        prdPath = defaultPRDPath
 	}
 	prdStoryCount := defaultPRDStoryCount
 	if raw := strings.TrimSpace(os.Getenv("SMITH_LOOP_PRD_STORY_COUNT")); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
-			prdStoryCount = parsed
-		}
+	        if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+	                prdStoryCount = parsed
+	        }
 	}
 	interactivePRD := parseBoolEnv(os.Getenv("SMITH_ISSUE_PRD_INTERACTIVE"), defaultInteractivePRD)
 	interactiveWait := defaultInteractiveWait
 	if raw := strings.TrimSpace(os.Getenv("SMITH_ISSUE_PRD_INTERACTIVE_WAIT")); raw != "" {
-		if parsed, err := time.ParseDuration(raw); err == nil && parsed >= 0 {
-			interactiveWait = parsed
-		}
+	        if parsed, err := time.ParseDuration(raw); err == nil && parsed >= 0 {
+	                interactiveWait = parsed
+	        }
 	}
 	interactivePoll := defaultInteractivePoll
 	if raw := strings.TrimSpace(os.Getenv("SMITH_ISSUE_PRD_INTERACTIVE_POLL")); raw != "" {
-		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
-			interactivePoll = parsed
-		}
+	        if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+	                interactivePoll = parsed
+	        }
 	}
 	issueWorkflowEnabled := parseBoolEnv(os.Getenv("SMITH_ISSUE_WORKFLOW_ENABLED"), true)
 	cfg := loopExecutionConfig{
-		ProviderID:           providerID,
-		InvocationMethod:     method,
-		SourceType:           sourceType,
-		SourceRef:            sourceRef,
-		MaxIterations:        maxIterations,
-		IterationWait:        iterationWait,
-		CodexCommand:         codexCommand,
-		PRDPath:              prdPath,
-		PRDStoryCount:        prdStoryCount,
-		InteractivePRD:       interactivePRD,
-		InteractivePRDWait:   interactiveWait,
-		InteractivePRDPoll:   interactivePoll,
-		IssueWorkflowEnabled: issueWorkflowEnabled,
+	        ProviderID:           providerID,
+	        InvocationMethod:     method,
+	        SourceType:           sourceType,
+	        SourceRef:            sourceRef,
+	        Stage:                stage,
+	        MaxIterations:        maxIterations,
+	        IterationWait:        iterationWait,
+	        CodexCommand:         codexCommand,
+	        PRDPath:              prdPath,
+	        PRDStoryCount:        prdStoryCount,
+	        InteractivePRD:       interactivePRD,
+	        InteractivePRDWait:   interactiveWait,
+	        InteractivePRDPoll:   interactivePoll,
+	        IssueWorkflowEnabled: issueWorkflowEnabled,
 	}
+
 	if raw := strings.TrimSpace(os.Getenv("SMITH_LOOP_MAX_ITERATIONS")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			cfg.MaxIterations = parsed
@@ -337,23 +342,23 @@ func loadLoopExecutionConfigFromEnv() loopExecutionConfig {
 }
 
 func loopExecutionMetadata(cfg loopExecutionConfig) map[string]string {
-	return map[string]string{
-		"loop_provider":          cfg.ProviderID,
-		"loop_invocation_method": cfg.InvocationMethod,
-		"loop_source_type":       cfg.SourceType,
-		"loop_source_ref":        cfg.SourceRef,
-		"loop_max_iterations":    strconv.Itoa(cfg.MaxIterations),
-		"loop_iteration_wait":    cfg.IterationWait.String(),
-		"loop_prd_path":          cfg.PRDPath,
-		"loop_prd_story_count":   strconv.Itoa(cfg.PRDStoryCount),
-		"loop_codex_command":     cfg.CodexCommand,
-		"loop_agent_command":     cfg.CodexCommand,
-		"loop_prd_interactive":   strconv.FormatBool(cfg.InteractivePRD),
-		"loop_prd_wait":          interactiveWaitLabel(cfg.InteractivePRDWait),
-		"loop_prd_poll":          cfg.InteractivePRDPoll.String(),
-	}
+        return map[string]string{
+                "loop_provider":          cfg.ProviderID,
+                "loop_invocation_method": cfg.InvocationMethod,
+                "loop_stage":             cfg.Stage,
+                "loop_source_type":       cfg.SourceType,
+                "loop_source_ref":        cfg.SourceRef,
+                "loop_max_iterations":    strconv.Itoa(cfg.MaxIterations),
+                "loop_iteration_wait":    cfg.IterationWait.String(),
+                "loop_prd_path":          cfg.PRDPath,
+                "loop_prd_story_count":   strconv.Itoa(cfg.PRDStoryCount),
+                "loop_codex_command":     cfg.CodexCommand,
+                "loop_agent_command":     cfg.CodexCommand,
+                "loop_prd_interactive":   strconv.FormatBool(cfg.InteractivePRD),
+                "loop_prd_wait":          interactiveWaitLabel(cfg.InteractivePRDWait),
+                "loop_prd_poll":          cfg.InteractivePRDPoll.String(),
+        }
 }
-
 func runLoopIterations(
 	ctx context.Context,
 	storeClient store.StateStore,
@@ -614,11 +619,34 @@ func runIssueWorkflow(
 	}
 	prdPath = resolvedPRDPath
 
+	// Sync PRD with etcd for durability
+	if err := syncDocumentWithEtcd(ctx, storeClient, "prd-"+loopID, prdPath, loopID, correlationID); err != nil {
+		log.Printf("failed to sync PRD with etcd: %v", err)
+	}
+
 	if err := ensurePRDStoryCount(ctx, storeClient, loopID, correlationID, prdPath, prdStoryCount); err != nil {
-		return model.LoopStateFlatline, "issue-prd-story-count-invalid", err
+	        return model.LoopStateFlatline, "issue-prd-story-count-invalid", err
+	}
+
+	if cfg.Stage == "prd" {
+	        _ = storeClient.AppendJournal(ctx, model.JournalEntry{
+	                LoopID:        loopID,
+	                Phase:         "replica",
+	                Level:         "info",
+	                ActorType:     "replica",
+	                ActorID:       hostnameOr("smith-replica"),
+	                Message:       "PRD generation stage complete; stopping as requested",
+	                CorrelationID: correlationID,
+	                Metadata: map[string]string{
+	                        "stage":    cfg.Stage,
+	                        "prd_path": prdPath,
+	                },
+	        })
+	        return model.LoopStateSynced, "stage-prd-complete", nil
 	}
 
 	if state, reason, done, err := loopTerminalDecision(ctx, storeClient, loopID); err != nil {
+
 		return model.LoopStateFlatline, "state-read-failed", err
 	} else if done {
 		return state, reason, nil
@@ -879,18 +907,36 @@ func resolveIssuePRDPath(expectedPath string) (string, string, error) {
 }
 
 func expectedPRDStoryCount(defaultCount int, anomaly model.Anomaly) int {
-	if anomaly.Metadata != nil {
-		if parsed, ok := parsePositiveInt(anomaly.Metadata["prd_story_count"]); ok {
-			return parsed
-		}
-	}
-	if defaultCount > 0 {
-		return defaultCount
-	}
-	return defaultPRDStoryCount
+        if anomaly.Metadata != nil {
+                if parsed, ok := parsePositiveInt(anomaly.Metadata["prd_story_count"]); ok {
+                        return parsed
+                }
+        }
+        if defaultCount > 0 {
+                return defaultCount
+        }
+        return defaultPRDStoryCount
+}
+
+func syncDocumentWithEtcd(ctx context.Context, storeClient store.StateStore, docID, path, loopID, correlationID string) error {
+        payload, err := os.ReadFile(path)
+        if err != nil {
+                return err
+        }
+        return storeClient.PutDocument(ctx, model.Document{
+                ID:            docID,
+                Content:       string(payload),
+                UpdatedAt:     time.Now().UTC(),
+                CorrelationID: correlationID,
+                Metadata: map[string]string{
+                        "loop_id": loopID,
+                        "path":    path,
+                },
+        })
 }
 
 func materializePRDFromMetadata(prdPath string, metadata map[string]string) (bool, error) {
+
 	if metadata == nil {
 		return false, nil
 	}
