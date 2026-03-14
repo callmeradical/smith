@@ -95,11 +95,17 @@ const (
 	PRDDiagnosticInvalidStoryStatus      = "prd_invalid_story_status"
 	PRDDiagnosticMultipleInProgress      = "prd_multiple_in_progress_stories"
 	PRDDiagnosticUnknownStoryDependency  = "prd_unknown_story_dependency"
+	PRDDiagnosticOversizedStory          = "prd_oversized_story"
 )
 
 var (
 	prdStoryIDPattern  = regexp.MustCompile(`^US-\d{3}$`)
 	prdAllowedStatuses = []string{"open", "in_progress", "done"}
+)
+
+const (
+	maxPRDStoryAcceptanceCriteria = 5
+	maxPRDStoryCharacters         = 900
 )
 
 func (p *PRD) Validate() error {
@@ -246,6 +252,22 @@ func (p *PRD) ValidateReport() PRDValidationReport {
 				StoryID:    storyID,
 				Message:    "at least one acceptance criterion is required",
 				Suggestion: "Add concrete acceptance criteria for this story.",
+			})
+		}
+		storySize := len(strings.TrimSpace(story.Title)) + len(strings.TrimSpace(story.Description))
+		for _, criterion := range story.AcceptanceCriteria {
+			storySize += len(strings.TrimSpace(criterion))
+		}
+		if len(story.AcceptanceCriteria) > maxPRDStoryAcceptanceCriteria || storySize > maxPRDStoryCharacters {
+			report.Errors = append(report.Errors, PRDValidationDiagnostic{
+				Code:    PRDDiagnosticOversizedStory,
+				Path:    storyPath,
+				StoryID: storyID,
+				Message: "story is too large for a single Ralph iteration",
+				Suggestion: fmt.Sprintf(
+					"Split the story into smaller stories with at most %d acceptance criteria and tighter scope.",
+					maxPRDStoryAcceptanceCriteria,
+				),
 			})
 		}
 		status := strings.TrimSpace(story.Status)

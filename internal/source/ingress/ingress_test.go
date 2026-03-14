@@ -1,6 +1,10 @@
 package ingress
 
-import "testing"
+import (
+	"testing"
+
+	"smith/internal/source/model"
+)
 
 func TestGitHubIssueToDraft(t *testing.T) {
 	draft, err := GitHubIssueToDraft(GitHubIssue{
@@ -63,5 +67,31 @@ func TestPRDTasksToDraftsValidation(t *testing.T) {
 	}
 	if errs[0].ItemIndex != 1 {
 		t.Fatalf("unexpected item index: %d", errs[0].ItemIndex)
+	}
+}
+
+func TestCanonicalPRDToDrafts(t *testing.T) {
+	drafts := CanonicalPRDToDrafts(&model.PRD{
+		Stories: []model.PRDStory{
+			{
+				ID:          "US-001",
+				Title:       "Define validation contract",
+				Status:      "open",
+				DependsOn:   []string{"US-000"},
+				Description: "As a maintainer, I want shared validation.",
+			},
+		},
+	}, "docs/prd.json", map[string]string{"env": "test"})
+	if len(drafts) != 1 {
+		t.Fatalf("expected 1 draft, got %d", len(drafts))
+	}
+	if drafts[0].SourceType != "prd_story" {
+		t.Fatalf("unexpected source type: %s", drafts[0].SourceType)
+	}
+	if drafts[0].SourceRef != "docs/prd.json#US-001" {
+		t.Fatalf("unexpected source ref: %s", drafts[0].SourceRef)
+	}
+	if drafts[0].Metadata["prd_story_id"] != "US-001" {
+		t.Fatalf("expected prd_story_id metadata, got %#v", drafts[0].Metadata)
 	}
 }

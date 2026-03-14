@@ -137,6 +137,37 @@ func TestValidatePRDReportRejectsNonCanonicalStatus(t *testing.T) {
 	assertDiagnosticCode(t, report.Errors, PRDDiagnosticInvalidStoryStatus)
 }
 
+func TestValidatePRDReportRejectsOversizedStory(t *testing.T) {
+	prd := PRD{
+		Version:  1,
+		Project:  "Validation",
+		Overview: "Canonical PRD validation",
+		Gates:    []string{"go test ./..."},
+		Stories: []PRDStory{
+			{
+				ID:          "US-001",
+				Title:       "Oversized story",
+				Status:      "open",
+				Description: "As an operator, I want a story that tries to pack too much work into one loop.",
+				AcceptanceCriteria: []string{
+					"Criterion one",
+					"Criterion two",
+					"Criterion three",
+					"Criterion four",
+					"Criterion five",
+					"Criterion six",
+				},
+			},
+		},
+	}
+
+	report := prd.ValidateReport()
+	if report.Valid {
+		t.Fatal("expected invalid report")
+	}
+	assertDiagnosticCode(t, report.Errors, PRDDiagnosticOversizedStory)
+}
+
 func assertDiagnosticCode(t *testing.T, diagnostics []PRDValidationDiagnostic, want string) {
 	t.Helper()
 	for _, diagnostic := range diagnostics {

@@ -29,6 +29,176 @@ func TestIngressSummary(t *testing.T) {
 	}
 }
 
+func TestHandleIngressPRDAcceptsCanonicalPRD(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingress/prd", strings.NewReader(`{
+		"format":"json",
+		"source_ref":"docs/prd.json",
+		"prd":{
+			"version":1,
+			"project":"Validation",
+			"overview":"Canonical PRD validation",
+			"qualityGates":["go test ./..."],
+			"stories":[
+				{
+					"id":"US-001",
+					"title":"Define validation contract",
+					"status":"open",
+					"description":"As a maintainer, I want shared validation.",
+					"acceptanceCriteria":["Validation report is shared."]
+				}
+			]
+		}
+	}`))
+	s.handleIngressPRD(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 1 {
+		t.Fatalf("expected one created loop, got %d", len(states))
+	}
+	anomaly, found, err := ms.GetAnomaly(context.Background(), states[0].Record.LoopID)
+	if err != nil {
+		t.Fatalf("get anomaly: %v", err)
+	}
+	if !found {
+		t.Fatal("expected anomaly for created loop")
+	}
+	if anomaly.SourceType != "prd_story" || anomaly.SourceRef != "docs/prd.json#US-001" {
+		t.Fatalf("unexpected created anomaly: %+v", anomaly)
+	}
+	if anomaly.Metadata["prd_story_id"] != "US-001" {
+		t.Fatalf("expected prd_story_id metadata, got %#v", anomaly.Metadata)
+	}
+}
+
+func TestHandleIngressPRDRejectsInvalidCanonicalPRD(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingress/prd", strings.NewReader(`{
+		"format":"json",
+		"source_ref":"docs/prd.json",
+		"prd":{
+			"version":1,
+			"project":"Validation",
+			"overview":"Canonical PRD validation",
+			"qualityGates":[],
+			"stories":[
+				{
+					"id":"US-001",
+					"title":"Oversized story",
+					"status":"open",
+					"description":"As an operator, I want a story that packs too much into one iteration.",
+					"acceptanceCriteria":["one","two","three","four","five","six"]
+				}
+			]
+		}
+	}`))
+	s.handleIngressPRD(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error  string                    `json:"error"`
+		Report model.PRDValidationReport `json:"report"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Error == "" || body.Report.Valid {
+		t.Fatalf("expected validation failure payload, got %+v", body)
+	}
+	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticMissingQualityGates)
+	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticOversizedStory)
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("expected no created loops, got %d", len(states))
+	}
+}
+
+func TestHandleLoopCreateRejectsInvalidWorkspacePRD(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
+		"title":"Loop from supplied PRD",
+		"description":"Loop request from supplied PRD JSON",
+		"source_type":"prompt",
+		"source_ref":"prompt:smithctl",
+		"metadata":{
+			"workspace_prd_json":"{\"version\":1,\"project\":\"Validation\",\"overview\":\"Canonical PRD validation\",\"qualityGates\":[],\"stories\":[]}",
+			"workspace_prd_path":".agents/tasks/prd.json"
+		}
+	}`))
+	s.handleLoopCreate(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Status           string                    `json:"status"`
+		ValidationReport model.PRDValidationReport `json:"validation_report"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Status != "error" || body.ValidationReport.Valid {
+		t.Fatalf("expected validation failure result, got %+v", body)
+	}
+	assertDiagnosticCodeInReport(t, body.ValidationReport.Errors, model.PRDDiagnosticMissingQualityGates)
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("expected no created loops, got %d", len(states))
+	}
+}
+
+func TestHandleDocumentBuildRejectsInvalidPRD(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+	if err := ms.PutDocument(context.Background(), model.Document{
+		ID:        "doc-1",
+		ProjectID: "proj-1",
+		Title:     "Invalid PRD",
+		Content:   `{"version":1,"project":"Validation","overview":"Canonical PRD validation","qualityGates":[],"stories":[]}`,
+		Format:    "json",
+	}); err != nil {
+		t.Fatalf("put document: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/documents/doc-1/build", strings.NewReader(`{}`))
+	s.handleDocumentByID(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("expected no created loops, got %d", len(states))
+	}
+}
+
 func TestPresetCatalogSupportsCRUDAndPolicy(t *testing.T) {
 	catalog := newPresetCatalog("team-default")
 	if !catalog.Has("team-default") {
@@ -332,148 +502,148 @@ func TestHandleLoopAttachRejectsNonRunningRuntime(t *testing.T) {
 	}
 }
 func TestHandleLoopAttachRejectsUnauthorizedBeforeRuntimeResolution(t *testing.T) {
-        ms := store.NewMemStore()
-        runtimeReader := &fakeRuntimePodReader{}
-        s := &server{
-                cfg: config{
-                        operatorToken: "secret-token",
-                },
-                term:        newTerminalSessionStore(),
-                store:       ms,
-                runtimePods: runtimeReader,
-        }
+	ms := store.NewMemStore()
+	runtimeReader := &fakeRuntimePodReader{}
+	s := &server{
+		cfg: config{
+			operatorToken: "secret-token",
+		},
+		term:        newTerminalSessionStore(),
+		store:       ms,
+		runtimePods: runtimeReader,
+	}
 
-        rec := httptest.NewRecorder()
-        req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-auth/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
-        s.handleLoopAttach(rec, req, "loop-auth")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-auth/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
+	s.handleLoopAttach(rec, req, "loop-auth")
 
-        if rec.Code != http.StatusUnauthorized {
-                t.Fatalf("expected 401 for unauthorized attach, got %d body=%s", rec.Code, rec.Body.String())
-        }
-        if runtimeReader.calls != 0 {
-                t.Fatalf("expected no runtime resolution for unauthorized attach, got %d calls", runtimeReader.calls)
-        }
-        audits, _ := ms.ListAudit(context.Background(), "", 0)
-        if len(audits) != 1 {
-                t.Fatalf("expected one rejected attach audit entry, got %d", len(audits))
-        }
-        if audits[0].Action != "attach-terminal-rejected" {
-                t.Fatalf("expected attach-terminal-rejected action, got %q", audits[0].Action)
-        }
-        if audits[0].Metadata["request_status"] != "rejected" {
-                t.Fatalf("expected rejected status in audit metadata, got %q", audits[0].Metadata["request_status"])
-        }
-        var body map[string]string
-        if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-                t.Fatalf("decode response body: %v", err)
-        }
-        if body["code"] != terminalErrUnauthorized {
-                t.Fatalf("expected unauthorized code %q, got %q", terminalErrUnauthorized, body["code"])
-        }
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthorized attach, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if runtimeReader.calls != 0 {
+		t.Fatalf("expected no runtime resolution for unauthorized attach, got %d calls", runtimeReader.calls)
+	}
+	audits, _ := ms.ListAudit(context.Background(), "", 0)
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected attach audit entry, got %d", len(audits))
+	}
+	if audits[0].Action != "attach-terminal-rejected" {
+		t.Fatalf("expected attach-terminal-rejected action, got %q", audits[0].Action)
+	}
+	if audits[0].Metadata["request_status"] != "rejected" {
+		t.Fatalf("expected rejected status in audit metadata, got %q", audits[0].Metadata["request_status"])
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if body["code"] != terminalErrUnauthorized {
+		t.Fatalf("expected unauthorized code %q, got %q", terminalErrUnauthorized, body["code"])
+	}
 }
 func TestHandleLoopAttachDetachIncludeRuntimeMetadata(t *testing.T) {
-        ms := store.NewMemStore()
-        ms.PutState(context.Background(), model.StateRecord{
-                LoopID:        "loop-running",
-                State:         model.LoopStateRunning,
-                WorkerJobName: "smith-replica-loop-running-12345",
-                CorrelationID: "corr-attach-detach",
-        }, 0)
-        s := &server{
-                cfg: config{
-                        runtimeNamespace:     "smith-system",
-                        runtimeContainerName: "replica",
-                },
-                term:  newTerminalSessionStore(),
-                store: ms,
-                runtimePods: &fakeRuntimePodReader{
-                        podsByJob: map[string][]corev1.Pod{
-                                "smith-replica-loop-running-12345": {
-                                        {
-                                                ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-running-12345-abc"},
-                                                Spec: corev1.PodSpec{
-                                                        Containers: []corev1.Container{{Name: "replica"}},
-                                                },
-                                                Status: corev1.PodStatus{Phase: corev1.PodRunning},
-                                        },
-                                },
-                        },
-                },
-        }
+	ms := store.NewMemStore()
+	ms.PutState(context.Background(), model.StateRecord{
+		LoopID:        "loop-running",
+		State:         model.LoopStateRunning,
+		WorkerJobName: "smith-replica-loop-running-12345",
+		CorrelationID: "corr-attach-detach",
+	}, 0)
+	s := &server{
+		cfg: config{
+			runtimeNamespace:     "smith-system",
+			runtimeContainerName: "replica",
+		},
+		term:  newTerminalSessionStore(),
+		store: ms,
+		runtimePods: &fakeRuntimePodReader{
+			podsByJob: map[string][]corev1.Pod{
+				"smith-replica-loop-running-12345": {
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "smith-replica-loop-running-12345-abc"},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{Name: "replica"}},
+						},
+						Status: corev1.PodStatus{Phase: corev1.PodRunning},
+					},
+				},
+			},
+		},
+	}
 
-        attachBody := strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`)
-        recAttach1 := httptest.NewRecorder()
-        reqAttach1 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", attachBody)
-        s.handleLoopAttach(recAttach1, reqAttach1, "loop-running")
-        if recAttach1.Code != http.StatusOK {
-                t.Fatalf("expected first attach success, got %d body=%s", recAttach1.Code, recAttach1.Body.String())
-        }
+	attachBody := strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`)
+	recAttach1 := httptest.NewRecorder()
+	reqAttach1 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", attachBody)
+	s.handleLoopAttach(recAttach1, reqAttach1, "loop-running")
+	if recAttach1.Code != http.StatusOK {
+		t.Fatalf("expected first attach success, got %d body=%s", recAttach1.Code, recAttach1.Body.String())
+	}
 
-        recAttach2 := httptest.NewRecorder()
-        reqAttach2 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
-        s.handleLoopAttach(recAttach2, reqAttach2, "loop-running")
-        if recAttach2.Code != http.StatusOK {
-                t.Fatalf("expected second attach success, got %d body=%s", recAttach2.Code, recAttach2.Body.String())
-        }
-        var attachResp map[string]any
-        if err := json.NewDecoder(recAttach2.Body).Decode(&attachResp); err != nil {
-                t.Fatalf("decode second attach response: %v", err)
-        }
-        if int(attachResp["attach_count"].(float64)) != 2 {
-                t.Fatalf("expected actor attach_count to increment to 2, got %#v", attachResp["attach_count"])
-        }
+	recAttach2 := httptest.NewRecorder()
+	reqAttach2 := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/attach", strings.NewReader(`{"actor":"alice","terminal":"console-pods"}`))
+	s.handleLoopAttach(recAttach2, reqAttach2, "loop-running")
+	if recAttach2.Code != http.StatusOK {
+		t.Fatalf("expected second attach success, got %d body=%s", recAttach2.Code, recAttach2.Body.String())
+	}
+	var attachResp map[string]any
+	if err := json.NewDecoder(recAttach2.Body).Decode(&attachResp); err != nil {
+		t.Fatalf("decode second attach response: %v", err)
+	}
+	if int(attachResp["attach_count"].(float64)) != 2 {
+		t.Fatalf("expected actor attach_count to increment to 2, got %#v", attachResp["attach_count"])
+	}
 
-        recDetach := httptest.NewRecorder()
-        reqDetach := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/detach", strings.NewReader(`{"actor":"alice"}`))
-        s.handleLoopDetach(recDetach, reqDetach, "loop-running")
-        if recDetach.Code != http.StatusOK {
-                t.Fatalf("expected detach success, got %d body=%s", recDetach.Code, recDetach.Body.String())
-        }
-        if s.term.IsAttached("loop-running", "alice") {
-                t.Fatal("expected actor to be detached")
-        }
+	recDetach := httptest.NewRecorder()
+	reqDetach := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-running/control/detach", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopDetach(recDetach, reqDetach, "loop-running")
+	if recDetach.Code != http.StatusOK {
+		t.Fatalf("expected detach success, got %d body=%s", recDetach.Code, recDetach.Body.String())
+	}
+	if s.term.IsAttached("loop-running", "alice") {
+		t.Fatal("expected actor to be detached")
+	}
 
-        allAudits, _ := ms.ListAudit(context.Background(), "", 0)
-        // Reverse audits to match original test expectations (oldest first)
-        audits := make([]store.AuditRecord, len(allAudits))
-        for i := range allAudits {
-                audits[i] = allAudits[len(allAudits)-1-i]
-        }
-        journals, _ := ms.ListJournal(context.Background(), "loop-running", 0)
+	allAudits, _ := ms.ListAudit(context.Background(), "", 0)
+	// Reverse audits to match original test expectations (oldest first)
+	audits := make([]store.AuditRecord, len(allAudits))
+	for i := range allAudits {
+		audits[i] = allAudits[len(allAudits)-1-i]
+	}
+	journals, _ := ms.ListJournal(context.Background(), "loop-running", 0)
 
-        if len(audits) != 3 {
-                t.Fatalf("expected 3 audit records (2 attach + 1 detach), got %d", len(audits))
-        }
-        if len(journals) != 3 {
-                t.Fatalf("expected 3 journal records (2 attach + 1 detach), got %d", len(journals))
-        }
+	if len(audits) != 3 {
+		t.Fatalf("expected 3 audit records (2 attach + 1 detach), got %d", len(audits))
+	}
+	if len(journals) != 3 {
+		t.Fatalf("expected 3 journal records (2 attach + 1 detach), got %d", len(journals))
+	}
 
-        lastAttachAudit := audits[1]
-        if lastAttachAudit.Action != "attach-terminal" {
-                t.Fatalf("expected attach-terminal action, got %q", lastAttachAudit.Action)
-        }
-        assertTerminalMetadata(t, lastAttachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
-        if lastAttachAudit.Metadata["attach_count"] != "2" {
-                t.Fatalf("expected attach_count=2 in audit metadata, got %q", lastAttachAudit.Metadata["attach_count"])
-        }
-        if lastAttachAudit.Metadata["request_status"] != "accepted" {
-                t.Fatalf("expected request_status=accepted in attach metadata, got %q", lastAttachAudit.Metadata["request_status"])
-        }
+	lastAttachAudit := audits[1]
+	if lastAttachAudit.Action != "attach-terminal" {
+		t.Fatalf("expected attach-terminal action, got %q", lastAttachAudit.Action)
+	}
+	assertTerminalMetadata(t, lastAttachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
+	if lastAttachAudit.Metadata["attach_count"] != "2" {
+		t.Fatalf("expected attach_count=2 in audit metadata, got %q", lastAttachAudit.Metadata["attach_count"])
+	}
+	if lastAttachAudit.Metadata["request_status"] != "accepted" {
+		t.Fatalf("expected request_status=accepted in attach metadata, got %q", lastAttachAudit.Metadata["request_status"])
+	}
 
-        detachAudit := audits[2]
-        if detachAudit.Action != "detach-terminal" {
-                t.Fatalf("expected detach-terminal action, got %q", detachAudit.Action)
-        }
-        assertTerminalMetadata(t, detachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
-        if detachAudit.Metadata["request_status"] != "accepted" {
-                t.Fatalf("expected request_status=accepted in detach metadata, got %q", detachAudit.Metadata["request_status"])
-        }
+	detachAudit := audits[2]
+	if detachAudit.Action != "detach-terminal" {
+		t.Fatalf("expected detach-terminal action, got %q", detachAudit.Action)
+	}
+	assertTerminalMetadata(t, detachAudit.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
+	if detachAudit.Metadata["request_status"] != "accepted" {
+		t.Fatalf("expected request_status=accepted in detach metadata, got %q", detachAudit.Metadata["request_status"])
+	}
 
-        detachJournal := journals[2]
-        if detachJournal.Message != "terminal detached" {
-                t.Fatalf("expected detach journal message, got %q", detachJournal.Message)
-        }
-        assertTerminalMetadata(t, detachJournal.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
+	detachJournal := journals[2]
+	if detachJournal.Message != "terminal detached" {
+		t.Fatalf("expected detach journal message, got %q", detachJournal.Message)
+	}
+	assertTerminalMetadata(t, detachJournal.Metadata, "alice", "console-pods", "smith-system/smith-replica-loop-running-12345-abc:replica")
 }
 
 func TestHandleLoopDetachOnlyRemovesTargetActor(t *testing.T) {
@@ -486,7 +656,7 @@ func TestHandleLoopDetachOnlyRemovesTargetActor(t *testing.T) {
 		term:  newTerminalSessionStore(),
 		store: ms,
 	}
-	runtime := loopRuntimeResponse{		Namespace:     "smith-system",
+	runtime := loopRuntimeResponse{Namespace: "smith-system",
 		PodName:       "smith-replica-loop-actor-12345-abc",
 		ContainerName: "replica",
 		PodPhase:      string(corev1.PodRunning),
@@ -640,219 +810,219 @@ func TestHandleLoopControlCommandExecutesAttachedRuntime(t *testing.T) {
 }
 
 func TestHandleLoopControlCommandRequiresAttach(t *testing.T) {
-        ms := store.NewMemStore()
-        _, _ = ms.PutState(context.Background(), model.StateRecord{
-                LoopID: "loop-command",
-                State:  model.LoopStateUnresolved,
-        }, 0)
-        execRunner := &fakePodExecRunner{}
-        s := &server{
-                term:    newTerminalSessionStore(),
-                podExec: execRunner,
-                store:   ms,
-        }
+	ms := store.NewMemStore()
+	_, _ = ms.PutState(context.Background(), model.StateRecord{
+		LoopID: "loop-command",
+		State:  model.LoopStateUnresolved,
+	}, 0)
+	execRunner := &fakePodExecRunner{}
+	s := &server{
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		store:   ms,
+	}
 
-        rec := httptest.NewRecorder()
-        req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
-        s.handleLoopControlCommand(rec, req, "loop-command")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
 
-        if rec.Code != http.StatusConflict {
-                t.Fatalf("expected 409 when actor is not attached, got %d body=%s", rec.Code, rec.Body.String())
-        }
-        if execRunner.calls != 0 {
-                t.Fatalf("expected no pod exec call without attachment, got %d", execRunner.calls)
-        }
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 when actor is not attached, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != 0 {
+		t.Fatalf("expected no pod exec call without attachment, got %d", execRunner.calls)
+	}
 }
 func TestHandleLoopControlCommandRejectsInvalidJSON(t *testing.T) {
-        ms := store.NewMemStore()
-        _, _ = ms.PutState(context.Background(), model.StateRecord{
-                LoopID:        "loop-command",
-                State:         model.LoopStateRunning,
-                CorrelationID: "corr-command-invalid-json",
-        }, 0)
-        execRunner := &fakePodExecRunner{}
-        s := &server{
-                term:    newTerminalSessionStore(),
-                podExec: execRunner,
-                store:   ms,
-        }
+	ms := store.NewMemStore()
+	_, _ = ms.PutState(context.Background(), model.StateRecord{
+		LoopID:        "loop-command",
+		State:         model.LoopStateRunning,
+		CorrelationID: "corr-command-invalid-json",
+	}, 0)
+	execRunner := &fakePodExecRunner{}
+	s := &server{
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		store:   ms,
+	}
 
-        rec := httptest.NewRecorder()
-        req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command"`))
-        s.handleLoopControlCommand(rec, req, "loop-command")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command"`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
 
-        if rec.Code != http.StatusBadRequest {
-                t.Fatalf("expected 400 for invalid json payload, got %d body=%s", rec.Code, rec.Body.String())
-        }
-        if execRunner.calls != 0 {
-                t.Fatalf("expected no pod exec call for invalid json, got %d", execRunner.calls)
-        }
-        var body map[string]string
-        if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-                t.Fatalf("decode response body: %v", err)
-        }
-        if body["code"] != terminalErrInvalidJSON {
-                t.Fatalf("expected invalid json code %q, got %q", terminalErrInvalidJSON, body["code"])
-        }
-        audits, _ := ms.ListAudit(context.Background(), "loop-command", 0)
-        if len(audits) != 1 {
-                t.Fatalf("expected one rejected audit entry, got %d", len(audits))
-        }
-        if audits[0].Metadata["error_code"] != terminalErrInvalidJSON {
-                t.Fatalf("expected invalid-json audit error_code %q, got %q", terminalErrInvalidJSON, audits[0].Metadata["error_code"])
-        }
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid json payload, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != 0 {
+		t.Fatalf("expected no pod exec call for invalid json, got %d", execRunner.calls)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if body["code"] != terminalErrInvalidJSON {
+		t.Fatalf("expected invalid json code %q, got %q", terminalErrInvalidJSON, body["code"])
+	}
+	audits, _ := ms.ListAudit(context.Background(), "loop-command", 0)
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected audit entry, got %d", len(audits))
+	}
+	if audits[0].Metadata["error_code"] != terminalErrInvalidJSON {
+		t.Fatalf("expected invalid-json audit error_code %q, got %q", terminalErrInvalidJSON, audits[0].Metadata["error_code"])
+	}
 }
 
 func TestHandleLoopControlCommandRejectsRequiredCommand(t *testing.T) {
-        ms := store.NewMemStore()
-        _, _ = ms.PutState(context.Background(), model.StateRecord{
-                LoopID:        "loop-command",
-                State:         model.LoopStateRunning,
-                CorrelationID: "corr-command-required",
-        }, 0)
-        execRunner := &fakePodExecRunner{}
-        s := &server{
-                term:    newTerminalSessionStore(),
-                podExec: execRunner,
-                store:   ms,
-        }
+	ms := store.NewMemStore()
+	_, _ = ms.PutState(context.Background(), model.StateRecord{
+		LoopID:        "loop-command",
+		State:         model.LoopStateRunning,
+		CorrelationID: "corr-command-required",
+	}, 0)
+	execRunner := &fakePodExecRunner{}
+	s := &server{
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		store:   ms,
+	}
 
-        rec := httptest.NewRecorder()
-        req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"   "}`))
-        s.handleLoopControlCommand(rec, req, "loop-command")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"   "}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
 
-        if rec.Code != http.StatusBadRequest {
-                t.Fatalf("expected 400 when command is required, got %d body=%s", rec.Code, rec.Body.String())
-        }
-        if execRunner.calls != 0 {
-                t.Fatalf("expected no pod exec call for missing command, got %d", execRunner.calls)
-        }
-        var body map[string]string
-        if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-                t.Fatalf("decode response body: %v", err)
-        }
-        if body["code"] != terminalErrRequiredCmd {
-                t.Fatalf("expected required-command code %q, got %q", terminalErrRequiredCmd, body["code"])
-        }
-        audits, _ := ms.ListAudit(context.Background(), "loop-command", 0)
-        if len(audits) != 1 {
-                t.Fatalf("expected one rejected audit entry, got %d", len(audits))
-        }
-        if audits[0].Metadata["error_code"] != terminalErrRequiredCmd {
-                t.Fatalf("expected required-command audit error_code %q, got %q", terminalErrRequiredCmd, audits[0].Metadata["error_code"])
-        }
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when command is required, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != 0 {
+		t.Fatalf("expected no pod exec call for missing command, got %d", execRunner.calls)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if body["code"] != terminalErrRequiredCmd {
+		t.Fatalf("expected required-command code %q, got %q", terminalErrRequiredCmd, body["code"])
+	}
+	audits, _ := ms.ListAudit(context.Background(), "loop-command", 0)
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected audit entry, got %d", len(audits))
+	}
+	if audits[0].Metadata["error_code"] != terminalErrRequiredCmd {
+		t.Fatalf("expected required-command audit error_code %q, got %q", terminalErrRequiredCmd, audits[0].Metadata["error_code"])
+	}
 }
 
 func TestHandleLoopControlCommandRejectsOversizedCommand(t *testing.T) {
-        ms := store.NewMemStore()
-        _, _ = ms.PutState(context.Background(), model.StateRecord{
-                LoopID:        "loop-command",
-                State:         model.LoopStateRunning,
-                CorrelationID: "corr-command-rejected",
-        }, 0)
-        execRunner := &fakePodExecRunner{}
-        s := &server{
-                term:    newTerminalSessionStore(),
-                podExec: execRunner,
-                store:   ms,
-        }
-        runtime := loopRuntimeResponse{
-                Namespace:     "smith-system",
-                PodName:       "smith-replica-loop-command-99999-abc",
-                ContainerName: "replica",
-                PodPhase:      string(corev1.PodRunning),
-                Attachable:    true,
-        }
-        s.term.Attach("loop-command", "alice", "console-pods", runtime)
+	ms := store.NewMemStore()
+	_, _ = ms.PutState(context.Background(), model.StateRecord{
+		LoopID:        "loop-command",
+		State:         model.LoopStateRunning,
+		CorrelationID: "corr-command-rejected",
+	}, 0)
+	execRunner := &fakePodExecRunner{}
+	s := &server{
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		store:   ms,
+	}
+	runtime := loopRuntimeResponse{
+		Namespace:     "smith-system",
+		PodName:       "smith-replica-loop-command-99999-abc",
+		ContainerName: "replica",
+		PodPhase:      string(corev1.PodRunning),
+		Attachable:    true,
+	}
+	s.term.Attach("loop-command", "alice", "console-pods", runtime)
 
-        oversized := strings.Repeat("x", terminalCommandMaxSize+1)
-        rec := httptest.NewRecorder()
-        req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"`+oversized+`"}`))
-        s.handleLoopControlCommand(rec, req, "loop-command")
+	oversized := strings.Repeat("x", terminalCommandMaxSize+1)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"`+oversized+`"}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
 
-        if rec.Code != http.StatusBadRequest {
-                t.Fatalf("expected 400 for oversized command, got %d body=%s", rec.Code, rec.Body.String())
-        }
-        if execRunner.calls != 0 {
-                t.Fatalf("expected no pod exec call for oversized command, got %d", execRunner.calls)
-        }
-        audits, _ := ms.ListAudit(context.Background(), "loop-command", 0)
-        if len(audits) != 1 {
-                t.Fatalf("expected one rejected audit entry, got %d", len(audits))
-        }
-        if audits[0].Action != "terminal-command-rejected" {
-                t.Fatalf("expected terminal-command-rejected action, got %q", audits[0].Action)
-        }
-        if audits[0].Metadata["result"] != "rejected" {
-                t.Fatalf("expected rejected metadata tag, got %q", audits[0].Metadata["result"])
-        }
-        if audits[0].Metadata["error_code"] != terminalErrTooLong {
-                t.Fatalf("expected error_code %q, got %q", terminalErrTooLong, audits[0].Metadata["error_code"])
-        }
-        var body map[string]string
-        if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-                t.Fatalf("decode response body: %v", err)
-        }
-        if body["code"] != terminalErrTooLong {
-                t.Fatalf("expected API error code %q, got %q", terminalErrTooLong, body["code"])
-        }
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized command, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != 0 {
+		t.Fatalf("expected no pod exec call for oversized command, got %d", execRunner.calls)
+	}
+	audits, _ := ms.ListAudit(context.Background(), "loop-command", 0)
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected audit entry, got %d", len(audits))
+	}
+	if audits[0].Action != "terminal-command-rejected" {
+		t.Fatalf("expected terminal-command-rejected action, got %q", audits[0].Action)
+	}
+	if audits[0].Metadata["result"] != "rejected" {
+		t.Fatalf("expected rejected metadata tag, got %q", audits[0].Metadata["result"])
+	}
+	if audits[0].Metadata["error_code"] != terminalErrTooLong {
+		t.Fatalf("expected error_code %q, got %q", terminalErrTooLong, audits[0].Metadata["error_code"])
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if body["code"] != terminalErrTooLong {
+		t.Fatalf("expected API error code %q, got %q", terminalErrTooLong, body["code"])
+	}
 }
 
 func TestHandleLoopControlCommandRejectsUnauthorizedWithoutExec(t *testing.T) {
-        ms := store.NewMemStore()
-        execRunner := &fakePodExecRunner{}
-        s := &server{
-                cfg: config{
-                        operatorToken: "secret-token",
-                },
-                term:    newTerminalSessionStore(),
-                podExec: execRunner,
-                store:   ms,
-        }
+	ms := store.NewMemStore()
+	execRunner := &fakePodExecRunner{}
+	s := &server{
+		cfg: config{
+			operatorToken: "secret-token",
+		},
+		term:    newTerminalSessionStore(),
+		podExec: execRunner,
+		store:   ms,
+	}
 
-        rec := httptest.NewRecorder()
-        req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
-        s.handleLoopControlCommand(rec, req, "loop-command")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-command/control/command", strings.NewReader(`{"actor":"alice","command":"echo hello"}`))
+	s.handleLoopControlCommand(rec, req, "loop-command")
 
-        if rec.Code != http.StatusUnauthorized {
-                t.Fatalf("expected 401 for unauthorized command, got %d body=%s", rec.Code, rec.Body.String())
-        }
-        if execRunner.calls != 0 {
-                t.Fatalf("expected no pod exec call for unauthorized command, got %d", execRunner.calls)
-        }
-        audits, _ := ms.ListAudit(context.Background(), "loop-command", 0)
-        if len(audits) != 1 {
-                t.Fatalf("expected one rejected audit entry, got %d", len(audits))
-        }
-        if audits[0].Metadata["error_code"] != terminalErrUnauthorized {
-                t.Fatalf("expected unauthorized error_code %q, got %q", terminalErrUnauthorized, audits[0].Metadata["error_code"])
-        }
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthorized command, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if execRunner.calls != 0 {
+		t.Fatalf("expected no pod exec call for unauthorized command, got %d", execRunner.calls)
+	}
+	audits, _ := ms.ListAudit(context.Background(), "loop-command", 0)
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected audit entry, got %d", len(audits))
+	}
+	if audits[0].Metadata["error_code"] != terminalErrUnauthorized {
+		t.Fatalf("expected unauthorized error_code %q, got %q", terminalErrUnauthorized, audits[0].Metadata["error_code"])
+	}
 }
 
 func TestHandleLoopDetachRejectsUnauthorizedBeforeStateLookup(t *testing.T) {
-        ms := store.NewMemStore()
-        s := &server{
-                cfg: config{
-                        operatorToken: "secret-token",
-                },
-                term:  newTerminalSessionStore(),
-                store: ms,
-        }
+	ms := store.NewMemStore()
+	s := &server{
+		cfg: config{
+			operatorToken: "secret-token",
+		},
+		term:  newTerminalSessionStore(),
+		store: ms,
+	}
 
-        rec := httptest.NewRecorder()
-        req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-auth/control/detach", strings.NewReader(`{"actor":"alice"}`))
-        s.handleLoopDetach(rec, req, "loop-auth")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/loop-auth/control/detach", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopDetach(rec, req, "loop-auth")
 
-        if rec.Code != http.StatusUnauthorized {
-                t.Fatalf("expected 401 for unauthorized detach, got %d body=%s", rec.Code, rec.Body.String())
-        }
-        audits, _ := ms.ListAudit(context.Background(), "loop-auth", 0)
-        if len(audits) != 1 {
-                t.Fatalf("expected one rejected detach audit entry, got %d", len(audits))
-        }
-        if audits[0].Action != "detach-terminal-rejected" {
-                t.Fatalf("expected detach-terminal-rejected action, got %q", audits[0].Action)
-        }
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthorized detach, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	audits, _ := ms.ListAudit(context.Background(), "loop-auth", 0)
+	if len(audits) != 1 {
+		t.Fatalf("expected one rejected detach audit entry, got %d", len(audits))
+	}
+	if audits[0].Action != "detach-terminal-rejected" {
+		t.Fatalf("expected detach-terminal-rejected action, got %q", audits[0].Action)
+	}
 }
 
 func TestHandleLoopControlCommandRateLimitPerSession(t *testing.T) {
@@ -1082,6 +1252,25 @@ func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, ter
 	if metadata["runtime_target_ref"] != runtimeRef {
 		t.Fatalf("expected runtime_target_ref %q, got %q", runtimeRef, metadata["runtime_target_ref"])
 	}
+}
+
+func newPRDValidationTestServer(ms *store.MemStore) *server {
+	return &server{
+		store:       ms,
+		presets:     newPresetCatalog("standard"),
+		term:        newTerminalSessionStore(),
+		skillPolicy: model.SkillPolicy{},
+	}
+}
+
+func assertDiagnosticCodeInReport(t *testing.T, diagnostics []model.PRDValidationDiagnostic, want string) {
+	t.Helper()
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == want {
+			return
+		}
+	}
+	t.Fatalf("expected diagnostic code %q in %+v", want, diagnostics)
 }
 
 type fakeRuntimePodReader struct {
