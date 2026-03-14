@@ -199,8 +199,20 @@ test: test-unit test-frontend test-acceptance ## Run default local test workflow
 test-unit: ## Run full Go test suite
 	go test ./...
 
-test-acceptance: ## Run acceptance tests
-	go test ./test/acceptance/...
+test-bdd: ## Run godog-based BDD acceptance suite
+	go test ./test/acceptance -run TestFeatures -count=1
+
+test-acceptance-smoke: ## Run acceptance smoke suite with JSON artifact output
+	@set -euo pipefail; \
+	mkdir -p "$(SMITH_TEST_ARTIFACTS_DIR)"; \
+	go test ./test/acceptance -run TestHarnessSmoke -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-smoke.jsonl"
+
+test-acceptance-bdd: ## Run acceptance BDD suite with JSON artifact output
+	@set -euo pipefail; \
+	mkdir -p "$(SMITH_TEST_ARTIFACTS_DIR)"; \
+	go test ./test/acceptance -run TestFeatures -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-bdd.jsonl"
+
+test-acceptance: test-acceptance-smoke test-acceptance-bdd ## Run all Go-native acceptance harness suites
 
 test-frontend: ## Run Playwright frontend/component tests for console
 	@if [ ! -d node_modules ]; then npm install; fi
@@ -241,11 +253,13 @@ ci-local-act: ## Run core CI jobs locally using 'act' (requires 'act' and Docker
 		echo "HINT: install it with 'brew install act' or from https://github.com/nektos/act"; \
 		exit 1; \
 	fi
-	@echo "[act] running lint-and-check and unit-tests jobs..."
+	@echo "[act] running CI jobs..."
 	act -j lint-and-check
 	act -j go-unit-tests
 	act -j node-unit-tests
 	act -j playwright-tests
+	act -j acceptance-tests
+	act -j test-matrix
 
 hooks-install: ## Install repository git hooks from .githooks
 	git config core.hooksPath .githooks
