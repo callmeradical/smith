@@ -5,11 +5,70 @@ if [[ "${SKIP_GIT_HOOKS:-}" == "1" ]]; then
   exit 0
 fi
 
+remote_name="${1:-origin}"
+remote_url="${2:-}"
+current_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+base_ref=""
+if git rev-parse --verify --quiet "@{upstream}" >/dev/null; then
+  base_ref="$(git merge-base HEAD "@{upstream}")"
+elif git show-ref --verify --quiet "refs/remotes/${remote_name}/${current_branch}"; then
+  base_ref="$(git merge-base HEAD "refs/remotes/${remote_name}/${current_branch}")"
+elif git show-ref --verify --quiet "refs/remotes/origin/main"; then
+  base_ref="$(git merge-base HEAD "refs/remotes/origin/main")"
+else
+  base_ref="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+fi
+
+mapfile -t changed_files < <(git diff --name-only --diff-filter=ACMR "${base_ref}...HEAD")
+
+if [[ ${#changed_files[@]} -eq 0 ]]; then
+  echo "[pre-push] no changes relative to push base; skipping"
+  exit 0
+fi
+
+is_docs_only=true
+needs_docs_checks=false
+needs_prd_trigger_report=false
+needs_full_ci=false
+
+for path in "${changed_files[@]}"; do
+  case "$path" in
+    docs/planning/*)
+      needs_docs_checks=true
+      needs_prd_trigger_report=true
+      ;;
+    docs/prds/*|docs/*|zensical.toml|scripts/docs/*|.github/workflows/docs-pages.yml)
+      needs_docs_checks=true
+      ;;
+    .github/workflows/ci.yml|.githooks/*|Makefile)
+      needs_docs_checks=true
+      needs_full_ci=true
+      is_docs_only=false
+      ;;
+    *)
+      needs_full_ci=true
+      is_docs_only=false
+      ;;
+  esac
+done
+
+if $is_docs_only && $needs_docs_checks; then
+  echo "[pre-push] docs-only changes detected; running docs quality checks..."
+  ./scripts/docs/quality-check.sh
+  if $needs_prd_trigger_report; then
+    echo "[pre-push] PRD trigger candidates:"
+    ./scripts/docs/find-prd-triggers.py "${base_ref}" HEAD
+  fi
+  exit 0
+fi
+
 if ! command -v act >/dev/null 2>&1; then
-  echo "ERROR: 'act' is required for git hooks but was not found." >&2
+  echo "ERROR: 'act' is required for non-doc git hooks but was not found." >&2
   echo "Please install it: brew install act" >&2
   exit 1
 fi
 
-echo "[pre-push] running unit tests via act..."
+echo "[pre-push] remote=${remote_name} url=${remote_url}"
+echo "[pre-push] code changes detected; running unit tests via act..."
 make hooks-run-pre-push

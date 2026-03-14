@@ -58,6 +58,7 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 ## Operations Notes
 
 - [Changelog](changelog.md)
+- [Docs-to-PRD Lifecycle](docs-to-prd-lifecycle.md)
 - [smithctl Installation and Usage](smithctl-installation-and-usage.md)
 - [PRD Authoring Workflow](prd-authoring-workflow.md)
 - [Loop Ingress and CLI](loop-ingress-and-cli.md)
