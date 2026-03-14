@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"smith/internal/source/model"
 )
 
 const (
@@ -28,6 +30,8 @@ func main() {
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	args = normalizeCLIArgs(args)
+
 	if wantsHelp(args) {
 		printHelp(stdout)
 		return 0
@@ -52,17 +56,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.SetOutput(io.Discard)
 
 	var (
-		prdRequest string
-		promptFile string
-		outPath    string
-		agentCmd   string
-		stories    int
+		prdMode      bool
+		promptFile   string
+		outPath      string
+		agentCmd     string
+		stories      int
+		fromMarkdown string
+		fromJSON     string
+		toMarkdown   string
 	)
-	fs.StringVar(&prdRequest, "prd", "", "Feature request text for PRD generation")
+	fs.BoolVar(&prdMode, "prd", false, "Run PRD workflows")
 	fs.StringVar(&promptFile, "prompt", "", "Prompt file to send directly to the agent")
 	fs.StringVar(&outPath, "out", outDefault, "PRD output path (file or directory)")
 	fs.StringVar(&agentCmd, "agent-cmd", agentDefault, "Agent command (supports {prompt} placeholder)")
 	fs.IntVar(&stories, "stories", storyDefault, "Required story count when composing a PRD prompt")
+	fs.StringVar(&fromMarkdown, "from-markdown", "", "Import a markdown PRD file into canonical JSON")
+	fs.StringVar(&fromJSON, "from-json", "", "Read canonical PRD JSON from a file")
+	fs.StringVar(&toMarkdown, "to-markdown", "", "Export canonical PRD JSON to markdown")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			printHelp(stdout)
@@ -73,26 +83,33 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	if strings.TrimSpace(prdRequest) == "" && strings.TrimSpace(promptFile) == "" && len(fs.Args()) > 0 {
-		prdRequest = strings.TrimSpace(strings.Join(fs.Args(), " "))
-	}
-	if strings.TrimSpace(promptFile) == "" && strings.TrimSpace(prdRequest) == "" {
-		fmt.Fprintln(stderr, "either --prd \"<request>\" or --prompt <file> is required")
-		printHelp(stderr)
-		return 2
-	}
 	if stories <= 0 {
 		fmt.Fprintln(stderr, "--stories must be > 0")
 		return 2
 	}
 
-	if strings.TrimSpace(outPath) == "" {
-		outPath = defaultPRDOutputPath
+	if err := validatePRDWorkflowFlags(promptFile, fromMarkdown, fromJSON, toMarkdown); err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		printHelp(stderr)
+		return 2
 	}
-	absOutPath, outAsDirectory, err := prepareOutputPath(outPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "prepare prd output failed: %v\n", err)
-		return 1
+
+	positional := fs.Args()
+	if prdMode && len(positional) > 0 && strings.EqualFold(strings.TrimSpace(positional[0]), "validate") {
+		return runValidateWorkflow(positional[1:], stdout, stderr)
+	}
+	if strings.TrimSpace(fromMarkdown) != "" {
+		return runImportWorkflow(fromMarkdown, outPath, stdout, stderr)
+	}
+	if strings.TrimSpace(fromJSON) != "" || strings.TrimSpace(toMarkdown) != "" {
+		return runExportWorkflow(fromJSON, toMarkdown, stdout, stderr)
+	}
+
+	prdRequest := strings.TrimSpace(strings.Join(positional, " "))
+	if strings.TrimSpace(promptFile) == "" && prdRequest == "" {
+		fmt.Fprintln(stderr, "either provide a PRD request, use --prompt, import markdown, export json, or validate a PRD")
+		printHelp(stderr)
+		return 2
 	}
 
 	promptPath := strings.TrimSpace(promptFile)
@@ -108,6 +125,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		promptPath = absPrompt
 	} else {
+		if strings.TrimSpace(outPath) == "" {
+			outPath = defaultPRDOutputPath
+		}
+		absOutPath, outAsDirectory, err := prepareOutputPath(outPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "prepare prd output failed: %v\n", err)
+			return 1
+		}
 		prompt := buildPRDPrompt(strings.TrimSpace(prdRequest), absOutPath, stories, outAsDirectory)
 		promptPath, err = writePromptFile(prompt)
 		if err != nil {
@@ -131,12 +156,181 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	if strings.TrimSpace(outPath) == "" {
+		outPath = defaultPRDOutputPath
+	}
+	absOutPath, outAsDirectory, err := prepareOutputPath(outPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "prepare prd output failed: %v\n", err)
+		return 1
+	}
 	if resolved, ok := resolvePRDPath(absOutPath, outAsDirectory); ok {
 		fmt.Fprintf(stdout, "PRD JSON saved to %s\n", resolved)
 		return 0
 	}
 	fmt.Fprintf(stdout, "PRD generation completed; expected output under %s\n", absOutPath)
 	return 0
+}
+
+func validatePRDWorkflowFlags(promptFile, fromMarkdown, fromJSON, toMarkdown string) error {
+	if strings.TrimSpace(promptFile) != "" && strings.TrimSpace(fromMarkdown) != "" {
+		return errors.New("--prompt cannot be combined with --from-markdown")
+	}
+	if strings.TrimSpace(promptFile) != "" && strings.TrimSpace(fromJSON) != "" {
+		return errors.New("--prompt cannot be combined with --from-json")
+	}
+	if strings.TrimSpace(fromMarkdown) != "" && strings.TrimSpace(fromJSON) != "" {
+		return errors.New("--from-markdown cannot be combined with --from-json")
+	}
+	if strings.TrimSpace(fromMarkdown) != "" && strings.TrimSpace(toMarkdown) != "" {
+		return errors.New("--from-markdown cannot be combined with --to-markdown")
+	}
+	if strings.TrimSpace(toMarkdown) != "" && strings.TrimSpace(fromJSON) == "" {
+		return errors.New("--to-markdown requires --from-json")
+	}
+	return nil
+}
+
+func runImportWorkflow(markdownPath, outPath string, stdout, stderr io.Writer) int {
+	data, resolvedPath, err := readInputFile(markdownPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
+	prd, report := model.ValidatePRDMarkdown(data)
+	if !report.Valid {
+		return writeValidationReport(report, stdout, stderr)
+	}
+
+	if strings.TrimSpace(outPath) == "" {
+		outPath = defaultPRDOutputPath
+	}
+	absOutPath, err := ensureFileOutputPath(outPath, ".json")
+	if err != nil {
+		fmt.Fprintf(stderr, "prepare prd output failed: %v\n", err)
+		return 1
+	}
+	rendered, err := json.MarshalIndent(prd, "", "  ")
+	if err != nil {
+		fmt.Fprintf(stderr, "marshal imported prd failed: %v\n", err)
+		return 1
+	}
+	rendered = append(rendered, '\n')
+	if err := os.WriteFile(absOutPath, rendered, 0o644); err != nil {
+		fmt.Fprintf(stderr, "write prd json failed: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "PRD JSON saved to %s\n", absOutPath)
+	fmt.Fprintf(stderr, "Imported markdown PRD from %s\n", resolvedPath)
+	return 0
+}
+
+func runExportWorkflow(fromJSON, toMarkdown string, stdout, stderr io.Writer) int {
+	if strings.TrimSpace(fromJSON) == "" {
+		fmt.Fprintln(stderr, "--from-json is required for markdown export")
+		return 2
+	}
+	if strings.TrimSpace(toMarkdown) == "" {
+		fmt.Fprintln(stderr, "--to-markdown is required for markdown export")
+		return 2
+	}
+
+	data, _, err := readInputFile(fromJSON)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
+	rendered, report := model.ExportPRDJSONToMarkdown(data)
+	if !report.Valid {
+		return writeValidationReport(report, stdout, stderr)
+	}
+
+	absOutPath, err := ensureFileOutputPath(toMarkdown, ".md")
+	if err != nil {
+		fmt.Fprintf(stderr, "prepare markdown output failed: %v\n", err)
+		return 1
+	}
+	if err := os.WriteFile(absOutPath, []byte(rendered+"\n"), 0o644); err != nil {
+		fmt.Fprintf(stderr, "write prd markdown failed: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "PRD markdown saved to %s\n", absOutPath)
+	return 0
+}
+
+func runValidateWorkflow(args []string, stdout, stderr io.Writer) int {
+	target := defaultPRDPathFromEnv()
+	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+		target = args[0]
+	}
+	if len(args) > 1 {
+		fmt.Fprintln(stderr, "validate accepts at most one PRD path")
+		return 2
+	}
+
+	data, resolvedPath, err := readInputFile(target)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 1
+	}
+	report, err := validateArtifact(data, resolvedPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2
+	}
+	return writeValidationReport(report, stdout, stderr)
+}
+
+func ensureFileOutputPath(path string, extension string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if !strings.EqualFold(filepath.Ext(absPath), extension) {
+		return "", fmt.Errorf("output path must end with %s: %s", extension, absPath)
+	}
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		return "", err
+	}
+	return absPath, nil
+}
+
+func readInputFile(path string) ([]byte, string, error) {
+	absPath, err := filepath.Abs(strings.TrimSpace(path))
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve input path failed: %w", err)
+	}
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("read input file failed: %w", err)
+	}
+	return data, absPath, nil
+}
+
+func validateArtifact(data []byte, path string) (model.PRDValidationReport, error) {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json":
+		_, report := model.ValidatePRDJSON(data)
+		return report, nil
+	case ".md", ".markdown":
+		_, report := model.ValidatePRDMarkdown(data)
+		return report, nil
+	default:
+		return model.PRDValidationReport{}, fmt.Errorf("unsupported PRD format %q; use .json, .md, or .markdown", filepath.Ext(path))
+	}
+}
+
+func writeValidationReport(report model.PRDValidationReport, stdout, stderr io.Writer) int {
+	payload, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintf(stderr, "marshal validation report failed: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, string(payload))
+	if report.Valid {
+		return 0
+	}
+	return 1
 }
 
 func defaultPRDPathFromEnv() string {
@@ -300,6 +494,51 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
+func normalizeCLIArgs(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+
+	valueFlags := map[string]struct{}{
+		"--prompt":        {},
+		"--out":           {},
+		"--agent-cmd":     {},
+		"--stories":       {},
+		"--from-markdown": {},
+		"--from-json":     {},
+		"--to-markdown":   {},
+	}
+
+	flags := make([]string, 0, len(args))
+	positionals := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if _, ok := valueFlags[arg]; ok {
+			flags = append(flags, arg)
+			if i+1 < len(args) {
+				flags = append(flags, args[i+1])
+				i++
+			}
+			continue
+		}
+		if hasValueFlagPrefix(arg, valueFlags) || arg == "--prd" || arg == "-h" || arg == "--help" {
+			flags = append(flags, arg)
+			continue
+		}
+		positionals = append(positionals, arg)
+	}
+	return append(flags, positionals...)
+}
+
+func hasValueFlagPrefix(arg string, flags map[string]struct{}) bool {
+	for key := range flags {
+		if strings.HasPrefix(arg, key+"=") {
+			return true
+		}
+	}
+	return false
+}
+
 func hasFlag(args []string, key string) bool {
 	for i := 0; i < len(args); i++ {
 		arg := strings.TrimSpace(args[i])
@@ -329,11 +568,15 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  smith --prd \"<feature request>\" [--out path] [--stories N] [--agent-cmd \"...\"]")
 	fmt.Fprintln(w, "  smith --prompt <prompt-file> [--out path] [--agent-cmd \"...\"]")
+	fmt.Fprintln(w, "  smith --prd --from-markdown <path> [--out .agents/tasks/prd.json]")
+	fmt.Fprintln(w, "  smith --prd --from-json <path> --to-markdown <path>")
+	fmt.Fprintln(w, "  smith --prd validate [path]")
 	fmt.Fprintln(w, "  smith agent-chat [--agent-cmd \"...\"]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Notes:")
-	fmt.Fprintln(w, "  --prd composes a Ralph-style prompt that invokes the $prd skill.")
+	fmt.Fprintln(w, "  --prd selects PRD workflows and composes a Ralph-style prompt for generation.")
 	fmt.Fprintln(w, "  --prompt sends an existing prompt file directly to the agent command.")
+	fmt.Fprintln(w, "  validate prints machine-readable JSON diagnostics and exits non-zero when the PRD is not ready.")
 	fmt.Fprintln(w, "  agent-chat provides a structured JSON bridge for API integration.")
 }
 

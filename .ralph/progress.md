@@ -5,6 +5,178 @@ Started: Mon Mar  9 04:32:36 EDT 2026
 - (add reusable patterns here)
 
 ---
+## [2026-03-14 02:06:40 EDT] - US-005: Block non-ready PRDs during ingress and execution handoff
+Thread: ses_719242
+Run: 20260314-005446-82373 (iteration 5)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-5.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-5.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 0159a5d feat(validation): block non-ready PRD ingress
+- Post-commit status: `.agents/tasks/prd-prd-generation-validation.json` remains modified by loop-managed story state
+- Verification:
+  - Command: command -v act && act --version && command -v docker && docker --version -> PASS
+  - Command: go test ./internal/source/model ./internal/source/ingress ./cmd/smith-api ./cmd/smithctl ./internal/source/e2e -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .ralph/.tmp/prompt-20260314-005446-82373-5.md
+  - .ralph/.tmp/story-20260314-005446-82373-5.json
+  - .ralph/.tmp/story-20260314-005446-82373-5.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-4.log
+  - .ralph/runs/run-20260314-005446-82373-iter-4.md
+  - .ralph/runs/run-20260314-005446-82373-iter-5.log
+  - cmd/smith-api/main.go
+  - cmd/smith-api/main_test.go
+  - cmd/smithctl/main.go
+  - cmd/smithctl/main_test.go
+  - internal/source/e2e/ingress_modes_test.go
+  - internal/source/ingress/ingress.go
+  - internal/source/ingress/ingress_test.go
+  - internal/source/model/prd.go
+  - internal/source/model/prd_test.go
+- What was implemented
+  - Routed PRD ingress, document build handoff, and loop creation with `workspace_prd_json` through the shared canonical PRD validator before any loop draft or workspace PRD artifact is created.
+  - Added structured validation rejection payloads for API callers and preserved those JSON diagnostics in `smithctl` output so CLI validation and API rejection reasons stay aligned.
+  - Added oversized-story readiness enforcement plus tests covering accepted canonical ingress, rejected non-ready PRDs, blocked workspace handoffs, and CLI/API parity.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Converting validated canonical PRDs into drafts in one helper keeps markdown ingress, JSON ingress, and document build behavior aligned without duplicating story metadata mapping.
+  - Gotchas encountered
+  - `cmd/` paths are ignored by the repo’s gitignore rules, so story commits touching `cmd/smith-api` or `cmd/smithctl` require `git add -f`.
+  - Useful context
+  - `./scripts/validate-acceptance.sh` still fails on existing unrelated acceptance checks, and `make ci-local-act` completes lint, Go tests, frontend build, and Playwright execution but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable locally.
+---
+## [2026-03-14 02:23:04 EDT] - US-006: Add execution-readiness linting for Ralph-sized stories
+Thread: ses_5e63cb
+Run: 20260314-005446-82373 (iteration 6)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-6.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 4a35ae6 feat(validation): add PRD readiness linting
+- Post-commit status: `.agents/tasks/prd-prd-generation-validation.json`, `.ralph/errors.log`, and prior-iteration run artifacts remain modified outside this story
+- Verification:
+  - Command: act --version -> PASS
+  - Command: docker --version -> PASS
+  - Command: go test ./internal/source/model ./cmd/smith -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .ralph/.tmp/prompt-20260314-005446-82373-6.md
+  - .ralph/.tmp/story-20260314-005446-82373-6.json
+  - .ralph/.tmp/story-20260314-005446-82373-6.md
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-6.log
+  - .ralph/runs/run-20260314-005446-82373-iter-6.md
+  - cmd/smith-api/main_test.go
+  - cmd/smith/main_test.go
+  - internal/source/model/prd.go
+  - internal/source/model/prd_test.go
+- What was implemented
+  - Added execution-readiness linting in the shared PRD validator for likely oversized stories, weak acceptance criteria, missing negative cases, bundled CLI/API/UI rewrites without dependency ordering, and dependencies that point forward in story order.
+  - Split readiness diagnostics into warnings versus blocking errors so automation consumers can distinguish clarification work from loop-blocking issues while keeping diagnostic codes stable.
+  - Added tests for pass, warning-only, and blocking readiness cases, plus CLI validation behavior and ingress severity alignment.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Shared readiness linting in `internal/source/model/prd.go` keeps CLI and API behavior aligned without duplicating execution-scope heuristics.
+  - Gotchas encountered
+  - `cmd/` paths are ignored by repo gitignore rules, so touched CLI/API files must be staged with `git add -f`.
+  - Useful context
+  - `./scripts/validate-acceptance.sh` still fails on unrelated acceptance checks, and `make ci-local-act` reaches passing lint, Go tests, frontend build, and Playwright execution but fails artifact upload under local `act` because `ACTIONS_RUNTIME_TOKEN` is unavailable.
+---
+## [2026-03-14 01:46:19 EDT] - US-004: Add CLI workflows for generate import export and validate
+Thread: ses_78d535
+Run: 20260314-005446-82373 (iteration 4)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-4.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-4.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: c5e1e1b feat(validation): add smith PRD CLI workflows
+- Post-commit status: `.ralph/runs/run-20260314-005446-82373-iter-4.log` modified by post-commit hook output
+- Verification:
+  - Command: command -v act && docker --version -> PASS
+  - Command: go test ./cmd/smith -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-4.md
+  - .ralph/.tmp/story-20260314-005446-82373-4.json
+  - .ralph/.tmp/story-20260314-005446-82373-4.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-3.log
+  - .ralph/runs/run-20260314-005446-82373-iter-3.md
+  - .ralph/runs/run-20260314-005446-82373-iter-4.log
+  - cmd/smith/main.go
+  - cmd/smith/main_test.go
+- What was implemented
+  - Extended `smith --prd` so the single entrypoint now supports interactive PRD generation, markdown import to canonical JSON, canonical JSON export to markdown, and explicit validation with machine-readable JSON diagnostics.
+  - Kept `.agents/tasks/prd.json` as the default JSON output target for generation and markdown import when `--out` is omitted, and added mixed flag/positional parsing so existing `smith --prd "request" --out ...` usage still works.
+  - Added CLI test coverage for generation, default output paths, export success, invalid argument handling, and non-zero validation failures.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Reusing `internal/source/model` directly in the CLI kept import, export, and validation behavior aligned with the shared canonical contracts instead of adding CLI-only parsing rules.
+  - Gotchas encountered
+  - The repo’s commit hooks rewrite the active iteration log after commits, so a final bookkeeping commit is needed to restore a clean worktree.
+  - Useful context
+  - `./scripts/validate-acceptance.sh` still fails on unrelated existing acceptance checks, and `make ci-local-act` now reaches passing lint, Go tests, frontend build, and Playwright execution but still fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
+---
+## [2026-03-14 01:16:27 EDT] - US-002: Normalize markdown PRDs into canonical JSON
+Thread: ses_006d2d
+Run: 20260314-005446-82373 (iteration 2)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-2.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-2.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 518f0a3 feat(validation): normalize PRD markdown imports
+- Post-commit status: `pending progress/log commit`
+- Verification:
+  - Command: go test ./internal/source/model -run 'Test(ParsePRDMarkdownFixtures|ParsePRDMarkdownPartialStructure|ValidatePRDMarkdownMalformedFixture|ValidatePRDReport|ValidatePRDJSONMalformedDocument)' -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: npm --prefix frontend run build -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-2.md
+  - .ralph/.tmp/story-20260314-005446-82373-2.json
+  - .ralph/.tmp/story-20260314-005446-82373-2.md
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-1.log
+  - .ralph/runs/run-20260314-005446-82373-iter-1.md
+  - .ralph/runs/run-20260314-005446-82373-iter-2.log
+  - AGENTS.md
+  - internal/source/model/prd_markdown.go
+  - internal/source/model/prd_markdown_test.go
+  - internal/source/model/testdata/prd_markdown/malformed.md
+  - internal/source/model/testdata/prd_markdown/partial.md
+  - internal/source/model/testdata/prd_markdown/well_formed.expected.json
+  - internal/source/model/testdata/prd_markdown/well_formed.md
+- What was implemented
+  - Added a shared markdown PRD normalizer in `internal/source/model` that maps supported headings into canonical PRD JSON fields and preserves ordered canonical stories, dependencies, statuses, rules, and quality gates.
+  - Added `ValidatePRDMarkdown` so markdown import flows can immediately return the same machine-readable validation report used for canonical JSON.
+  - Added fixture-based model tests covering a well-formed PRD, a partially structured markdown PRD, and a malformed markdown document that fails validation with suggested fixes for missing stories and quality gates.
+  - Updated `AGENTS.md` with the repo-local frontend install/build requirement discovered during verification.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Shared PRD import logic belongs in `internal/source/model`; it keeps later CLI and API work from re-implementing markdown semantics in ingress-specific code.
+  - Gotchas encountered
+  - Story detection in list-based markdown must treat labeled metadata like `Depends on:` as story details, not as new story headers.
+  - Repo-level verification still has unrelated failures: `./scripts/validate-acceptance.sh` reports existing acceptance gaps, local `npm --prefix frontend run build` fails until `frontend` dependencies are installed, and `make ci-local-act` fails in the Playwright artifact upload step because `ACTIONS_RUNTIME_TOKEN` is unavailable under local `act`.
+  - Useful context
+  - The local `act` Playwright job eventually ran the browser suite successfully; the failing step was post-test artifact upload, not the UI tests themselves.
+---
 ## [2026-03-09 04:41:52 EDT] - US-001: Resolve runtime pod/container for a loop
 Thread: ses_e20a4f
 Run: 20260309-043236-60668 (iteration 1)
@@ -235,4 +407,123 @@ Run summary: /Users/lars/Dev/smith.terminal-support/.ralph/runs/run-20260309-043
     - Long-running hooks and run logging can mutate `.ralph/runs/*` after a commit; always re-check status and finalize with a cleanup commit.
   - Useful context
     - Terminal command API returns structured error codes for validation/auth/rate-limit failures but attach runtime conflicts currently return text error messages.
+## [2026-03-14 01:03:56 EDT] - US-001: Define canonical PRD validation and diagnostic contracts
+Thread: ses_b56b86
+Run: 20260314-005446-82373 (iteration 1)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-1.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-1.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 3d0c98f feat(validation): add canonical PRD diagnostics
+- Post-commit status: `clean`
+- Verification:
+  - Command: make build -> PASS
+  - Command: go test ./internal/source/model/... -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-1.md
+  - .ralph/.tmp/story-20260314-005446-82373-1.json
+  - .ralph/.tmp/story-20260314-005446-82373-1.md
+  - .ralph/activity.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-1.log
+  - internal/source/model/prd.go
+  - internal/source/model/prd_test.go
+- What was implemented
+  - Added shared PRD validation report and diagnostic types with stable codes, JSON-style paths, optional story references, readiness, and suggested fixes.
+  - Expanded PRD validation to enforce canonical top-level fields, sequential `US-###` story IDs, duplicate detection, dependency reference checks, quality gate presence, and canonical story statuses.
+  - Added `ValidatePRDJSON` so malformed JSON returns a machine-readable blocking diagnostic instead of only a raw parse error.
+  - Added unit coverage for valid PRDs, malformed JSON, duplicate IDs, unknown dependencies, missing project and quality gates, and invalid statuses.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - `internal/source/model` is the right shared package for PRD contracts because ingress and future CLI/API flows can consume it without pulling in higher-level workflow code.
+  - Gotchas encountered
+  - Repo-level verification currently includes unrelated baseline failures in `./scripts/validate-acceptance.sh`, and `act` can fail or mutate run logs during hooks, so `git status --porcelain` must be checked again after each commit.
+  - Useful context
+  - Existing canonical PRD task files in this repo currently use `open`, `in_progress`, and `done` statuses; the validator now treats that set as canonical.
+---
+## [2026-03-14 01:31:02 EDT] - US-003: Render stable markdown from canonical PRD JSON
+Thread: ses_55108c
+Run: 20260314-005446-82373 (iteration 3)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-3.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: ca25497 feat(validation): render stable PRD markdown
+- Post-commit status: `.ralph/runs/run-20260314-005446-82373-iter-3.log` modified by post-commit hook output
+- Verification:
+  - Command: act --version -> PASS
+  - Command: docker --version -> PASS
+  - Command: go test ./internal/source/model -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .agents/tasks/prd-prd-generation-validation.json
+  - .ralph/.tmp/prompt-20260314-005446-82373-3.md
+  - .ralph/.tmp/story-20260314-005446-82373-3.json
+  - .ralph/.tmp/story-20260314-005446-82373-3.md
+  - .ralph/activity.log
+  - .ralph/errors.log
+  - .ralph/progress.md
+  - .ralph/runs/run-20260314-005446-82373-iter-2.log
+  - .ralph/runs/run-20260314-005446-82373-iter-2.md
+  - .ralph/runs/run-20260314-005446-82373-iter-3.log
+  - internal/source/model/prd_markdown_export.go
+  - internal/source/model/prd_markdown_test.go
+- What was implemented
+  - Added canonical PRD markdown export in `internal/source/model` with a stable section order and deterministic story rendering for status, dependencies, and acceptance criteria.
+  - Added `ExportPRDJSONToMarkdown` so JSON export validates first and returns the same validation diagnostics on invalid input instead of emitting misleading markdown.
+  - Added tests for stable markdown output, invalid-export diagnostics, and JSON to markdown to JSON round-tripping that preserves story IDs, dependency ordering, open questions, and quality gates for supported sections.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Restricting export to parser-supported sections keeps round-trip behavior deterministic without inventing lossy markdown conventions for unsupported canonical fields.
+  - Gotchas encountered
+  - The repo pre-commit hook rewrites the active run log after successful commits, so a final bookkeeping commit is needed to restore a clean working tree.
+  - Useful context
+  - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in existing CI/Makefile tasks, and `make ci-local-act` reaches passing Playwright execution locally but fails artifact upload under `act` because `ACTIONS_RUNTIME_TOKEN` is not set.
+---
+## [2026-03-14 02:40:05 EDT] - US-007: Document and verify the PRD authoring workflow end to end
+Thread: 
+Run: 20260314-005446-82373 (iteration 7)
+Run log: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-7.log
+Run summary: /Users/lars/Dev/smith-prd-validation/.ralph/runs/run-20260314-005446-82373-iter-7.md
+- Guardrails reviewed: yes
+- No-commit run: false
+- Commit: 7dc183c docs(prd): add authoring workflow coverage
+- Post-commit status: `clean`
+- Verification:
+  - Command: go test ./internal/source/e2e -run TestPRDAuthoringWorkflowEndToEnd -count=1 -> PASS
+  - Command: ./scripts/test/e2e-prd-authoring.sh -> PASS
+  - Command: go test ./... -> PASS
+  - Command: ./scripts/validate-acceptance.sh -> FAIL
+  - Command: make ci-local-act -> FAIL
+- Files changed:
+  - .github/workflows/ci.yml
+  - README.md
+  - docs/examples/prd-authoring/invalid-prd.json
+  - docs/examples/prd-authoring/valid-prd.md
+  - docs/index.md
+  - docs/prd-authoring-workflow.md
+  - internal/source/e2e/prd_authoring_workflow_test.go
+  - scripts/test/e2e-prd-authoring.sh
+  - scripts/test/run-matrix.sh
+  - scripts/validate-acceptance.sh
+- What was implemented
+  - Added a repository guide for canonical PRD JSON expectations, markdown authoring rules, validation semantics, CLI examples, and the blocked invalid-path behavior.
+  - Added shared valid and invalid PRD fixtures that document the happy path from markdown authoring to `.agents/tasks/prd.json` and the exact diagnostics for blocked ingress.
+  - Added end-to-end Go coverage plus a wrapper script that exercise markdown import, JSON validation, markdown export, canonical ingress, and invalid ingress parity with the shared validator.
+  - Wired the PRD authoring workflow into run-matrix, the CI ingress/environment job, and `validate-acceptance` so the documented workflow is checked in repo automation.
+- **Learnings for future iterations:**
+  - Patterns discovered
+  - Reusing docs fixtures in the Go e2e test keeps the published workflow and executable verification synchronized.
+  - Gotchas encountered
+  - A PRD that is `valid=true` can still be `readiness=warn`; the happy-path fixture needed an explicit negative-case acceptance criterion to reach `readiness=pass`.
+  - `make ci-local-act` still fails under `act` at Playwright artifact upload because `ACTIONS_RUNTIME_TOKEN` is unavailable in the local `act` environment even though the browser tests themselves pass.
+  - `./scripts/validate-acceptance.sh` still reports unrelated baseline failures in older CI/Makefile expectations outside US-007.
+  - Useful context
+  - The dedicated wrapper script is `./scripts/test/e2e-prd-authoring.sh`, and the main executable test is `TestPRDAuthoringWorkflowEndToEnd` in `internal/source/e2e`.
 ---

@@ -733,30 +733,17 @@ func (s *server) handleIngressPRD(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	baseMetadata := copyStringMap(req.Metadata)
-
-	var (
-		drafts []ingress.LoopDraft
-		errs   []ingress.ParseError
-	)
-	switch format {
-	case "markdown", "md":
-		drafts, errs = ingress.ParsePRDMarkdown(req.Markdown, req.SourceRef, baseMetadata)
-	case "json", "structured":
-		drafts, errs = ingress.PRDTasksToDrafts(req.Tasks, req.SourceRef, baseMetadata)
-	default:
-		writeErr(w, http.StatusBadRequest, "format must be markdown or json")
+	drafts, report, err := buildPRDIngressDrafts(format, req.Markdown, req.PRD, req.SourceRef, baseMetadata)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if report != nil && !report.Valid {
+		writePRDValidationFailure(w, *report)
 		return
 	}
 
-	results := make([]ingressResult, 0, len(drafts)+len(errs))
-	for _, parseErr := range errs {
-		results = append(results, ingressResult{
-			ItemIndex: parseErr.ItemIndex,
-			SourceRef: parseErr.SourceRef,
-			Status:    "error",
-			Message:   parseErr.Message,
-		})
-	}
+	results := make([]ingressResult, 0, len(drafts))
 	for i, draft := range drafts {
 		res := s.createOneLoop(r.Context(), loopCreateRequest{
 			IdempotencyKey: draft.IdempotencyKey,
@@ -778,6 +765,50 @@ func (s *server) handleIngressPRD(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newIngressSummary(results))
 }
 
+func buildPRDIngressDrafts(format, markdown string, rawPRD json.RawMessage, sourceRef string, metadata map[string]string) ([]ingress.LoopDraft, *model.PRDValidationReport, error) {
+	switch format {
+	case "markdown", "md":
+		prd, report := model.ValidatePRDMarkdown([]byte(markdown))
+		if !report.Valid {
+			return nil, &report, nil
+		}
+		return ingress.CanonicalPRDToDrafts(prd, sourceRef, metadata), nil, nil
+	case "json", "structured":
+		if len(rawPRD) == 0 {
+			return nil, nil, fmt.Errorf("canonical prd payload is required")
+		}
+		prd, report := model.ValidatePRDJSON(rawPRD)
+		if !report.Valid {
+			return nil, &report, nil
+		}
+		return ingress.CanonicalPRDToDrafts(prd, sourceRef, metadata), nil, nil
+	default:
+		return nil, nil, fmt.Errorf("format must be markdown or json")
+	}
+}
+
+func writePRDValidationFailure(w http.ResponseWriter, report model.PRDValidationReport) {
+	writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+		"error":  "prd failed readiness validation",
+		"report": report,
+	})
+}
+
+func validateWorkspacePRDMetadata(metadata map[string]string) (model.PRDValidationReport, bool) {
+	if len(metadata) == 0 {
+		return model.PRDValidationReport{}, false
+	}
+	raw := strings.TrimSpace(metadata["workspace_prd_json"])
+	if raw == "" {
+		return model.PRDValidationReport{}, false
+	}
+	_, report := model.ValidatePRDJSON([]byte(raw))
+	if report.Valid {
+		return model.PRDValidationReport{}, false
+	}
+	return report, true
+}
+
 func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopCreateResult {
 	req.Title = strings.TrimSpace(req.Title)
 	req.Description = strings.TrimSpace(req.Description)
@@ -789,6 +820,14 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 	}
 	if req.Title == "" || req.SourceType == "" || req.SourceRef == "" {
 		return loopCreateResult{Status: "error", Message: "title, source_type, and source_ref are required", HTTPCode: http.StatusBadRequest}
+	}
+	if report, ok := validateWorkspacePRDMetadata(req.Metadata); ok {
+		return loopCreateResult{
+			Status:           "error",
+			Message:          "workspace prd failed readiness validation",
+			ValidationReport: &report,
+			HTTPCode:         http.StatusUnprocessableEntity,
+		}
 	}
 
 	reg := provider.NewDefaultRegistry()
@@ -3158,7 +3197,6 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var drafts []ingress.LoopDraft
-		var errs []ingress.ParseError
 		baseMetadata := copyStringMap(doc.Metadata)
 		if baseMetadata == nil {
 			baseMetadata = make(map[string]string)
@@ -3171,24 +3209,24 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 			sourceRef = fmt.Sprintf("doc:%s", doc.ID)
 		}
 
+		var (
+			report *model.PRDValidationReport
+			err    error
+		)
 		switch format {
 		case "markdown", "md":
-			drafts, errs = ingress.ParsePRDMarkdown(doc.Content, sourceRef, baseMetadata)
+			drafts, report, err = buildPRDIngressDrafts("markdown", doc.Content, nil, sourceRef, baseMetadata)
 		case "json":
-			var tasks []api.PRDTask
-			if err := json.Unmarshal([]byte(doc.Content), &tasks); err == nil {
-				drafts, errs = ingress.PRDTasksToDrafts(tasks, sourceRef, baseMetadata)
-			} else {
-				writeErr(w, http.StatusBadRequest, "failed to parse document content as PRD JSON tasks")
-				return
-			}
+			drafts, report, err = buildPRDIngressDrafts("json", "", json.RawMessage(doc.Content), sourceRef, baseMetadata)
 		default:
-			writeErr(w, http.StatusBadRequest, "unsupported document format for build")
+			err = fmt.Errorf("unsupported document format for build")
+		}
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-
-		if len(errs) > 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
+		if report != nil && !report.Valid {
+			writePRDValidationFailure(w, *report)
 			return
 		}
 

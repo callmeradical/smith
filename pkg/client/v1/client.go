@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,21 @@ type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	token      string
+}
+
+type APIError struct {
+	Method     string
+	Path       string
+	StatusCode int
+	Body       []byte
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("%s %s returned %d: %s", e.Method, e.Path, e.StatusCode, strings.TrimSpace(string(e.Body)))
+}
+
+func (e *APIError) JSONBody() bool {
+	return len(e.Body) > 0 && json.Valid(e.Body)
 }
 
 // NewClient creates a new Smith API client
@@ -160,7 +176,12 @@ func (c *Client) Do(ctx context.Context, method, path string, body any, out any)
 
 	if resp.StatusCode >= 400 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return fmt.Errorf("API error (%d): %s", resp.StatusCode, string(raw))
+		return &APIError{
+			Method:     method,
+			Path:       path,
+			StatusCode: resp.StatusCode,
+			Body:       raw,
+		}
 	}
 
 	if out != nil {
@@ -174,4 +195,12 @@ func (c *Client) Do(ctx context.Context, method, path string, body any, out any)
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	return c.Do(ctx, method, path, body, out)
+}
+
+func StructuredErrorBody(err error) ([]byte, bool) {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || !apiErr.JSONBody() {
+		return nil, false
+	}
+	return bytes.TrimSpace(apiErr.Body), true
 }

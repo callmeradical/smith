@@ -47,12 +47,6 @@ type contextConfig struct {
 	Token  string `json:"token"`
 }
 
-type apiClient struct {
-	baseURL string
-	token   string
-	http    *http.Client
-}
-
 type stringMapFlag map[string]string
 
 func (s *stringMapFlag) String() string {
@@ -591,24 +585,20 @@ func cmdLoopCreate(client *client.Client, output string, args []string, stdout, 
 				fmt.Fprintf(stderr, "invalid json prd payload: %v\n", err)
 				return 1
 			}
-			if asMap, ok := parsed.(map[string]any); ok {
-				if tasks, hasTasks := asMap["tasks"]; hasTasks {
-					payload["tasks"] = tasks
-				} else {
-					payload["tasks"] = []any{}
-				}
-			} else if asSlice, ok := parsed.([]any); ok {
-				payload["tasks"] = asSlice
-			} else {
-				fmt.Fprintln(stderr, "json prd payload must be an object or array")
+			if _, ok := parsed.(map[string]any); !ok {
+				fmt.Fprintln(stderr, "json prd payload must be a canonical object")
 				return 1
 			}
+			payload["prd"] = parsed
 		default:
 			fmt.Fprintln(stderr, "--format must be markdown or json")
 			return 2
 		}
 		var out any
 		if err := client.Do(context.Background(), http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
+			if writeStructuredAPIError(err, output, stdout, stderr) {
+				return 1
+			}
 			fmt.Fprintf(stderr, "loop create failed: %v\n", err)
 			return 1
 		}
@@ -706,6 +696,9 @@ func cmdLoopCreate(client *client.Client, output string, args []string, stdout, 
 	}
 	var out any
 	if err := client.Do(context.Background(), http.MethodPost, "/v1/loops", payload, &out); err != nil {
+		if writeStructuredAPIError(err, output, stdout, stderr) {
+			return 1
+		}
 		fmt.Fprintf(stderr, "loop create failed: %v\n", err)
 		return 1
 	}
@@ -857,7 +850,7 @@ func cmdLoopLogs(client *client.Client, output string, args []string, stdout, st
 	return 0
 }
 
-func cmdLoopAttach(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
+func cmdLoopAttach(apiClient *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("loop attach", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
@@ -896,7 +889,7 @@ func cmdLoopAttach(client *client.Client, output string, args []string, stdout, 
 			"terminal": "smithctl",
 		}
 		var out any
-		err := client.Do(context.Background(), http.MethodPost, "/v1/loops/"+loopID+"/control/attach", payload, &out)
+		err := apiClient.Do(context.Background(), http.MethodPost, "/v1/loops/"+loopID+"/control/attach", payload, &out)
 		if err == nil {
 			attachResults = append(attachResults, map[string]any{
 				"loop_id": loopID,
@@ -905,7 +898,8 @@ func cmdLoopAttach(client *client.Client, output string, args []string, stdout, 
 			})
 			continue
 		}
-		if strings.Contains(err.Error(), "(404)") {
+		var apiErr *client.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			attachResults = append(attachResults, map[string]any{
 				"loop_id": loopID,
 				"status":  "not_supported",
@@ -929,7 +923,7 @@ func cmdLoopAttach(client *client.Client, output string, args []string, stdout, 
 		if softFailure {
 			fmt.Fprintln(stderr, "attach endpoint unavailable for one or more loops; following journal instead")
 		}
-		return followLoopLogs(client, output, loopIDs, int64(limit), interval, stdout, stderr)
+		return followLoopLogs(apiClient, output, loopIDs, int64(limit), interval, stdout, stderr)
 	}
 	return 0
 }
@@ -1173,15 +1167,16 @@ func cmdPRDSubmit(client *client.Client, output string, args []string, stdout, s
 			fmt.Fprintln(stderr, "json prd payload must be an object")
 			return 1
 		}
-		if tasks, ok := asMap["tasks"]; ok {
-			payload["tasks"] = tasks
-		}
+		payload["prd"] = asMap
 	default:
 		fmt.Fprintln(stderr, "--format must be markdown or json")
 		return 2
 	}
 	var out any
 	if err := client.Do(context.Background(), http.MethodPost, "/v1/ingress/prd", payload, &out); err != nil {
+		if writeStructuredAPIError(err, output, stdout, stderr) {
+			return 1
+		}
 		fmt.Fprintf(stderr, "prd submit failed: %v\n", err)
 		return 1
 	}
@@ -1303,6 +1298,18 @@ func normalizePRDSubmitOutput(out any) any {
 	return asMap
 }
 
+func writeStructuredAPIError(err error, output string, stdout, stderr io.Writer) bool {
+	body, ok := client.StructuredErrorBody(err)
+	if !ok {
+		return false
+	}
+	if output == "json" {
+		_, _ = stdout.Write(append(body, '\n'))
+		return true
+	}
+	fmt.Fprintln(stderr, string(body))
+	return true
+}
 func readJSONFile(path string) (map[string]any, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {

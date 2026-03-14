@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "total": 7,
+  "remaining": 2,
+  "quality_gates": [
+    "go test ./...",
+    "./scripts/validate-acceptance.sh",
+    "make ci-local-act"
+  ],
+  "id": "US-006",
+  "title": "Add execution-readiness linting for Ralph-sized stories"
+}

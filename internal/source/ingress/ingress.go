@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"smith/internal/source/model"
 	api "smith/pkg/api/v1"
 )
 
@@ -185,6 +186,46 @@ func ParsePRDMarkdown(markdown, sourceRef string, baseMetadata map[string]string
 	}
 
 	return PRDTasksToDrafts(tasks, trimmedSource, baseMetadata)
+}
+
+func CanonicalPRDToDrafts(prd *model.PRD, sourceRef string, baseMetadata map[string]string) []LoopDraft {
+	if prd == nil {
+		return nil
+	}
+	trimmedSource := strings.TrimSpace(sourceRef)
+	if trimmedSource == "" {
+		trimmedSource = "prd:canonical"
+	}
+	out := make([]LoopDraft, 0, len(prd.Stories))
+	for _, story := range prd.Stories {
+		storyID := strings.TrimSpace(story.ID)
+		draftSourceRef := trimmedSource
+		if storyID != "" {
+			draftSourceRef += "#" + storyID
+		}
+		metadata := copyMetadata(baseMetadata)
+		metadata["ingress_mode"] = "prd"
+		metadata["prd_source_ref"] = trimmedSource
+		if storyID != "" {
+			metadata["prd_story_id"] = storyID
+		}
+		if strings.TrimSpace(story.Status) != "" {
+			metadata["prd_story_status"] = strings.TrimSpace(story.Status)
+		}
+		if len(story.DependsOn) > 0 {
+			metadata["prd_story_dependencies"] = strings.Join(story.DependsOn, ",")
+		}
+		out = append(out, LoopDraft{
+			ID:             storyID,
+			IdempotencyKey: "prd:" + draftSourceRef,
+			Title:          strings.TrimSpace(story.Title),
+			Description:    strings.TrimSpace(story.Description),
+			SourceType:     "prd_story",
+			SourceRef:      draftSourceRef,
+			Metadata:       metadata,
+		})
+	}
+	return out
 }
 
 func copyMetadata(in map[string]string) map[string]string {

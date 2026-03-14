@@ -1,7 +1,10 @@
 package v1
 
 import (
+	"encoding/json"
 	"time"
+
+	"smith/internal/source/model"
 )
 
 // LoopState represents the current phase of a loop
@@ -329,13 +332,14 @@ type LoopBatchRequest struct {
 }
 
 type LoopCreateResult struct {
-	LoopID      string           `json:"loop_id"`
-	Status      string           `json:"status"`
-	Created     bool             `json:"created"`
-	Message     string           `json:"message,omitempty"`
-	Environment LoopEnvironment  `json:"environment"`
-	Skills      []LoopSkillMount `json:"skills,omitempty"`
-	HTTPCode    int              `json:"http_code,omitempty"`
+	LoopID           string                     `json:"loop_id"`
+	Status           string                     `json:"status"`
+	Created          bool                       `json:"created"`
+	Message          string                     `json:"message,omitempty"`
+	Environment      LoopEnvironment            `json:"environment"`
+	Skills           []LoopSkillMount           `json:"skills,omitempty"`
+	ValidationReport *model.PRDValidationReport `json:"validation_report,omitempty"`
+	HTTPCode         int                        `json:"http_code,omitempty"`
 }
 
 type GitHubIngressRequest struct {
@@ -347,6 +351,7 @@ type PRDIngressRequest struct {
 	Format    string            `json:"format,omitempty"`
 	SourceRef string            `json:"source_ref,omitempty"`
 	Markdown  string            `json:"markdown,omitempty"`
+	PRD       json.RawMessage   `json:"prd,omitempty"`
 	Tasks     []PRDTask         `json:"tasks,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }
