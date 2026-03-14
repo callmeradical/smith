@@ -133,7 +133,7 @@ func TestBuildReplicaJobSanitizesLabelsAndRespectsCustomJobName(t *testing.T) {
 	req.CorrelationID = "corr/123"
 	req.JobName = "smith-replica-alpha-feat-issue-132-99999"
 	req.Labels = map[string]string{
-		"smith.io/project": "pod-visualizer/demo",
+		"smith.io/project": "smith-demo/test",
 		"smith.io/custom":  "!!!",
 	}
 
@@ -151,7 +151,7 @@ func TestBuildReplicaJobSanitizesLabelsAndRespectsCustomJobName(t *testing.T) {
 	if got := job.Metadata.Labels["smith.io/correlation-id"]; got != "corr-123" {
 		t.Fatalf("unexpected correlation label %q", got)
 	}
-	if got := job.Metadata.Labels["smith.io/project"]; got != "pod-visualizer-demo" {
+	if got := job.Metadata.Labels["smith.io/project"]; got != "smith-demo-test" {
 		t.Fatalf("unexpected project label %q", got)
 	}
 	if got := job.Metadata.Labels["smith.io/custom"]; got != "unknown" {

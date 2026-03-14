@@ -70,4 +70,3 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [Staging Soak/Chaos Runbook](staging-soak-chaos-runbook.md)
 - [Test Matrix and Failure Injection](test-matrix-and-failure-injection.md)
 - [Go-Native Test Harness Strategy](test-harness-strategy.md)
-- [Operator Console UI Style Contract](ui-style-pod-visualizer.md)

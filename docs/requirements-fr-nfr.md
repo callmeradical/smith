@@ -60,7 +60,6 @@ Source PRD: `docs/prd1.md`
 - Acceptance:
   - Selecting an anomaly attaches a live stream.
   - Grid reflects active workloads and key health signals.
-  - UI follows style contract in `docs/ui-style-pod-visualizer.md`.
 
 ### FR-010: Manual operator override
 - Description: Operators can eject a replica and edit anomaly state.
