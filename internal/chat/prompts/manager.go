@@ -54,7 +54,7 @@ func (m *Manager) injectLoopContext(ctx context.Context, sb *strings.Builder, sC
 			sb.WriteString(fmt.Sprintf("Status: %s\n", loop.State))
 			sb.WriteString(fmt.Sprintf("Reason: %s\n", loop.Reason))
 		}
-		
+
 		journal, err := m.bridge.GetJournal(ctx, loopID, 10)
 		if err == nil && len(journal) > 0 {
 			sb.WriteString("Recent Journal Entries:\n")

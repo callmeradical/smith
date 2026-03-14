@@ -23,7 +23,7 @@ func NewEngine() *Engine {
 func (e *Engine) Stream(ctx context.Context, session *chat.Session, message string, events chan<- chat.ChatEvent) error {
 	fields := strings.Fields(e.agentCmd)
 	cmd := exec.CommandContext(ctx, fields[0], fields[1:]...)
-	
+
 	stdin, _ := cmd.StdinPipe()
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
@@ -62,7 +62,7 @@ func (e *Engine) Stream(ctx context.Context, session *chat.Session, message stri
 
 	var sessionID string
 	done := make(chan struct{})
-	
+
 	go func() {
 		defer close(done)
 		s := bufio.NewScanner(stdout)

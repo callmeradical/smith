@@ -1,0 +1,365 @@
+basePath: /
+definitions:
+  cmd_smith-api.loopCreateRequest:
+    properties:
+      correlation_id:
+        type: string
+      description:
+        type: string
+      environment:
+        $ref: '#/definitions/smith_pkg_api_v1.LoopEnvironment'
+      idempotency_key:
+        type: string
+      loop_id:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      model:
+        type: string
+      provider_id:
+        type: string
+      skills:
+        items:
+          $ref: '#/definitions/smith_pkg_api_v1.LoopSkillMount'
+        type: array
+      source_ref:
+        type: string
+      source_type:
+        type: string
+      title:
+        type: string
+    type: object
+  smith_pkg_api_v1.Anomaly:
+    properties:
+      correlation_id:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      environment:
+        $ref: '#/definitions/smith_pkg_api_v1.LoopEnvironment'
+      id:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      model:
+        type: string
+      policy:
+        $ref: '#/definitions/smith_pkg_api_v1.LoopPolicy'
+      provider_id:
+        type: string
+      schema_version:
+        type: string
+      skills:
+        items:
+          $ref: '#/definitions/smith_pkg_api_v1.LoopSkillMount'
+        type: array
+      source_ref:
+        type: string
+      source_type:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  smith_pkg_api_v1.ContainerImageProfile:
+    properties:
+      pull_policy:
+        type: string
+      ref:
+        type: string
+    type: object
+  smith_pkg_api_v1.DockerfileProfile:
+    properties:
+      build_args:
+        additionalProperties:
+          type: string
+        type: object
+      context_dir:
+        type: string
+      dockerfile_path:
+        type: string
+      target:
+        type: string
+    type: object
+  smith_pkg_api_v1.LoopCreateResult:
+    properties:
+      created:
+        type: boolean
+      environment:
+        $ref: '#/definitions/smith_pkg_api_v1.LoopEnvironment'
+      http_code:
+        type: integer
+      loop_id:
+        type: string
+      message:
+        type: string
+      skills:
+        items:
+          $ref: '#/definitions/smith_pkg_api_v1.LoopSkillMount'
+        type: array
+      status:
+        type: string
+    type: object
+  smith_pkg_api_v1.LoopEnvironment:
+    properties:
+      container_image:
+        $ref: '#/definitions/smith_pkg_api_v1.ContainerImageProfile'
+      dockerfile:
+        $ref: '#/definitions/smith_pkg_api_v1.DockerfileProfile'
+      env:
+        additionalProperties:
+          type: string
+        type: object
+      image_pull_policy:
+        description: 'Deprecated: Use ContainerImage instead'
+        type: string
+      image_ref:
+        description: 'Deprecated: Use ContainerImage instead'
+        type: string
+      mise:
+        $ref: '#/definitions/smith_pkg_api_v1.MiseEnvironment'
+      preset:
+        type: string
+      resolved_mode:
+        type: string
+    type: object
+  smith_pkg_api_v1.LoopPolicy:
+    properties:
+      backoff_initial:
+        $ref: '#/definitions/time.Duration'
+      backoff_max:
+        $ref: '#/definitions/time.Duration'
+      max_attempts:
+        type: integer
+      terminate_on_error:
+        type: boolean
+      timeout:
+        $ref: '#/definitions/time.Duration'
+    type: object
+  smith_pkg_api_v1.LoopResponse:
+    properties:
+      anomaly:
+        $ref: '#/definitions/smith_pkg_api_v1.Anomaly'
+      environment:
+        $ref: '#/definitions/smith_pkg_api_v1.LoopEnvironment'
+      state:
+        $ref: '#/definitions/smith_pkg_api_v1.State'
+    type: object
+  smith_pkg_api_v1.LoopSkillMount:
+    properties:
+      config:
+        additionalProperties:
+          type: string
+        type: object
+      mount_path:
+        type: string
+      name:
+        type: string
+      read_only:
+        type: boolean
+      source:
+        type: string
+      version:
+        type: string
+    type: object
+  smith_pkg_api_v1.LoopState:
+    enum:
+    - unresolved
+    - running
+    - synced
+    - flatline
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - LoopStateUnresolved
+    - LoopStateRunning
+    - LoopStateSynced
+    - LoopStateFlatline
+    - LoopStateCancelled
+  smith_pkg_api_v1.LoopWithRevision:
+    properties:
+      record:
+        $ref: '#/definitions/smith_pkg_api_v1.State'
+      revision:
+        type: integer
+    type: object
+  smith_pkg_api_v1.MiseEnvironment:
+    properties:
+      tool_versions_file:
+        type: string
+      tools:
+        additionalProperties:
+          type: string
+        type: object
+    type: object
+  smith_pkg_api_v1.State:
+    properties:
+      attempt:
+        type: integer
+      correlation_id:
+        type: string
+      last_heartbeat_at:
+        type: string
+      lock_holder:
+        type: string
+      loop_id:
+        type: string
+      observed_revision:
+        type: integer
+      reason:
+        type: string
+      schema_version:
+        type: string
+      state:
+        $ref: '#/definitions/smith_pkg_api_v1.LoopState'
+      updated_at:
+        type: string
+      worker_job_name:
+        type: string
+    type: object
+  time.Duration:
+    enum:
+    - -9223372036854775808
+    - 9223372036854775807
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+    - 60000000000
+    - 3600000000000
+    format: int64
+    type: integer
+    x-enum-varnames:
+    - minDuration
+    - maxDuration
+    - Nanosecond
+    - Microsecond
+    - Millisecond
+    - Second
+    - Minute
+    - Hour
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: Smith API server for managing loops and anomalies.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Smith API
+  version: "1.0"
+paths:
+  /v1/loops:
+    get:
+      consumes:
+      - application/json
+      description: Get all loop states or create a new loop
+      parameters:
+      - description: Create Loop Request
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/cmd_smith-api.loopCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List Loops
+          schema:
+            items:
+              $ref: '#/definitions/smith_pkg_api_v1.LoopWithRevision'
+            type: array
+        "201":
+          description: Create Loop
+          schema:
+            $ref: '#/definitions/smith_pkg_api_v1.LoopCreateResult'
+      security:
+      - BearerAuth: []
+      summary: List or create loops
+      tags:
+      - loops
+    post:
+      consumes:
+      - application/json
+      description: Get all loop states or create a new loop
+      parameters:
+      - description: Create Loop Request
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/cmd_smith-api.loopCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List Loops
+          schema:
+            items:
+              $ref: '#/definitions/smith_pkg_api_v1.LoopWithRevision'
+            type: array
+        "201":
+          description: Create Loop
+          schema:
+            $ref: '#/definitions/smith_pkg_api_v1.LoopCreateResult'
+      security:
+      - BearerAuth: []
+      summary: List or create loops
+      tags:
+      - loops
+  /v1/loops/{id}:
+    delete:
+      description: Get detailed information about a loop or delete it
+      parameters:
+      - description: Loop ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Loop Details
+          schema:
+            $ref: '#/definitions/smith_pkg_api_v1.LoopResponse'
+      security:
+      - BearerAuth: []
+      summary: Get or delete loop
+      tags:
+      - loops
+    get:
+      description: Get detailed information about a loop or delete it
+      parameters:
+      - description: Loop ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Loop Details
+          schema:
+            $ref: '#/definitions/smith_pkg_api_v1.LoopResponse'
+      security:
+      - BearerAuth: []
+      summary: Get or delete loop
+      tags:
+      - loops
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

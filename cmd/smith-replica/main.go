@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"smith/internal/source/completion"
 	"smith/internal/source/model"
 	"smith/internal/source/store"
-	"smith/internal/source/completion"
 )
 
 const (

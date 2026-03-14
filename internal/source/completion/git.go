@@ -64,7 +64,7 @@ func (g *RealGit) CommitAndPush(ctx context.Context, loopID string, finalDiff st
 }
 
 func (g *RealGit) Revert(ctx context.Context, loopID string, commitSHA string) error {
-	// Revert is used for compensation in the saga. 
+	// Revert is used for compensation in the saga.
 	// In this implementation, we'll just push a revert commit or force-push back if appropriate.
 	// For simplicity and safety in MVP, we'll push a revert.
 	if err := g.run(ctx, "revert", "--no-edit", commitSHA); err != nil {

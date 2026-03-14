@@ -76,11 +76,13 @@ Smith is split into control-plane and data-plane components.
 
 ### Control Plane
 
-- `smith-api` (`cmd/smith-api`): HTTP API for loop create/list/get, GitHub + PRD ingress, operator override actions, provider auth lifecycle, and cost reporting.
+- `smith-api` (`cmd/smith-api`): HTTP API for loop create/list/get, GitHub + PRD ingress, operator override actions, provider auth lifecycle, and cost reporting. Includes Swagger UI at `/swagger/` and gRPC support on port 8081.
 - `smith-core` (`cmd/smith-core`): watches unresolved loop state in etcd, acquires per-loop locks, transitions loop state, and schedules replica Jobs in Kubernetes.
 - `smithctl` (`cmd/smithctl`): kubectl-style operator CLI for `loop` and `prd` resources with context/config support and scriptable JSON output.
 - `smith` (`cmd/smith`): PRD launcher CLI (`smith --prd`) for interactive PRD generation before build loops.
+- `smith-mcp` (`cmd/smith-mcp`): Model Context Protocol (MCP) server for tool-based AI integration.
 - `smith-console` (`console/` + Helm deployment): operator UI/runtime assets.
+- `pkg/client/v1`: Typed Go client library for the Smith API.
 - etcd: authoritative source of truth for anomalies, loop lifecycle state, locks, journal events, handoffs, overrides, and audit records.
 
 ### Data Plane
@@ -95,7 +97,7 @@ Smith is split into control-plane and data-plane components.
 - Supporting docs: `docs/`
 - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
 
-## Key API Endpoints
+### Key API Endpoints
 
 Implemented today:
 - `POST /v1/loops` single/batch direct loop creation.
@@ -103,15 +105,19 @@ Implemented today:
 - `POST /v1/ingress/github/issues` ingest one or more GitHub issues into loop specs.
 - `POST /v1/ingress/prd` ingest markdown/json PRD inputs into loop specs.
 - `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
+- `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
 - `GET /v1/loops/{id}/runtime` to resolve namespace/pod/container attachability for console terminal control.
 - `POST /v1/loops/{id}/control/attach`, `/command`, and `/detach` for authenticated operator interactive terminal control.
 - `POST /v1/control/override` for operator state overrides with reason/audit trail.
 - `POST /v1/auth/codex/connect/start|complete`, `GET /v1/auth/codex/status`, and `POST /v1/auth/codex/disconnect` for provider auth lifecycle.
 - `GET /v1/reporting/cost?loop_id={id}` for loop token/cost aggregation from journal metadata.
+- `/swagger/` Interactive Swagger UI.
+- gRPC API on port 8081 (see `proto/v1/smith.proto`).
 
 Aspirational (planned, not implemented yet):
-- `GET /v1/loops/{id}/handoffs`, `GET /v1/loops/{id}/overrides`, and `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
+- `GET /v1/loops/{id}/handoffs` and `GET /v1/loops/{id}/overrides`.
 - `GET /v1/audit?loop_id={id}` for immutable operator/auth action audit records.
+
 
 Terminal control API contracts, required auth/RBAC permissions, and troubleshooting are documented in:
 - [`docs/loop-ingress-and-cli.md`](docs/loop-ingress-and-cli.md)

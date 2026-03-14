@@ -23,10 +23,10 @@ type MemStore struct {
 	locks     map[string]entry
 	revision  int64
 
-	stateWatchers    []chan Event
-	docWatchers      []chan model.Document
-	journalWatchers  map[string][]chan model.JournalEntry
-	auditWatchers    []chan AuditRecord
+	stateWatchers   []chan Event
+	docWatchers     []chan model.Document
+	journalWatchers map[string][]chan model.JournalEntry
+	auditWatchers   []chan AuditRecord
 }
 
 func NewMemStore() *MemStore {

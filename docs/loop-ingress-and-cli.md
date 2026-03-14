@@ -154,6 +154,51 @@ Example command surface:
 - `smith prd create <name> --template <tpl>`
 - `smith prd submit <file>`
 
+## Go Client Library
+
+The Smith API can be consumed via a typed Go client library located in `pkg/client/v1`.
+
+### Usage
+
+```go
+import (
+    "context"
+    client "smith/pkg/client/v1"
+    api "smith/pkg/api/v1"
+)
+
+func main() {
+    c := client.NewClient("http://localhost:8080", "your-token")
+    
+    // Create a loop
+    res, err := c.CreateLoop(context.Background(), api.LoopCreateRequest{
+        Title: "My New Loop",
+        SourceType: "manual",
+        SourceRef: "ref-1",
+    })
+    
+    // List loops
+    loops, err := c.ListLoops(context.Background())
+    
+    // Get loop details (typed response)
+    loop, err := c.GetLoop(context.Background(), "loop-123")
+    fmt.Printf("State: %s\n", loop.State.State)
+}
+```
+
+### Interface
+
+The client implements the `client.Interface` for easy mocking in tests.
+
+```go
+type Interface interface {
+    CreateLoop(ctx context.Background(), req api.LoopCreateRequest) (*api.LoopCreateResult, error)
+    GetLoop(ctx context.Background(), loopID string) (*api.LoopResponse, error)
+    ListLoops(ctx context.Background()) ([]api.LoopWithRevision, error)
+    // ... and more
+}
+```
+
 ## Data Model
 
 Smith uses a highly consistent data model stored in etcd (for ephemeral orchestration state) and Kubernetes ConfigMaps (for long-lived project configuration).

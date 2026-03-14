@@ -1,0 +1,550 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Smith API server for managing loops and anomalies.",
+        "title": "Smith API",
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "API Support",
+            "url": "http://www.swagger.io/support",
+            "email": "support@swagger.io"
+        },
+        "license": {
+            "name": "Apache 2.0",
+            "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/v1/loops": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all loop states or create a new loop",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "loops"
+                ],
+                "summary": "List or create loops",
+                "parameters": [
+                    {
+                        "description": "Create Loop Request",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/cmd_smith-api.loopCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List Loops",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/smith_pkg_api_v1.LoopWithRevision"
+                            }
+                        }
+                    },
+                    "201": {
+                        "description": "Create Loop",
+                        "schema": {
+                            "$ref": "#/definitions/smith_pkg_api_v1.LoopCreateResult"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all loop states or create a new loop",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "loops"
+                ],
+                "summary": "List or create loops",
+                "parameters": [
+                    {
+                        "description": "Create Loop Request",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/cmd_smith-api.loopCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List Loops",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/smith_pkg_api_v1.LoopWithRevision"
+                            }
+                        }
+                    },
+                    "201": {
+                        "description": "Create Loop",
+                        "schema": {
+                            "$ref": "#/definitions/smith_pkg_api_v1.LoopCreateResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/loops/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get detailed information about a loop or delete it",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "loops"
+                ],
+                "summary": "Get or delete loop",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Loop ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Loop Details",
+                        "schema": {
+                            "$ref": "#/definitions/smith_pkg_api_v1.LoopResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get detailed information about a loop or delete it",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "loops"
+                ],
+                "summary": "Get or delete loop",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Loop ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Loop Details",
+                        "schema": {
+                            "$ref": "#/definitions/smith_pkg_api_v1.LoopResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "cmd_smith-api.loopCreateRequest": {
+            "type": "object",
+            "properties": {
+                "correlation_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "environment": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.LoopEnvironment"
+                },
+                "idempotency_key": {
+                    "type": "string"
+                },
+                "loop_id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "model": {
+                    "type": "string"
+                },
+                "provider_id": {
+                    "type": "string"
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/smith_pkg_api_v1.LoopSkillMount"
+                    }
+                },
+                "source_ref": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "smith_pkg_api_v1.Anomaly": {
+            "type": "object",
+            "properties": {
+                "correlation_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "environment": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.LoopEnvironment"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "model": {
+                    "type": "string"
+                },
+                "policy": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.LoopPolicy"
+                },
+                "provider_id": {
+                    "type": "string"
+                },
+                "schema_version": {
+                    "type": "string"
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/smith_pkg_api_v1.LoopSkillMount"
+                    }
+                },
+                "source_ref": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "smith_pkg_api_v1.ContainerImageProfile": {
+            "type": "object",
+            "properties": {
+                "pull_policy": {
+                    "type": "string"
+                },
+                "ref": {
+                    "type": "string"
+                }
+            }
+        },
+        "smith_pkg_api_v1.DockerfileProfile": {
+            "type": "object",
+            "properties": {
+                "build_args": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "context_dir": {
+                    "type": "string"
+                },
+                "dockerfile_path": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                }
+            }
+        },
+        "smith_pkg_api_v1.LoopCreateResult": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "boolean"
+                },
+                "environment": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.LoopEnvironment"
+                },
+                "http_code": {
+                    "type": "integer"
+                },
+                "loop_id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/smith_pkg_api_v1.LoopSkillMount"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "smith_pkg_api_v1.LoopEnvironment": {
+            "type": "object",
+            "properties": {
+                "container_image": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.ContainerImageProfile"
+                },
+                "dockerfile": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.DockerfileProfile"
+                },
+                "env": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "image_pull_policy": {
+                    "description": "Deprecated: Use ContainerImage instead",
+                    "type": "string"
+                },
+                "image_ref": {
+                    "description": "Deprecated: Use ContainerImage instead",
+                    "type": "string"
+                },
+                "mise": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.MiseEnvironment"
+                },
+                "preset": {
+                    "type": "string"
+                },
+                "resolved_mode": {
+                    "type": "string"
+                }
+            }
+        },
+        "smith_pkg_api_v1.LoopPolicy": {
+            "type": "object",
+            "properties": {
+                "backoff_initial": {
+                    "$ref": "#/definitions/time.Duration"
+                },
+                "backoff_max": {
+                    "$ref": "#/definitions/time.Duration"
+                },
+                "max_attempts": {
+                    "type": "integer"
+                },
+                "terminate_on_error": {
+                    "type": "boolean"
+                },
+                "timeout": {
+                    "$ref": "#/definitions/time.Duration"
+                }
+            }
+        },
+        "smith_pkg_api_v1.LoopResponse": {
+            "type": "object",
+            "properties": {
+                "anomaly": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.Anomaly"
+                },
+                "environment": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.LoopEnvironment"
+                },
+                "state": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.State"
+                }
+            }
+        },
+        "smith_pkg_api_v1.LoopSkillMount": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "mount_path": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "read_only": {
+                    "type": "boolean"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "smith_pkg_api_v1.LoopState": {
+            "type": "string",
+            "enum": [
+                "unresolved",
+                "running",
+                "synced",
+                "flatline",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "LoopStateUnresolved",
+                "LoopStateRunning",
+                "LoopStateSynced",
+                "LoopStateFlatline",
+                "LoopStateCancelled"
+            ]
+        },
+        "smith_pkg_api_v1.LoopWithRevision": {
+            "type": "object",
+            "properties": {
+                "record": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.State"
+                },
+                "revision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "smith_pkg_api_v1.MiseEnvironment": {
+            "type": "object",
+            "properties": {
+                "tool_versions_file": {
+                    "type": "string"
+                },
+                "tools": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "smith_pkg_api_v1.State": {
+            "type": "object",
+            "properties": {
+                "attempt": {
+                    "type": "integer"
+                },
+                "correlation_id": {
+                    "type": "string"
+                },
+                "last_heartbeat_at": {
+                    "type": "string"
+                },
+                "lock_holder": {
+                    "type": "string"
+                },
+                "loop_id": {
+                    "type": "string"
+                },
+                "observed_revision": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "schema_version": {
+                    "type": "string"
+                },
+                "state": {
+                    "$ref": "#/definitions/smith_pkg_api_v1.LoopState"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "worker_job_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "time.Duration": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+                -9223372036854775808,
+                9223372036854775807,
+                1,
+                1000,
+                1000000,
+                1000000000,
+                60000000000,
+                3600000000000
+            ],
+            "x-enum-varnames": [
+                "minDuration",
+                "maxDuration",
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second",
+                "Minute",
+                "Hour"
+            ]
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

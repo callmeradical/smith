@@ -1,9 +1,13 @@
 package ingress
 
-import "testing"
+import (
+	"testing"
+
+	api "smith/pkg/api/v1"
+)
 
 func TestGitHubIssueToDraft(t *testing.T) {
-	draft, err := GitHubIssueToDraft(GitHubIssue{
+	draft, err := GitHubIssueToDraft(api.GitHubIssue{
 		Repository: "acme/smith",
 		Number:     123,
 		Title:      "Fix lock drift",
@@ -11,6 +15,7 @@ func TestGitHubIssueToDraft(t *testing.T) {
 		URL:        "https://github.com/acme/smith/issues/123",
 		Labels:     []string{"p0", "bug"},
 	})
+
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,8 +59,9 @@ func TestParsePRDMarkdown(t *testing.T) {
 }
 
 func TestPRDTasksToDraftsValidation(t *testing.T) {
-	drafts, errs := PRDTasksToDrafts([]PRDTask{{Title: "ok"}, {Title: ""}}, "docs/prd.md", nil)
+	drafts, errs := PRDTasksToDrafts([]api.PRDTask{{Title: "ok"}, {Title: ""}}, "docs/prd.md", nil)
 	if len(drafts) != 1 {
+
 		t.Fatalf("expected 1 draft, got %d", len(drafts))
 	}
 	if len(errs) != 1 {
